@@ -2,7 +2,7 @@
  * GradingManagement.jsx
  * 과제 및 채점관리 화면입니다.
  * 과제 선택, 학생별 채점 상태 관리(미채점 / 채점 확인 / 결과 발송),
- * 일괄 채점 워크플로우(NeoStudio2Lite 연동), 채점 상세 모달 기능을 포함합니다.
+ * 크래들 일괄 채점 워크플로우(AiGLE Connect 연동), 채점 상세 모달 기능을 포함합니다.
  * Setting.jsx에서 activeMenu === '과제 및 채점관리'일 때 렌더링됩니다.
  *
  * [SCR-06] variant='v2' — 「채점 관리 2」(퇴고 지원판)
@@ -16,6 +16,8 @@ import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
 import GradingReviewModal from './GradingReviewModal';
 import ScanGradingModal from './ScanGradingModal';
+import CradleGradingModal from './CradleGradingModal';
+import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
 
 // ─────────────────────────────────────────────
 // [SCR-06] 퇴고 — 등급 ↔ 점수 환산 및 추이 판정
@@ -61,10 +63,18 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // ── 일괄 채점 상태 ──
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState('');
-  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [bulkStep, setBulkStep] = useState('checking');
+  /* [SCR-07 v1.0] 舊 단일 모달(`bulkStep`: checking → not_installed → instruction → final_bulk)을
+   * 4-Step 워크플로우 모달 `CradleGradingModal`로 교체했다. 커넥터 설치 확인은 Step 1에 흡수된다. */
+  const [isCradleModalOpen, setIsCradleModalOpen] = useState(false);
+  // [SCR-07 v1.0] 크래들 모달 최소화 — 채점 중/완료에서 창을 닫으면 mount는 유지하고 화면에서만 숨긴다
+  const [cradleMinimized, setCradleMinimized] = useState(false);
   const [bulkStatus, setBulkStatus] = useState('ready');
-  const [isNeoStudioInstalled, setIsNeoStudioInstalled] = useState(false);
+  /* [POP-30] AiGLE Connect 상태 — 설치 여부와 실행 여부를 **따로** 기억한다.
+   *   깔려 있는데 꺼진 상태(설치 O · 실행 X)가 실제로 가장 흔한 실패라, 하나로 합치면
+   *   이미 설치한 교사에게 다시 설치 파일을 받게 만든다. 舊 `isNeoStudioInstalled` 대체. */
+  //   설치 여부는 브라우저가 알 수 없으므로 「이 브라우저에서 다운로드한 적이 있는가」로 추정한다
+  const [isConnectInstalled, setIsConnectInstalled] = useState(() => isConnectDownloaded());
+  const [isConnectRunning, setIsConnectRunning] = useState(false);
 
   // ── 일괄 필기 과정 평가 상태 ──
   const [isBulkHwModalOpen, setIsBulkHwModalOpen] = useState(false);
@@ -73,7 +83,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const [bulkHwResults, setBulkHwResults] = useState({ success: [], failed: [] });
 
   // ── 백그라운드 채점 & FAB ──
-  const [isConfirmCloseOpen, setIsConfirmCloseOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportSelectedIds, setExportSelectedIds] = useState([]);
   const [exportStatus, setExportStatus] = useState('ready'); // ready | processing | done
@@ -111,66 +120,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // 차수 필터 칩 — 'all'(전체) | '1'(1차) | '2'(퇴고). 전 탭 공통
   const [roundFilter, setRoundFilter] = useState('all');
 
-  // ── 펜 데이터 정렬 상태 ──
-  const [penSortBy, setPenSortBy] = useState('none'); // 'none', 'name', 'grade'
-
-  // ── 펜/OCR 데이터 (채점용) ──
-  const [updatePercent, setUpdatePercent] = useState(0);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [penData, setPenData] = useState([
-    { id: 'PEN-001', student: '홍길동1 (1학년 1반 1번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-    { id: 'PEN-002', student: '홍길동2 (1학년 1반 2번)', status: '펜 연결', data: '데이터 없음', battery: '85%', firmware: '2.1.0 (최신)' },
-    { id: 'PEN-003', student: '홍길동3 (1학년 1반 3번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.0.5', needsUpdate: true },
-    { id: 'PEN-004', student: '홍길동4 (1학년 1반 4번)', status: '그룹 불일치', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isGroupMismatch: true, detectedGroup: '1학년 2반', expectedGroup: '1학년 1반' },
-    { id: 'PEN-005', student: '홍길동5 (1학년 1반 5번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-    { id: 'PEN-006', student: '홍길동6 (1학년 1반 6번)', status: '그룹 불일치', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isGroupMismatch: true, detectedGroup: '1학년 2반', expectedGroup: '1학년 1반' },
-    { id: 'PEN-007', student: '홍길동7 (1학년 1반 7번)', status: '중복 데이터', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isWarning: true },
-    { id: 'PEN-008', student: '홍길동8 (1학년 1반 8번)', status: '중복 데이터', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isWarning: true },
-    { id: 'PEN-009', student: '홍길동9 (1학년 1반 9번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-    { id: 'PEN-010', student: '홍길동10 (1학년 1반 10번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-  ]);
-
-  // 그룹 불일치 펜 수 계산
-  const mismatchedPenCount = penData.filter(p => p.isGroupMismatch).length;
-
-  // 그룹 불일치 펜 일괄 삭제 (프로토타입 동작)
-  const removeMismatchedPens = () => {
-    setPenData(prev => prev.filter(p => !p.isGroupMismatch));
-  };
-
-  const sortedPenData = React.useMemo(() => {
-    if (penSortBy === 'none') return penData;
-
-    return [...penData].sort((a, b) => {
-      const extract = (s) => {
-        const m = s.match(/(.+)\s\((.+)\)/);
-        return m ? { name: m[1], grade: m[2] } : { name: s, grade: '' };
-      };
-
-      const infoA = extract(a.student);
-      const infoB = extract(b.student);
-
-      if (penSortBy === 'name') {
-        return infoA.name.localeCompare(infoB.name);
-      } else if (penSortBy === 'grade') {
-        return infoA.grade.localeCompare(infoB.grade, undefined, { numeric: true });
-      }
-      return 0;
-    });
-  }, [penData, penSortBy]);
-  const [ocrData, setOcrData] = useState([
-    { id: 'OCR-001', name: '홍길동', grade: '1학년 1반 5번', status: '대기 중', progress: 0, source: 'homework_1.jpg', dataStatus: '이미지 확보 완료', fileType: 'JPG (2.1MB)' },
-    { id: 'OCR-002', name: '김민지', grade: '1학년 1반 12번', status: '대기 중', progress: 0, source: 'scan_text_2.png', dataStatus: '이미지 확보 완료', fileType: 'PNG (3.4MB)' }
-  ]);
-
-  const sortedOcrData = React.useMemo(() => {
-    if (penSortBy === 'none') return ocrData;
-    return [...ocrData].sort((a, b) => {
-      if (penSortBy === 'name') return a.name.localeCompare(b.name);
-      if (penSortBy === 'grade') return a.grade.localeCompare(b.grade, undefined, { numeric: true });
-      return 0;
-    });
-  }, [ocrData, penSortBy]);
+  /* [SCR-07 v1.0] 舊 펜/OCR 목 데이터·정렬 상태 제거 —
+   *   펜 재고·판정·펌웨어는 크래들 모달(`CradleGradingModal`)이 대상 학생 명단을 받아 스스로 만든다.
+   *   OCR 데이터 섹션은 스캔 채점(SCR-05)이 정본이라 크래들 흐름에서는 중복이었다. */
 
   // ── 목 데이터 ──
   const tasks = [
@@ -259,15 +211,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
   const filteredStudents = roster.filter(s => matchTab(s, activeTab) && matchRound(s));
 
-  /* [SCR-01 v4.5] 일괄 채점 완료 요약 — SCR-05 스캔 채점의 완료 단계와 같은 지표를 쓴다.
-   * 「몇 명이 채점됐고 몇 문항이 처리됐는지」는 경로(펜/스캔)와 무관하게 교사가 확인해야 하는 값이다.
-   * `selectedIds`는 완료 시점에 비워지므로 스냅샷인 `lastBulkGradedIds`로 계산한다. */
-  const bulkResultStudents = lastBulkGradedIds
-    .map((id) => students.find((s) => s.id === id))
-    .filter(Boolean);
-  const bulkGradedCount = bulkResultStudents.filter((s) => s.status === '채점 확인').length;
-  const bulkFailedCount = bulkResultStudents.length - bulkGradedCount;
-  const bulkGradedQuestionCount = bulkGradedCount * questions.length;
+  /* [SCR-07 v1.0] 舊 일괄 채점 완료 요약 파생값 제거 —
+   *   완료 요약(채점 문항 · 학생 수 · 미채점 잔류 고지)은 크래들 모달의 Step 4가 책임진다. */
 
   // [v3.18] '전체' 탭 라벨 분기 폐기
   const getTabLabel = (label) =>
@@ -296,16 +241,19 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     return base;
   }, [revisionStudents]);
 
+  /* [SCR-07 v1.0] 크래들 일괄 채점 진입 — 그룹·학생 선택 사전 검증 후 4-Step 모달 오픈.
+   *   스캔 채점(SCR-05)과 같은 검증·같은 진입 형태를 쓴다. */
   const handleBulkGrading = () => {
     if (!selectedGroup || selectedGroup === '그룹 선택') {
-      alert('그룹이 선택되어야 일괄 채점을 시작할 수 있습니다.');
+      alert('그룹이 선택되어야 크래들 일괄 채점을 시작할 수 있습니다.');
       return;
     }
-    setIsBulkModalOpen(true);
-    setBulkStep('checking');
-    setTimeout(() => {
-      setBulkStep(isNeoStudioInstalled ? 'instruction' : 'not_installed');
-    }, 1500);
+    if (!selectedIds.length) {
+      alert('크래들 일괄 채점 대상 학생을 먼저 선택해 주세요.');
+      return;
+    }
+    setCradleMinimized(false);
+    setIsCradleModalOpen(true);
   };
 
   // [v3.16] 스캔 일괄 채점 진입 — 그룹·학생 선택 사전 검증 후 모달 오픈
@@ -617,93 +565,48 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     return Math.max(0, AI_GRADING_LIMIT_PER_ROUND - used);
   };
 
-  const startFirmwareUpdate = () => {
-    setIsUpdating(true);
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 5;
-      setUpdatePercent(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setIsUpdating(false);
-        setPenData(prev => prev.map(p => p.id === 'PEN-003' ? { ...p, firmware: '2.1.0 (최신)', needsUpdate: false, updating: false } : p));
+  /* [SCR-07 v1.0] 크래들 채점 완료 콜백 — 채점된 학생 ID 배열 수신.
+   *   스캔 채점(`handleScanCompleted`)과 동일한 상태 전환·FAB 종료 흐름을 쓴다. */
+  const handleCradleCompleted = (gradedStudentIds) => {
+    setStudents(prev => prev.map(s => {
+      if (gradedStudentIds.includes(s.id)) {
+        const r = s.round ?? 1;
+        // [SCR-06] 2차(퇴고) 채점은 1차보다 한 등급 향상된 결과를 목으로 생성해 추이 비교를 확인할 수 있게 한다.
+        return {
+          ...s,
+          status: '채점 확인',
+          aiGrade: r >= 2 ? '보통' : '노력',
+          aiCount: { ...(s.aiCount || { 1: 0, 2: 0 }), [r]: (s.aiCount?.[r] ?? 0) + 1 },
+        };
       }
-    }, 100);
-    setPenData(prev => prev.map(p => p.id === 'PEN-003' ? { ...p, updating: true } : p));
+      return s;
+    }));
+    setLastBulkGradedIds([...gradedStudentIds]);
+    setSelectedIds([]);
+    setBulkGradingIds([]);
+    setBulkStatus('ready');
+    setIsCradleModalOpen(false);
+    setCradleMinimized(false);
+    setShowFAB(false);
+    setIsGradingFinished(false);
+    setActiveTab('채점 확인');
   };
 
-  const startGrading = () => {
+  // [SCR-07 v1.0] 채점 시작 — 카드/리스트 「채점중...」 표시용 스냅샷 + 이탈 차단 플래그
+  const handleCradleGradingStarted = (gradedStudentIds) => {
     setBulkStatus('processing');
-    // 카드/리스트 "채점중..." 표시용 스냅샷 (선택된 학생 ID들)
-    setBulkGradingIds([...selectedIds]);
-    setPenData([
-      { id: 'PEN-001', student: '홍길동1 (1학년 1반 1번)', status: 'AI 채점중', progress: 40, data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-      { id: 'PEN-002', student: '홍길동2 (1학년 1반 2번)', status: 'AI 채점중', progress: 85, data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-      { id: 'PEN-003', student: '홍길동3 (1학년 1반 3번)', status: 'AI 채점 완료', data: '데이터 삭제', battery: '85%', firmware: '2.1.0 (최신)', completed: true },
-      { id: 'PEN-005', student: '홍길동5 (1학년 1반 5번)', status: '채점 실패', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isError: true },
-      { id: 'PEN-006', student: '홍길동6 (1학년 1반 6번)', status: 'AI 채점중', progress: 60, data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-      { id: 'PEN-007', student: '홍길동7 (1학년 1반 7번)', status: '중복 데이터', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isWarning: true },
-      { id: 'PEN-008', student: '홍길동8 (1학년 1반 8번)', status: '중복 데이터', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)', isWarning: true },
-      { id: 'PEN-009', student: '홍길동9 (1학년 1반 9번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-      { id: 'PEN-010', student: '홍길동10 (1학년 1반 10번)', status: '펜 연결', data: '데이터 있음', battery: '85%', firmware: '2.1.0 (최신)' },
-    ]);
-    setOcrData([
-      { id: 'OCR-001', name: '홍길동', grade: '1학년 1반 5번', status: 'AI 채점중', progress: 40, source: 'homework_1.jpg', dataStatus: 'OCR 추출 중...', fileType: 'JPG (2.1MB)' },
-      { id: 'OCR-002', name: '김민지', grade: '1학년 1반 12번', status: 'AI 채점중', progress: 85, source: 'scan_text_2.png', dataStatus: 'OCR 추출 완료', fileType: 'PNG (3.4MB)' }
-    ]);
-    setTimeout(() => {
-      setIsGradingFinished(true);
-      setBulkStatus('completed');
-      setPenData(prev => prev.map((p, idx) => ({
-        ...p,
-        status: idx % 4 === 0 ? '채점 실패' : 'AI 채점 완료',
-        data: idx % 4 === 0 ? '데이터 있음' : '데이터 삭제',
-        progress: 100,
-        completed: idx % 4 !== 0,
-        isWarning: false,
-        isError: idx % 4 === 0
-      })));
-      setOcrData(prev => prev.map(o => ({ ...o, status: 'AI 채점 완료', progress: 100, dataStatus: '텍스트 변환 성공' })));
-      setStudents(prev => prev.map(s => {
-        if (selectedIds.includes(s.id)) {
-          if (s.id === 3) return s;
-          // [SCR-06] 2차(퇴고) 채점은 1차보다 한 등급 향상된 결과를 목으로 생성해 추이 비교를 확인할 수 있게 한다.
-          const r = s.round ?? 1;
-          const nextAiGrade = r >= 2 ? '보통' : '노력';
-          return {
-            ...s,
-            status: '채점 확인',
-            aiGrade: nextAiGrade,
-            // 차수별 독립 카운터 증가 (1차/2차 각각 최대 2회)
-            aiCount: { ...(s.aiCount || { 1: 0, 2: 0 }), [r]: (s.aiCount?.[r] ?? 0) + 1 },
-          };
-        }
-        return s;
-      }));
-      // [v3.x] FAB(완료 상태) 클릭 시 첫 성공 학생 SCR-03 오픈용 스냅샷 저장
-      //   선택 순서 유지 (id === 3 실패 케이스도 포함 — 클릭 핸들러에서 상태 확인 후 필터)
-      setLastBulkGradedIds([...selectedIds]);
-      setSelectedIds([]);
-      setBulkGradingIds([]); // 카드/리스트 "채점중..." 표시 해제
-    }, 5000);
+    setBulkGradingIds([...gradedStudentIds]);
   };
 
-  const handleCloseProcessing = () => {
-    if (bulkStatus === 'processing') {
-      setIsConfirmCloseOpen(true);
-    } else {
-      setIsBulkModalOpen(false);
-      setActiveTab('미채점');
-      setBulkStatus('ready');
-      setIsGradingFinished(false);
-    }
-  };
-
-  const proceedToBackground = () => {
-    setIsConfirmCloseOpen(false);
-    setIsBulkModalOpen(false);
+  // [SCR-07 v1.0] 크래들 모달 최소화 — 채점 중/완료에서 창을 닫으면 FAB로 내려간다
+  const handleCradleMinimize = ({ finished }) => {
+    setCradleMinimized(true);
+    setIsGradingFinished(!!finished);
     setShowFAB(true);
   };
+
+  /* [SCR-07 v1.0] 舊 `handleCloseProcessing` · `proceedToBackground` 제거 —
+   *   닫기 정책(진행 중이면 최소화)은 크래들·스캔 모달이 각자 갖고 있다. */
 
   // 백그라운드 채점(일괄 또는 개별)이 진행 중인지 — 진행 중에는 학생 체크/일괄 작업 버튼 모두 차단
   const isAnyBgActive = showFAB || !!bgIndividual;
@@ -957,7 +860,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       style={isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                       title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
                     >
-                      일괄 채점 ({selectedIds.length}명)
+                      🖊 크래들 일괄채점 ({selectedIds.length}명)
                     </button>
                   )}
                   {/* [v3.16] 미채점 탭 — 스캔 채점 (스캔 파일 업로드 → OCR 학생 번호 연결 → AI 일괄 채점) */}
@@ -1300,317 +1203,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         </div>
       )}
 
-      {/* ── 일괄 채점 워크플로우 모달 ── */}
-      {isBulkModalOpen && (
-        <div className="modal-overlay" onClick={() => { if (bulkStatus !== 'processing') handleCloseProcessing(); }}>
-          <div className="modal-container" style={{ width: '800px', height: 'auto', minHeight: '400px', padding: '2rem' }} onClick={e => e.stopPropagation()}>
-            <button className="btn-modal-close" onClick={handleCloseProcessing}>×</button>
-            <h2 style={{ textAlign: 'center', fontSize: '1.5rem', marginBottom: '2rem' }}>펜 데이터 동기화</h2>
-
-            {bulkStep === 'checking' && (
-              <div style={{ textAlign: 'center', padding: '2rem 0' }}>
-                <div className="loading-spinner" style={{ margin: '0 auto 2rem' }}></div>
-                <h3 style={{ fontSize: 'var(--neo-font-size-lg)', marginBottom: '0.5rem' }}>NeoStudio2Lite 설치 여부를 확인하는 중입니다.</h3>
-                <p style={{ color: '#8A94A1' }}>잠시만 기다려 주세요.</p>
-              </div>
-            )}
-
-            {bulkStep === 'not_installed' && (
-              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-                <div style={{ fontSize: '4rem', color: '#FF4D4D', marginBottom: '1.5rem' }}>⚠️</div>
-                <h3 style={{ fontSize: 'var(--neo-font-size-lg)', marginBottom: '0.5rem' }}>NeoStudio2Lite가 설치되어 있지 않습니다.</h3>
-                <p style={{ color: '#8A94A1', marginBottom: '2rem' }}>펜 데이터 동기화를 위해 설치가 필요합니다.</p>
-                <button className="btn-primary" style={{ padding: '0.8rem 2rem' }} onClick={() => setBulkStep('manual_install')}>수동 설치 안내</button>
-              </div>
-            )}
-
-            {bulkStep === 'manual_install' && (
-              <div style={{ padding: '0.5rem' }}>
-                <p style={{ textAlign: 'center', color: '#8A94A1', fontSize: 'var(--neo-font-size-sm)', marginBottom: '2rem' }}>자동 설치가 실패한 경우 아래 방법으로 수동 설치할 수 있습니다.</p>
-                <div style={{ marginBottom: '2rem' }}>
-                  {[['설치 파일 다운로드', 'NeoStudio2Lite 설치 파일을 다운로드합니다.'], ['설치 파일 실행', '다운로드한 설치 파일을 실행합니다.'], ['설치 진행', '설치 마법사의 안내에 따라 설치를 진행합니다.']].map(([title, desc], i) => (
-                    <div key={i} style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-                      <div style={{ background: '#2A75F3', color: 'white', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--neo-font-size-sm)', flexShrink: 0 }}>{i + 1}</div>
-                      <div>
-                        <div style={{ fontWeight: 800, marginBottom: '0.4rem' }}>{title}</div>
-                        <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#4E5968' }}>{desc}</p>
-                        {i === 0 && <button className="btn-primary" style={{ fontSize: 'var(--neo-font-size-sm)', padding: '0.6rem 1.25rem', marginTop: '0.5rem' }} onClick={() => setIsNeoStudioInstalled(true)}>NeoStudio2Lite 설치 파일 다운로드 (약 100MB)</button>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <button className="btn-card-detail" style={{ width: '200px' }} onClick={() => { setIsBulkModalOpen(false); setIsNeoStudioInstalled(true); }}>닫기</button>
-                </div>
-              </div>
-            )}
-
-            {bulkStep === 'instruction' && (
-              <div style={{ padding: '0.5rem' }}>
-                <div style={{ background: '#EFF6FF', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
-                  <h3 style={{ color: '#1D4ED8', fontSize: 'var(--neo-font-size-base)', marginBottom: '1rem' }}>💡 일괄 채점 안내</h3>
-                  <ul style={{ fontSize: 'var(--neo-font-size-base)', color: '#1E293B', lineHeight: '1.8' }}>
-                    <li>• 선택하신 <strong>{selectedIds.length}명</strong>의 학생에 대해 AI 채점을 일괄 시작합니다.</li>
-                    <li>• NeoSmartpen의 데이터가 NeoStudio2Lite를 통해 자동으로 서버에 전송됩니다.</li>
-                    <li>• 채점 도중 브라우저를 닫지 마세요.</li>
-                  </ul>
-                </div>
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                  <button className="btn-card-detail" style={{ flex: 1 }} onClick={() => setIsBulkModalOpen(false)}>취소</button>
-                  <button className="btn-primary" style={{ flex: 2 }} onClick={() => setBulkStep('final_bulk')}>채점 시작하기</button>
-                </div>
-              </div>
-            )}
-
-            {bulkStep === 'final_bulk' && (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{ background: '#4E5968', color: 'white', padding: '1rem 1.5rem', borderRadius: '12px', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700 }}>💡 크래들 이용 가이드</span><span>▼</span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1rem' }}>
-                  <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)', display: 'flex', gap: '1rem' }}>
-                    <span>연결된 펜 <span style={{ color: '#4E5968' }}>{penData.length}개</span></span>
-                    {mismatchedPenCount > 0 && <span>그룹 불일치 <span style={{ color: '#FF8C00' }}>{mismatchedPenCount}개</span></span>}
-                    {bulkStatus === 'completed' && <span style={{ marginLeft: '0.5rem' }}>성공 <span style={{ color: '#10B981' }}>{penData.filter(p => p.completed).length}개</span></span>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: '#10B981', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>● 크래들 연결됨</span>
-                  </div>
-                </div>
-
-                {/* 펌웨어 업데이트 — 선택·권장 안내 (필수 아님) */}
-                {bulkStatus === 'ready' && (
-                  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1rem', fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', lineHeight: 1.7 }}>
-                    <div style={{ fontWeight: 800, marginBottom: '0.4rem' }}>📌 펌웨어 업데이트 (선택 · 권장)</div>
-                    펜 펌웨어를 최신 버전으로 업데이트하면 펜의 최신 기능을 이용하고 펜을 더 잘 활용할 수 있습니다. 각 펜의 [🔄 업데이트](개별) 또는 하단 [펌웨어 일괄 업데이트](일괄)로 갱신할 수 있습니다. 업데이트 중에는 펜을 제거하지 마세요. 완료 후 자동으로 최신 버전으로 표시됩니다.
-                    <div style={{ marginTop: '0.5rem', color: '#2563EB', fontWeight: 700 }}>ℹ️ 펌웨어 업데이트는 필수가 아니며, 업데이트하지 않아도 일괄 채점을 시작할 수 있습니다.</div>
-                  </div>
-                )}
-
-                {/* ── 그룹 불일치 경고 배너 ── */}
-                {mismatchedPenCount > 0 && bulkStatus === 'ready' && (
-                  <div style={{
-                    background: '#FFF7ED',
-                    border: '1px solid #FDBA74',
-                    borderRadius: '12px',
-                    padding: '1.25rem 1.5rem',
-                    marginBottom: '1rem',
-                    display: 'flex',
-                    gap: '1rem',
-                    alignItems: 'flex-start'
-                  }}>
-                    <div style={{ fontSize: '1.5rem', flexShrink: 0, marginTop: '2px' }}>⚠️</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)', color: '#C2410C', marginBottom: '0.5rem' }}>
-                        그룹 불일치 펜이 {mismatchedPenCount}개 감지되었습니다
-                      </div>
-                      <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#9A3412', lineHeight: '1.7' }}>
-                        번호표에 체크된 그룹과 현재 선택한 그룹이 일치하지 않는 펜이 있습니다.<br />
-                        해당 펜의 번호표는 <strong>다른 반의 번호표</strong>로 체크되어 있어,<br />
-                        현재 선택된 그룹의 학생과 매칭할 수 없습니다.
-                      </div>
-                      <div style={{
-                        marginTop: '0.75rem',
-                        padding: '0.75rem 1rem',
-                        background: '#FEF3C7',
-                        borderRadius: '8px',
-                        fontSize: 'var(--neo-font-size-sm)',
-                        color: '#92400E',
-                        lineHeight: '1.6'
-                      }}>
-                        💡 <strong>해결 방법:</strong> 해당 펜의 번호표를 올바른 그룹(현재 선택: <strong>{selectedGroup || '미선택'}</strong>)으로
-                        다시 체크한 후, 크래들에 다시 연결해 주세요.
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* [v4.5] 완료 요약 — SCR-05 스캔 채점 완료 단계와 같은 지표(문항 수 · 학생 수)를 노출한다 */}
-                {bulkStatus === 'completed' && (
-                  <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1rem', textAlign: 'center' }}>
-                    <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)', color: '#065F46', marginBottom: '6px' }}>
-                      일괄 채점이 완료되었습니다.
-                    </div>
-                    <div style={{ fontSize: 'var(--neo-font-size-base)', color: '#047857', marginBottom: '10px' }}>
-                      채점 문항 <strong>{bulkGradedQuestionCount}건</strong> · 학생 <strong>{bulkGradedCount}명</strong>
-                    </div>
-                    {bulkFailedCount > 0 && (
-                      <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '8px 12px', maxWidth: 620, margin: '0 auto 8px', lineHeight: 1.6 }}>
-                        ⚠ <strong>{bulkFailedCount}명</strong>은 채점되지 않아 <strong>미채점 탭에 그대로 남습니다.</strong> 펜 데이터를 확인한 뒤 다시 실행해 주세요.
-                      </div>
-                    )}
-                    <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46', background: 'white', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '8px 14px', display: 'inline-block' }}>
-                      전 문항이 채점된 <strong>{bulkGradedCount}명</strong>이 「채점 확인」 단계로 이동했습니다.
-                    </div>
-                  </div>
-                )}
-
-                {/* --- 정렬 컨트롤 --- */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1rem', padding: '0.75rem 1rem', background: '#F8F9FA', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
-                  <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#4E5968' }}>학생 목록 정렬</span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    {[
-                      { id: 'none', label: '기본순' },
-                      { id: 'name', label: '이름순' },
-                      { id: 'grade', label: '학년반번호순' }
-                    ].map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => setPenSortBy(opt.id)}
-                        style={{
-                          padding: '4px 12px',
-                          fontSize: 'var(--neo-font-size-xs)',
-                          borderRadius: '6px',
-                          border: '1px solid',
-                          borderColor: penSortBy === opt.id ? '#2A75F3' : '#E5E7EB',
-                          background: penSortBy === opt.id ? '#EBF2FF' : 'white',
-                          color: penSortBy === opt.id ? '#2A75F3' : '#8A94A1',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ maxHeight: '300px', overflowY: 'auto', borderTop: '1px solid #1E2225' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#F1F3F5' }}>
-                        <th style={{ padding: '12px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'left', fontWeight: 800 }}>펜 ID</th>
-                        <th style={{ padding: '12px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'left', fontWeight: 800 }}>학생</th>
-                        <th style={{ padding: '12px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', fontWeight: 800 }}>채점 진행</th>
-                        <th style={{ padding: '12px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', fontWeight: 800 }}>데이터</th>
-                        <th style={{ padding: '12px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', fontWeight: 800 }}>배터리</th>
-                        <th style={{ padding: '12px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', fontWeight: 800 }}>펌웨어</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedPenData.map((pen, idx) => {
-                        const isNoData = pen.data === '데이터 없음';
-                        const isMismatch = pen.isGroupMismatch;
-                        const rowColor = isMismatch ? '#C2410C' : isNoData ? '#ADB5BD' : (pen.isWarning ? '#FF4D4D' : '#4E5968');
-                        const rowBg = isMismatch ? '#FFF7ED' : 'transparent';
-                        return (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f1f3f5', opacity: isNoData ? 0.6 : 1, background: rowBg }}>
-                            <td style={{ padding: '14px 1rem', fontSize: 'var(--neo-font-size-sm)', color: rowColor, fontWeight: isMismatch ? 700 : 400 }}>
-                              {isMismatch && <span style={{ color: '#FF8C00', marginRight: '4px' }}>⚠</span>}
-                              {pen.id}
-                            </td>
-                            <td style={{ padding: '14px 1rem', fontSize: 'var(--neo-font-size-sm)', color: rowColor, fontWeight: isMismatch ? 700 : 400 }}>{pen.student}</td>
-                            <td style={{ padding: '14px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center' }}>
-                              {pen.status === 'AI 채점중' ? (
-                                <div style={{ position: 'relative', width: '220px', height: '24px', background: '#F3F4F6', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}>
-                                  <div style={{ position: 'absolute', top: 0, left: 0, width: `${pen.progress}%`, height: '100%', background: '#D1E3FF' }}></div>
-                                  <span style={{ position: 'absolute', width: '100%', left: 0, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--neo-font-size-xs)', color: '#4E5968', fontWeight: 700 }}>AI 채점중</span>
-                                </div>
-                              ) : isMismatch ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                  <div style={{ background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: '12px', padding: '4px 12px', fontSize: 'var(--neo-font-size-xs)', color: '#C2410C', display: 'inline-block', minWidth: '120px', fontWeight: 700 }}>
-                                    ⚠️ 그룹 불일치
-                                  </div>
-                                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', lineHeight: '1.4' }}>
-                                    감지: <strong>{pen.detectedGroup}</strong> → 선택: <strong>{pen.expectedGroup}</strong>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div style={{ background: pen.status === 'AI 채점 완료' ? '#D1E3FF' : pen.status === '채점 실패' ? '#FFF1F2' : '#F3F4F6', borderRadius: '12px', padding: '4px 0', fontSize: 'var(--neo-font-size-xs)', color: pen.status === 'AI 채점 완료' ? '#2A75F3' : pen.status === '채점 실패' ? '#FF4D4D' : '#8A94A1', display: 'inline-block', minWidth: '120px' }}>
-                                  {pen.status}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ padding: '14px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', color: isMismatch ? '#C2410C' : pen.data === '데이터 삭제' ? '#ADB5BD' : (isNoData ? '#ADB5BD' : '#2A75F3'), fontWeight: 700 }}>
-                              {isMismatch ? '동기화 불가' : pen.data}
-                            </td>
-                            <td style={{ padding: '14px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', color: rowColor }}>{pen.battery}</td>
-                            <td style={{ padding: '14px 1rem', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: pen.needsUpdate ? '#FF4D4D' : '#8A94A1' }}>{pen.firmware}</span>
-                                {pen.needsUpdate && !pen.updating && !isNoData && (
-                                  <button onClick={startFirmwareUpdate} style={{ background: '#FF4D4D', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>업데이트</button>
-                                )}
-                                {pen.updating && (
-                                  <div style={{ width: '60px', height: '6px', background: '#E5E7EB', borderRadius: '3px', overflow: 'hidden' }}>
-                                    <div style={{ width: `${updatePercent}%`, background: '#2A75F3', height: '100%' }}></div>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* OCR 구분선 */}
-                <div style={{ display: 'flex', alignItems: 'center', margin: '1.5rem 1rem 1rem' }}>
-                  <div style={{ flex: 1, height: '1px', background: '#E5E7EB' }}></div>
-                  <span style={{ padding: '0 1.5rem', color: '#8A94A1', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600 }}>OCR 데이터</span>
-                  <div style={{ flex: 1, height: '1px', background: '#E5E7EB' }}></div>
-                </div>
-                <div style={{ background: '#1B222E', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 700, color: '#FFFFFF', marginBottom: '1rem' }}>OCR 데이터 {ocrData.length}개</h3>
-                  {sortedOcrData.map(ocr => (
-                    <div key={ocr.id} style={{ border: '1px solid #2A3441', borderRadius: '8px', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#11161D', marginBottom: '0.75rem' }}>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)', color: '#FFFFFF' }}>{ocr.name} <span style={{ fontWeight: 400 }}>{ocr.grade}</span></div>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#8E9AAB' }}>{ocr.status}</div>
-                      </div>
-                      <button style={{ background: '#2A75F3', border: 'none', color: '#FFFFFF', padding: '8px 20px', borderRadius: '6px', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600 }}>OCR 대상</button>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', borderTop: '1px solid #E5E7EB' }}>
-                  {bulkStatus === 'ready' ? (
-                    <>
-                      <button
-                        title="펌웨어 업데이트는 채점의 필수 요건은 아닙니다."
-                        style={{ background: '#EBF2FF', color: '#2A75F3', border: 'none', padding: '0.8rem 1.5rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        ↺ 펌웨어 일괄 업데이트 <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 400, opacity: 0.7 }}>(선택)</span>
-                      </button>
-                      <button
-                        className={mismatchedPenCount > 0 ? '' : 'btn-primary'}
-                        style={mismatchedPenCount > 0 ? {
-                          padding: '0.8rem 4rem',
-                          background: '#FF8C00',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '10px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        } : {
-                          padding: '0.8rem 4rem'
-                        }}
-                        onClick={() => {
-                          if (mismatchedPenCount > 0) {
-                            // 그룹 불일치 펜을 목록에서 삭제 (프로토타입 동작)
-                            removeMismatchedPens();
-                            return;
-                          }
-                          startGrading();
-                        }}
-                      >
-                        {mismatchedPenCount > 0 ? '⚠️ 그룹 불일치 확인 필요' : '일괄 채점 시작'}
-                      </button>
-                    </>
-                  ) : (
-                    <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-                      <button className="btn-card-detail" style={{ padding: '0.8rem 4rem' }} onClick={handleCloseProcessing}>닫기</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* [SCR-07 v1.0] 舊 일괄 채점 워크플로우 모달(단일 화면) 제거 —
+          4-Step 크래들 모달 `CradleGradingModal`로 대체. 렌더는 스캔 모달 옆에 있다. */}
 
       {/* ── SCR-02: 미채점 상세 모달 ── */}
       <UngradedDetailModal
@@ -2213,20 +1807,24 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         </div>
       )}
 
-      {/* ── 채점 종료 확인 모달 ── */}
-      {isConfirmCloseOpen && (
-        <div className="modal-overlay" style={{ zIndex: 10001 }} onClick={() => setIsConfirmCloseOpen(false)}>
-          <div className="modal-container" style={{ width: '480px', height: 'auto', padding: '2.5rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <p style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 700, color: '#1E2225', lineHeight: '1.6', marginBottom: '2rem' }}>
-              페이지를 벗어나도 AI 채점은 멈추지 않습니다.<br />
-              20분 이내로 채점이 완료 예정입니다.
-            </p>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button className="btn-card-detail" style={{ flex: 1, padding: '1rem', background: '#D1E3FF', color: '#1E2225', border: 'none' }} onClick={() => setIsConfirmCloseOpen(false)}>계속 채점하기</button>
-              <button className="btn-primary" style={{ flex: 1, padding: '1rem', background: '#EF4444' }} onClick={proceedToBackground}>닫기</button>
-            </div>
-          </div>
-        </div>
+      {/* [SCR-07] 크래들 일괄 채점 모달 — 펜 연결 → 데이터 매핑 → AI 채점 → 완료 (4-Step) */}
+      {isCradleModalOpen && (
+        <CradleGradingModal
+          open={!cradleMinimized}
+          onClose={() => { setIsCradleModalOpen(false); setCradleMinimized(false); setBulkStatus('ready'); setBulkGradingIds([]); }}
+          onMinimize={handleCradleMinimize}
+          onGradingStarted={handleCradleGradingStarted}
+          onGradingFinished={() => { setBulkStatus('completed'); setIsGradingFinished(true); setBulkGradingIds([]); }}
+          onCompleted={handleCradleCompleted}
+          selectedStudents={students.filter((s) => selectedIds.includes(s.id))}
+          groupLabel={selectedGroup || '그룹'}
+          taskTitle={currentTask?.title || '과제'}
+          questions={questions}
+          connectorInstalled={isConnectInstalled}
+          connectorReady={isConnectRunning}
+          onConnectorInstall={() => { markConnectDownloaded(); setIsConnectInstalled(true); }}
+          onConnectorReady={() => { markConnectDownloaded(); setIsConnectInstalled(true); setIsConnectRunning(true); }}
+        />
       )}
 
       {/* [v3.16] 스캔 일괄 채점 모달 — OCR 학생 번호 연결 + AI 채점 (완료 시 handleScanCompleted → 기존 FAB 흐름 재사용) */}
@@ -2396,7 +1994,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           [v3.x] 일괄 채점 완료 시:
             · FAB 문구 「✓ 채점 완료」 + hint 「첫 채점 학생 상세 열기」
             · 클릭 → lastBulkGradedIds 중 첫 성공 학생의 SCR-03 상세 모달 자동 오픈 */}
-      {(showFAB || bgIndividual) && !(isScanModalOpen && !scanMinimized) && (() => {
+      {(showFAB || bgIndividual) && !(isScanModalOpen && !scanMinimized) && !(isCradleModalOpen && !cradleMinimized) && (() => {
         const isIndividual = !!bgIndividual && !showFAB;
         const finished = isIndividual ? bgIndividual.isFinished : isGradingFinished;
         // 일괄 완료 상태에서 클릭 시 진입할 첫 성공 학생 (실패·미변경 케이스 제외)
@@ -2410,9 +2008,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           : (finished ? '✓ 채점 완료' : 'AI 가 채점하고 있어요.');
         // [SCR-05 v4.2] 최소화된 스캔 세션이면 FAB는 「창 복귀」 역할을 한다
         const isMinimizedScan = isScanModalOpen && scanMinimized;
+        // [SCR-07 v1.0] 크래들 세션도 최소화되면 FAB가 「창 복귀」 역할을 한다
+        const isMinimizedCradle = isCradleModalOpen && cradleMinimized;
+        const isMinimizedSession = isMinimizedScan || isMinimizedCradle;
         const hintText = isIndividual
           ? (finished ? '탭하여 상세 확인' : '잠시만 기다려 주세요.')
-          : isMinimizedScan
+          : isMinimizedSession
             ? (finished ? '탭하여 완료 창 열기' : '탭하여 진행 상황 보기')
             : (finished
                 ? (firstGradedStudent ? `탭하여 ${firstGradedStudent.name} 상세 열기` : '탭하여 결과 확인')
@@ -2420,6 +2021,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         const handleFabClick = () => {
           // [SCR-05 v4.2] 최소화된 스캔 채점 세션이 있으면 그 창을 다시 연다 (완료 창에 포커스)
           if (isMinimizedScan) { setScanMinimized(false); return; }
+          if (isMinimizedCradle) { setCradleMinimized(false); return; }
           if (isIndividual) {
             // 개별: 해당 학생 SCR-03 모달 자동 오픈
             const target = students.find(s => s.id === bgIndividual.studentId);
@@ -2436,9 +2038,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             setIsGradingFinished(false);
             setLastBulkGradedIds([]);
           } else {
-            // 일괄(진행 중 or 성공 학생 없음): 일괄 채점 워크플로우 모달(final_bulk) 다시 오픈
-            setIsBulkModalOpen(true);
-            setBulkStep('final_bulk');
+            // [SCR-07 v1.0] 일괄(진행 중 or 성공 학생 없음): 크래들 모달을 다시 연다
+            setCradleMinimized(false);
+            setIsCradleModalOpen(true);
             setShowFAB(false);
           }
         };
@@ -2447,8 +2049,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             className="grading-fab"
             style={{ position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'white', borderRadius: '50px', padding: '1rem 2rem', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', border: `2px solid ${finished ? '#10B981' : '#2A75F3'}` }}
             onClick={handleFabClick}
-            title={isMinimizedScan
-              ? '클릭 시 스캔 일괄 채점 창을 다시 엽니다.'
+            title={isMinimizedSession
+              ? (isMinimizedCradle ? '클릭 시 크래들 일괄 채점 창을 다시 엽니다.' : '클릭 시 스캔 일괄 채점 창을 다시 엽니다.')
               : (finished && !isIndividual && firstGradedStudent ? `클릭 시 「${firstGradedStudent.name}」 채점 상세 화면으로 이동합니다.` : undefined)}
           >
             <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
