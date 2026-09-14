@@ -38,6 +38,7 @@ import { createPortal } from 'react-dom';
 import RequiredProgramModal from './RequiredProgramModal';
 import appLogger from './appLogger';
 import LogDownloadDialog from './LogDownloadDialog';
+import PenDataDownloadDialog, { PEN_DATA_DIR } from './PenDataDownloadDialog';
 
 const STEPS = [
   /* [SCR-07 v2.7] 단계 안내는 타이틀 호버 툴팁으로 — 본문 안내 카드를 없애 크래들이 바로 보이게 한다 */
@@ -402,6 +403,7 @@ const CradleGradingModal = ({
   const teacherId = 'tch20261zim';
   const [toast, setToast] = useState('');
   const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const [penDataDialogOpen, setPenDataDialogOpen] = useState(false);
   const handleDownloadLog = () => { setMenuOpen(false); setLogDialogOpen(true); };
   const doDownloadLog = (date) => { const name = appLogger.downloadLog({ teacherId, date }); setLogDialogOpen(false); setToast(`진단 로그를 내려받았습니다 — ${name}`); };
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
@@ -975,6 +977,10 @@ const CradleGradingModal = ({
                 <button type="button" onClick={handleDownloadLog}
                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', cursor: 'pointer' }}>
                   ⬇ 로그 다운로드
+                </button>
+                <button type="button" onClick={() => { setMenuOpen(false); setPenDataDialogOpen(true); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', cursor: 'pointer' }}>
+                  ⬇ 펜 데이터 다운로드
                 </button>
               </div>
             )}
@@ -1603,6 +1609,8 @@ const CradleGradingModal = ({
       {/* [POP-30] 필수 프로그램 확인 — 크래들 채점은 AiGLE Connect만 요구한다.
           Ncode Print Doctor는 목록에 남기되 흐리게 두어 「지금 할 일」이 하나로 보이게 한다. */}
       <LogDownloadDialog open={logDialogOpen} onClose={() => setLogDialogOpen(false)} onDownload={doDownloadLog} />
+      <PenDataDownloadDialog open={penDataDialogOpen} penCount={connectedPens.length}
+        onClose={(r) => { setPenDataDialogOpen(false); if (r === 'started') setToast(`펜 데이터 ${connectedPens.length}개를 다운로드\\${PEN_DATA_DIR} 폴더에 저장하고 있습니다.`); }} />
       <RequiredProgramModal
         open={programModalOpen}
         onClose={() => setProgramModalOpen(false)}
