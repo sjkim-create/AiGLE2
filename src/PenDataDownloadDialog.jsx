@@ -24,10 +24,7 @@ const PenDataDownloadDialog = ({ open, onClose, penCount = 0 }) => {
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="펜 데이터 다운로드"
         style={{ background: 'white', borderRadius: 14, width: 440, maxWidth: '94vw', padding: '22px 24px', boxShadow: '0 20px 50px rgba(15,23,42,0.28)' }}>
         <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225', textAlign: 'center', marginBottom: 12 }}>펜 데이터 다운로드</div>
-        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', lineHeight: 1.7 }}>
-          크래들에 연결된 펜 <strong>{penCount}자루</strong>의 필기 데이터를 추출해 아래 폴더에 펜마다 한 파일씩 저장합니다.
-        </div>
-        <div style={{ margin: '10px 0', padding: '10px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontFamily: 'monospace', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>
+        <div style={{ margin: '0 0 10px', padding: '10px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontFamily: 'monospace', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>
           다운로드\{PEN_DATA_DIR}<br />
           <span style={{ color: '#64748B' }}>└ PEN-001_9C7BD2….pen · PEN-002_… · … ({penCount}개)</span>
         </div>
