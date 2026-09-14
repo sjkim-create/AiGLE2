@@ -36,9 +36,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import RequiredProgramModal from './RequiredProgramModal';
+import appLogger from './appLogger';
+import LogDownloadDialog from './LogDownloadDialog';
 
 const STEPS = [
-  { key: 'connect', label: '크래들 연결', icon: '🔌' },
+  /* [SCR-07 v2.7] 단계 안내는 타이틀 호버 툴팁으로 — 본문 안내 카드를 없애 크래들이 바로 보이게 한다 */
+  { key: 'connect', label: '크래들 연결', icon: '🔌', hint: '크래들에 펜을 거치해 주세요. 여기서는 펜 연결만 확인하고, 누구의 답안인지는 다음 단계에서 판별합니다.' },
   { key: 'mapping', label: '데이터 매핑', icon: '🔗' },
   { key: 'grading', label: 'AI 일괄 채점', icon: '🤖' },
   { key: 'completed', label: '완료', icon: '✓' },
@@ -251,7 +254,7 @@ const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTi
     firmware: slot === 3 ? '2.0.5' : '2.1.0',
     needsUpdate: slot === 3,
     /* [SCR-07 v2.3] 접촉 불량 에뮬레이션 — 처음 꽂을 때 한 번 「연결 실패」가 나고, 뺐다 다시 꽂으면 연결된다 */
-    flaky: slot === 8,
+    flaky: slot === 8 || slot === 19,
     books,
     scenario,
   };
@@ -375,6 +378,27 @@ const CradleGradingModal = ({
   const [gradingFinished, setGradingFinished] = useState(false);
   const [gradedIds, setGradedIds] = useState([]);
   const [confirmClose, setConfirmClose] = useState(false);
+  /* [SCR-07 v2.5] 진단 로그 — 헤더 ⋯ 메뉴의 [로그 다운로드] + 장애 반복 시 인라인 안내.
+   *   실제 장애 로그(2026-09-07)에서 교사는 브릿지 끊김 뒤 80분간 재시도만 반복했다. 그 순간 「로그를 보내라」는
+   *   신호가 화면 어디에도 없었다. 연결 실패·읽기 실패가 한 세션에서 2회 이상이면 같은 다운로드 버튼을 그 자리에 밀어 넣는다. */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [troubleCount, setTroubleCount] = useState(0);
+  const teacherId = 'tch20261zim';
+  const [toast, setToast] = useState('');
+  const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const handleDownloadLog = () => { setMenuOpen(false); setLogDialogOpen(true); };
+  const doDownloadLog = (date) => { const name = appLogger.downloadLog({ teacherId, date }); setLogDialogOpen(false); setToast(`진단 로그를 내려받았습니다 — ${name}`); };
+  useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
+  const noteTrouble = () => setTroubleCount((n) => n + 1);
+  /* [SCR-07 v2.6] 장애 반복 시 배너는 사실만 말하고, 다운로드 경로는 헤더 ⋯ 옆 **자동 툴팁**이 가리킨다.
+   *   배너에 버튼을 두면 같은 기능이 두 군데 생겨 헷갈린다. 툴팁은 ⋯ 메뉴를 한 번 열면 사라진다. */
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const [hoverStep, setHoverStep] = useState(null);
+  /* [SCR-07 v2.8] 구성 변경 안내는 배너 대신 [↻ 다시 읽기] 위 툴팁 — 구성이 바뀌는 순간 자동으로 뜨고, 호버해도 뜬다.
+   *   자동 툴팁은 ✕로 닫거나 다시 읽기를 누르면 사라지며, 다음 구성 변경 때 다시 뜬다. */
+  const [rereadHover, setRereadHover] = useState(false);
+  const [rereadHintClosed, setRereadHintClosed] = useState(false);
+  const showLogHint = troubleCount >= 2 && !hintDismissed && !menuOpen;
 
   // 과제 문항 — 비어 있으면 1문항으로 가정
   const questionList = useMemo(
@@ -428,11 +452,19 @@ const CradleGradingModal = ({
      * 「빼서 다시 꽂으면 정상」 흐름을 보여 준다. 실패한 펜은 연결 완료·판정 대상에 들어가지 않는다. */
     const willFail = pen.flaky && !failedOnceRef.current.has(pen.id);
     if (willFail) failedOnceRef.current.add(pen.id);
+    appLogger.info('usb-pen-monitor', '펜 거치 감지', { mac: pen.mac, penId: pen.id, cradle: cradleOf(slot), slot: slotInCradle(slot) });
     setTimeout(() => {
       setDocked((prev) => (prev[slot] ? { ...prev, [slot]: { ...prev[slot], link: willFail ? 'failed' : 'connected' } } : prev));
+      if (willFail) {
+        appLogger.error('usb-pen-monitor', '펜 연결 실패', { mac: pen.mac, penId: pen.id, error: { message: 'USB handshake timeout', code: 'E-PEN-LINK-TIMEOUT' } });
+        noteTrouble();
+      } else {
+        appLogger.info('usb-pen-monitor', '펜 연결 완료', { mac: pen.mac, penId: pen.id, firmware: pen.firmware, battery: pen.battery });
+      }
     }, 700);
   };
   const undockPen = (slot) => {
+    appLogger.info('usb-pen-monitor', '펜 제거 감지', { cradle: cradleOf(slot), slot: slotInCradle(slot) });
     setDocked((prev) => {
       const next = { ...prev };
       delete next[slot];
@@ -609,6 +641,7 @@ const CradleGradingModal = ({
   );
   const dockChanged = unreadPens.length > 0
     || judgedPenIds.some((id) => !connectedPens.find((p) => p.id === id));
+  useEffect(() => { if (!dockChanged) setRereadHintClosed(false); }, [dockChanged]);
   /* [SCR-07 v2.4] 카운트는 **배지 색**과 같은 기준으로 센다 —
    *   확인 필요 = 빨강(동기화 불가 · 중복), 대상 아님 = 회색(데이터 없음: 빈 펜 · 답안 미작성).
    *   舊 「1단계 탈락 = 대상 아님」 기준은 그룹 불일치(빨간 배지)를 대상 아님에 넣어 숫자가 배지와 어긋났다. */
@@ -642,6 +675,8 @@ const CradleGradingModal = ({
    *   그룹 명단(#4)은 2단계에 들어갈 때 도착한 것으로 본다. */
   const runJudge = (fast = false) => {
     const t = fast ? 0.7 : 1;
+    appLogger.info('usePenDataBatchUploadModalController', fast ? '펜 재검색 시작' : '펜 데이터 읽기 시작', { penCount: connectedPens.length, bookCode: myBookCode });
+    connectedPens.forEach((p) => appLogger.debug('offline-strokes-api', `[GetOfflineFileNames] mac=${p.mac}`, { count: p.books.length * 3, fileNames: p.books.flatMap((b) => [`${b.code}c`, `${b.code}t`, `${b.code}o`]) }));
     setReading(true);
     setRosterReady(false);
     setJudgePhase('books');
@@ -650,15 +685,18 @@ const CradleGradingModal = ({
     setTimeout(() => setJudgePhase('duplicate'), 1900 * t);
     setTimeout(() => {
       // 이번 판정이 실제로 읽은 펜을 확정한다 (그 사이 꽂힌 펜은 다음 판정 몫)
-      setJudgedPenIds(Object.values(dockedRef.current).map((p) => p.id));
+      // 연결 실패 펜은 판정 대상이 아니므로 「읽은 펜」에도 넣지 않는다 — 넣으면 곧바로 「구성이 바뀌었다」로 오판한다
+      setJudgedPenIds(Object.values(dockedRef.current).filter((p) => p.link === 'connected').map((p) => p.id));
       setJudgePhase(null);
       setReading(false);
+      appLogger.info('usePenDataBatchUploadModalController', '펜 데이터 읽기 완료', { penCount: Object.keys(dockedRef.current).length });
     }, 2400 * t);
   };
   const goMapping = () => { setStep('mapping'); runJudge(); };
 
   const startGrading = () => {
     const ids = [...new Set(gradableStudentIds)];
+    appLogger.info('useBatchUploadPipeline', '일괄 업로드 시작', { collectedCount: ids.length, excludedCount: attentionPens.length });
     const penIds = Object.entries(verdicts).filter(([, v]) => v.type === 'ok').map(([penId]) => penId);
     setGradedIds(ids);
     // [POP-28 #11] 펜 연결 → AI 채점중
@@ -725,6 +763,7 @@ const CradleGradingModal = ({
 
   /* [SCR-07 v2.0] 직접 매칭 / 해제 — 판정은 manualMatch 의존으로 곧바로 다시 계산된다([다시 읽기] 불필요) */
   const matchPen = (penId, studentId, bookCode) => {
+    appLogger.info('usePenDataBatchUploadModalController', '직접 매칭', { penId, studentId, bookCode });
     setManualMatch((prev) => ({ ...prev, [penId]: { studentId, bookCode } }));
     setMatchPick((prev) => { const n = { ...prev }; delete n[penId]; return n; });
   };
@@ -865,7 +904,7 @@ const CradleGradingModal = ({
    * ──────────────────────────────────────────────────────────── */
   return createPortal(
     <div onClick={handleCloseAttempt} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#F8FAFC', borderRadius: 16, width: '92vw', height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+      <div onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuOpen(false); }} style={{ position: 'relative', background: '#F8FAFC', borderRadius: 16, width: '92vw', height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
 
         {/* 헤더 */}
         <div style={{ padding: '18px 24px 12px', background: 'white', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -876,8 +915,35 @@ const CradleGradingModal = ({
 
             </div>
           </div>
-          <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
+            {/* [SCR-07 v2.5] ⋯ 메뉴 — [로그 다운로드]. 환경설정의 같은 버튼과 같은 파일을 만든다 (2단계 한가운데서 전화한 교사가 창을 닫지 않고 뽑는 경로) */}
+            <button type="button" onClick={() => { setMenuOpen((x) => !x); setHintDismissed(true); }} aria-label="더 보기" title="더 보기"
+              style={{ background: 'none', border: showLogHint ? '2px solid #2A75F3' : 'none', borderRadius: 8, fontSize: '1.3rem', cursor: 'pointer', color: showLogHint ? '#2A75F3' : '#64748B', padding: '0 6px', lineHeight: 1 }}>⋯</button>
+            {showLogHint && (
+              <div role="tooltip" onClick={() => { setMenuOpen(true); setHintDismissed(true); }}
+                style={{ position: 'absolute', top: 34, right: 36, background: '#1E293B', color: 'white', padding: '8px 12px', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(15,23,42,0.3)', cursor: 'pointer', zIndex: 5 }}>
+                <span style={{ position: 'absolute', top: -6, right: 14, width: 12, height: 12, background: '#1E293B', transform: 'rotate(45deg)' }} />
+                연결 실패 {troubleCount}회 — 반복되면 여기서 진단 로그를 내려받아 고객센터에 보내 주세요 ↗
+                <button type="button" aria-label="닫기" onClick={(e) => { e.stopPropagation(); setHintDismissed(true); }}
+                  style={{ marginLeft: 10, background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', padding: 0 }}>✕</button>
+              </div>
+            )}
+            {menuOpen && (
+              <div style={{ position: 'absolute', top: 30, right: 36, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.15)', padding: 6, minWidth: 200, zIndex: 5 }}>
+                <button type="button" onClick={handleDownloadLog}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', cursor: 'pointer' }}>
+                  ⬇ 로그 다운로드
+                </button>
+              </div>
+            )}
+            <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
+          </div>
         </div>
+        {toast && (
+          <div style={{ position: 'absolute', left: '50%', bottom: 84, transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 16px', borderRadius: 10, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,0.3)', zIndex: 6, whiteSpace: 'nowrap' }}>
+            ✓ {toast}
+          </div>
+        )}
 
         {/* 스텝 프로그레스 */}
         <div style={{ display: 'flex', padding: '12px 24px', gap: 4, background: 'white', borderBottom: '1px solid #E2E8F0' }}>
@@ -885,9 +951,20 @@ const CradleGradingModal = ({
             const isActive = i === stepIdx;
             const isDone = i < stepIdx;
             return (
-              <div key={s.key} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: isActive ? '#EFF6FF' : isDone ? '#F0FDF4' : 'transparent', color: isActive ? '#1D4ED8' : isDone ? '#047857' : '#94A3B8', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
+              <div key={s.key}
+                onMouseEnter={() => s.hint && setHoverStep(s.key)} onMouseLeave={() => setHoverStep(null)}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, position: 'relative', cursor: s.hint ? 'help' : 'default', background: isActive ? '#EFF6FF' : isDone ? '#F0FDF4' : 'transparent', color: isActive ? '#1D4ED8' : isDone ? '#047857' : '#94A3B8', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
                 <span>{isDone ? '✓' : s.icon}</span>
                 <span>{i + 1}. {s.label}</span>
+                {/* 안내가 있다는 표시 — 호버하면 아래 툴팁이 뜬다 */}
+                {s.hint && (
+                  <span aria-label="안내 보기" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1.5px solid currentColor', fontSize: 10, fontWeight: 800, lineHeight: 1, opacity: 0.8 }}>i</span>
+                )}
+                {s.hint && hoverStep === s.key && (
+                  <div role="tooltip" style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: '#1E293B', color: 'white', padding: '8px 12px', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, lineHeight: 1.6, whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(15,23,42,0.3)', zIndex: 6 }}>
+                    {s.hint}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -926,12 +1003,10 @@ const CradleGradingModal = ({
 
               {connectorState === 'ready' && (
                 <>
-                  <div style={{ ...sectionCard, background: '#EFF6FF', borderColor: '#BFDBFE', padding: '12px 18px', fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', lineHeight: 1.7 }}>
-                    <strong>🔌 크래들에 펜을 거치해 주세요.</strong> 여기서는 <strong>펜 연결만</strong> 확인하고, 누구의 답안인지는 다음 단계에서 판별합니다.
-                    {dockedPens.some((p) => p.link === 'failed') && (
-                      <div style={{ marginTop: 4, color: '#B91C1C', fontWeight: 700 }}>⚠ 연결 실패한 펜은 뺐다가 다시 꽂아 주세요.</div>
-                    )}
-                  </div>
+                  {/* [SCR-07 v2.7] 안내 카드 없음 — 단계 안내는 타이틀 호버, 장애 반복 안내는 ⋯ 툴팁이 맡는다. 실패 안내만 텍스트로 */}
+                  {dockedPens.some((p) => p.link === 'failed') && (
+                    <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px' }}>⚠ 연결 실패한 펜은 뺐다가 다시 꽂아 주세요.</div>
+                  )}
 
                   {renderCradle()}
 
@@ -1079,26 +1154,34 @@ const CradleGradingModal = ({
                     {/* [SCR-07 v1.5] 30자루 중 빈 펜·다른 그룹 펜(1단계)은 교사가 손댈 것이 없으므로 「확인 필요」에서 갈라 센다 */}
                     <span style={{ color: '#B91C1C' }} title="동기화 불가 · 중복 데이터 — 답안을 보고 학생을 매칭하거나 재작성이 필요한 펜">확인 필요 {needsCheckCount}</span>
                     <span style={{ color: '#94A3B8' }} title="데이터 없음 — 필기가 없거나 답안을 쓰지 않은 펜. 채점에서 자연 제외됩니다">대상 아님 {notTargetCount}</span>
-                    <button onClick={reread}
-                      style={{ marginLeft: 'auto', flexShrink: 0, padding: '5px 12px', borderRadius: 8, fontFamily: 'inherit',
-                        fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
-                        border: dockChanged ? 'none' : '1px solid #E2E8F0',
-                        background: dockChanged ? '#F97316' : 'white', color: dockChanged ? 'white' : '#475569' }}
-                      title="펜을 다시 거치한 뒤 누르면 판정을 처음부터 다시 돌립니다. 직접 매칭 기록은 유지됩니다.">
-                      ↻ 다시 읽기
-                    </button>
+                    <span style={{ marginLeft: 'auto', position: 'relative', flexShrink: 0 }}
+                      onMouseEnter={() => setRereadHover(true)} onMouseLeave={() => setRereadHover(false)}>
+                      <button onClick={() => { setRereadHintClosed(true); reread(); }}
+                        style={{ padding: '5px 12px', borderRadius: 8, fontFamily: 'inherit',
+                          fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                          border: dockChanged ? 'none' : '1px solid #E2E8F0',
+                          background: dockChanged ? '#F97316' : 'white', color: dockChanged ? 'white' : '#475569' }}>
+                        ↻ 다시 읽기
+                      </button>
+                      {/* 자동(구성 변경 · 닫기 전) 또는 호버 시 노출 */}
+                      {((dockChanged && !rereadHintClosed) || rereadHover) && (
+                        <div role="tooltip" style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: '#1E293B', color: 'white', padding: '8px 12px', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, lineHeight: 1.6, whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(15,23,42,0.3)', zIndex: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ position: 'absolute', top: -6, right: 18, width: 12, height: 12, background: '#1E293B', transform: 'rotate(45deg)' }} />
+                          <span>
+                            {dockChanged
+                              ? <>🔄 크래들 구성이 바뀌었습니다{unreadPens.length > 0 && <> — 아직 읽지 않은 펜 <strong>{unreadPens.length}자루</strong></>}. 펜을 다시 거치했다면 [↻ 다시 읽기]를 눌러 주세요.</>
+                              : <>판정을 처음부터 다시 돌립니다. 직접 매칭 기록은 유지됩니다.</>}
+                          </span>
+                          {dockChanged && !rereadHintClosed && (
+                            <button type="button" aria-label="닫기" onClick={(e) => { e.stopPropagation(); setRereadHintClosed(true); }}
+                              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', padding: 0 }}>✕</button>
+                          )}
+                        </div>
+                      )}
+                    </span>
                   </div>
                 </div>
 
-                {/* [SCR-07 v1.3] 거치 구성이 바뀌면 지금 판정은 낡은 것이다.
-                    2단계 판정은 다운로드를 동반해 비싸므로 자동으로 다시 돌리지 않고,
-                    여러 자루를 다 고친 뒤 한 번만 읽도록 교사에게 넘긴다. */}
-                {dockChanged && (
-                  <div style={{ padding: '9px 14px', borderRadius: 8, background: '#FFF7ED', border: '1px solid #FDBA74', color: '#9A3412', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.6 }}>
-                    🔄 크래들 구성이 바뀌었습니다{unreadPens.length > 0 && <> — 아직 읽지 않은 펜 <strong>{unreadPens.length}자루</strong></>}.
-                    펜을 다시 거치했다면 <strong>[↻ 다시 읽기]</strong>를 눌러 주세요.
-                  </div>
-                )}
 
                   {/* 펜 목록. POP-28 판정표를 그대로 옮긴 한 장이다.
                       [SCR-07 v1.6] 좌·우는 처음부터 **50:50 고정**. 펜을 골라도 폭이 바뀌지 않아 시선이 흔들리지 않는다. */}
@@ -1438,6 +1521,7 @@ const CradleGradingModal = ({
 
       {/* [POP-30] 필수 프로그램 확인 — 크래들 채점은 AiGLE Connect만 요구한다.
           Ncode Print Doctor는 목록에 남기되 흐리게 두어 「지금 할 일」이 하나로 보이게 한다. */}
+      <LogDownloadDialog open={logDialogOpen} onClose={() => setLogDialogOpen(false)} onDownload={doDownloadLog} />
       <RequiredProgramModal
         open={programModalOpen}
         onClose={() => setProgramModalOpen(false)}
