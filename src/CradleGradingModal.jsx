@@ -389,6 +389,13 @@ const CradleGradingModal = ({
     const iv = setInterval(() => setGradingElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
     return () => clearInterval(iv);
   }, [step, gradingFinished]);
+  /* [SCR-07 v3.0] 안내는 주기적으로 — 6초 · 36초 · 66초에 각 10초씩(최대 3회). ✕로 닫으면 세션 내 재노출 없음, 진행률 90% 이상이면 띄우지 않는다.
+   *   6초 = "왜 안 끝나지"를 느끼는 지점, 10초 = 두 줄 읽고 판단할 시간, 30초 간격·3회 = 잔소리가 되지 않는 선 */
+  const HINT_SCHEDULE = [6, 36, 66];
+  const HINT_VISIBLE_SEC = 10;
+  const [hintClosed, setHintClosed] = useState(false);
+  const hintSlot = HINT_SCHEDULE.findIndex((t) => gradingElapsed >= t && gradingElapsed < t + HINT_VISIBLE_SEC);
+  const showGradingHint = step === 'grading' && !gradingFinished && !hintClosed && progress < 90 && hintSlot >= 0;
   /* [SCR-07 v2.9] AI 채점 실패 펜 — { [penId]: true }. 에뮬레이터는 첫 시도에서 마지막 펜 1자루를 실패시키고, [다시 시도]에서 성공시킨다 */
   const [failedPenIds, setFailedPenIds] = useState([]);
   const [retrying, setRetrying] = useState(false);
@@ -721,6 +728,7 @@ const CradleGradingModal = ({
     setUploadedPenIds([]);
     setFailedPenIds([]);
     setGradingElapsed(0);
+    setHintClosed(false);
     onGradingStarted?.(ids);
     setStep('grading');
     setProgress(0);
@@ -747,7 +755,7 @@ const CradleGradingModal = ({
         onGradingFinished?.();
         setTimeout(() => setStep('completed'), 500);
       }
-    }, 200);
+    }, 450); // 에뮬레이터 채점 소요 ≈ 45초 — 주기 안내(6초·36초)가 두 번 보이도록
   };
 
   /* [SCR-07 v2.9] 실패한 펜만 다시 채점 — 정상 펜의 결과는 그대로 둔다 */
@@ -1480,8 +1488,8 @@ const CradleGradingModal = ({
 
               {/* [SCR-07 v2.9] 시간차 안내 — 6초가 지나도 채점 중이면 「다른 일을 하셔도 됩니다」를 크게 띄운다.
                   교사가 이 화면을 계속 바라보며 기다리는 일이 많았다. 푸터 한 줄은 눈에 들어오지 않는다. */}
-              {!gradingFinished && gradingElapsed >= 6 && (
-                <div style={{ maxWidth: 560, margin: '18px auto 0', padding: '12px 16px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+              {showGradingHint && (
+                <div role="status" style={{ maxWidth: 600, margin: '18px auto 0', padding: '12px 16px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
                   <span style={{ fontSize: '1.4rem' }}>☕</span>
                   <span style={{ flex: 1 }}>
                     <strong>기다리지 않으셔도 됩니다.</strong> 창을 닫아도 채점은 계속 진행되고, 끝나면 하단 알림으로 알려 드립니다.
@@ -1490,6 +1498,8 @@ const CradleGradingModal = ({
                     style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                     창 닫고 다른 작업 하기
                   </button>
+                  <button type="button" aria-label="닫기" onClick={() => setHintClosed(true)} title="이번 채점에서는 다시 보지 않기"
+                    style={{ flexShrink: 0, background: 'none', border: 'none', color: '#60A5FA', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-base)', padding: '0 2px', lineHeight: 1 }}>✕</button>
                 </div>
               )}
 
