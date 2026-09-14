@@ -110,13 +110,16 @@ const VERDICT_SPEC = {
   grading:        { badge: 'normal',     progress: 'AI 채점중' },
   graded:         { badge: 'normal',     progress: 'AI 채점 완료' },
   uploaded:       { badge: 'deleted',    progress: 'AI 채점 완료' },
+  /* [SCR-07 v2.9] AI 채점 실패 — 서버 응답 지연(사고력 문항의 긴 답안 → 토큰 용량 초과). 데이터는 멀쩡하므로 배지는 「정상」에 빨강 톤(중복과 같은 표현).
+   *   판정 규칙 정본(POP-28)에 없는 조건 — 문서 개정 필요 */
+  grade_failed:   { badge: 'normal',     progress: 'AI 채점 실패 — 토큰 용량 초과' },
 };
 
 /** 판정 코드로 배지 토큰을 만든다. 중복만 「정상」 배지에 빨강 톤을 입힌다 */
 const badgeOf = (code) => {
   const spec = VERDICT_SPEC[code] || VERDICT_SPEC.empty;
   const base = BADGE[spec.badge];
-  return code === 'duplicate' ? { ...base, ...DUPLICATE_TONE } : base;
+  return (code === 'duplicate' || code === 'grade_failed') ? { ...base, ...DUPLICATE_TONE } : base;
 };
 
 /* [SCR-07 v1.1] 판정 3단계 — POP-28 §1.
@@ -377,6 +380,19 @@ const CradleGradingModal = ({
   const [progress, setProgress] = useState(0);
   const [gradingFinished, setGradingFinished] = useState(false);
   const [gradedIds, setGradedIds] = useState([]);
+  /* [SCR-07 v2.9] 채점 중 「다른 일 하셔도 됩니다」 안내 — 시작 후 일정 시간이 지나면 시간차로 띄운다.
+   *   푸터 한 줄만으로는 교사가 로딩 화면을 계속 바라본다(현장 관찰). */
+  const [gradingElapsed, setGradingElapsed] = useState(0);
+  useEffect(() => {
+    if (step !== 'grading' || gradingFinished) return undefined;
+    const t0 = Date.now();
+    const iv = setInterval(() => setGradingElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [step, gradingFinished]);
+  /* [SCR-07 v2.9] AI 채점 실패 펜 — { [penId]: true }. 에뮬레이터는 첫 시도에서 마지막 펜 1자루를 실패시키고, [다시 시도]에서 성공시킨다 */
+  const [failedPenIds, setFailedPenIds] = useState([]);
+  const [retrying, setRetrying] = useState(false);
+  const failedOnceGradeRef = React.useRef(false);
   const [confirmClose, setConfirmClose] = useState(false);
   /* [SCR-07 v2.5] 진단 로그 — 헤더 ⋯ 메뉴의 [로그 다운로드] + 장애 반복 시 인라인 안내.
    *   실제 장애 로그(2026-09-07)에서 교사는 브릿지 끊김 뒤 80분간 재시도만 반복했다. 그 순간 「로그를 보내라」는
@@ -589,11 +605,12 @@ const CradleGradingModal = ({
      * 채점 진행 칸은 「AI 채점 완료」 그대로다. 채점 중에는 진행 칸이 「AI 채점중」이 된다. */
     Object.entries(base).forEach(([penId, v]) => {
       if (v.type !== 'ok') return;
-      if (uploadedPenIds.includes(penId)) base[penId] = { ...v, type: 'uploaded', progress: VERDICT_SPEC.uploaded.progress };
+      if (failedPenIds.includes(penId)) base[penId] = { ...v, type: 'grade_failed', progress: VERDICT_SPEC.grade_failed.progress };
+      else if (uploadedPenIds.includes(penId)) base[penId] = { ...v, type: 'uploaded', progress: VERDICT_SPEC.uploaded.progress };
       else if (gradingPenIds.includes(penId)) base[penId] = { ...v, type: 'grading', progress: VERDICT_SPEC.grading.progress };
     });
     return base;
-  }, [connectedPens, judgeOne, judgedPenIds, gradingPenIds, uploadedPenIds]);
+  }, [connectedPens, judgeOne, judgedPenIds, gradingPenIds, uploadedPenIds, failedPenIds]);
 
   const gradableStudentIds = useMemo(
     () => Object.values(verdicts).filter((v) => ['ok', 'grading', 'uploaded'].includes(v.type)).map((v) => v.studentId),
@@ -702,26 +719,51 @@ const CradleGradingModal = ({
     // [POP-28 #11] 펜 연결 → AI 채점중
     setGradingPenIds(penIds);
     setUploadedPenIds([]);
+    setFailedPenIds([]);
+    setGradingElapsed(0);
     onGradingStarted?.(ids);
     setStep('grading');
     setProgress(0);
+    /* 에뮬레이터 — 첫 시도에서는 마지막 펜 1자루가 「토큰 용량 초과」로 실패한다(서버 응답 지연 재현). 재시도에서는 성공 */
+    const failPenId = (!failedOnceGradeRef.current && penIds.length >= 2) ? penIds[penIds.length - 1] : null;
     let v = 0;
     const iv = setInterval(() => {
-      v += 4;
+      v += 1;
       setProgress(Math.min(100, v));
       /* [POP-28 #12] 업로드가 끝난 펜부터 순서대로 파일이 지워진다 —
        * 「데이터 삭제」는 실패가 아니라 정상 완료의 흔적이다. 진행률에 맞춰 앞에서부터 옮긴다. */
       const doneCount = Math.floor((v / 100) * penIds.length);
-      setUploadedPenIds(penIds.slice(0, doneCount));
+      setUploadedPenIds(penIds.slice(0, doneCount).filter((id) => id !== failPenId));
       if (v >= 100) {
         clearInterval(iv);
-        setUploadedPenIds(penIds);
+        setUploadedPenIds(penIds.filter((id) => id !== failPenId));
         setGradingPenIds([]);
+        if (failPenId) {
+          failedOnceGradeRef.current = true;
+          setFailedPenIds([failPenId]);
+          appLogger.error('useBatchUploadPipeline', 'AI 채점 실패', { penId: failPenId, error: { message: 'context length exceeded', code: 'E-AI-TOKEN-LIMIT' } });
+        }
         setGradingFinished(true);
         onGradingFinished?.();
         setTimeout(() => setStep('completed'), 500);
       }
-    }, 160);
+    }, 200);
+  };
+
+  /* [SCR-07 v2.9] 실패한 펜만 다시 채점 — 정상 펜의 결과는 그대로 둔다 */
+  const retryFailed = () => {
+    const targets = [...failedPenIds];
+    if (!targets.length) return;
+    setRetrying(true);
+    setFailedPenIds([]);
+    setGradingPenIds(targets);
+    appLogger.info('useBatchUploadPipeline', 'AI 채점 재시도', { penIds: targets });
+    setTimeout(() => {
+      setGradingPenIds([]);
+      setUploadedPenIds((prev) => [...prev, ...targets]);
+      setRetrying(false);
+      setToast('실패했던 답안의 채점이 완료되었습니다.');
+    }, 2500);
   };
 
   /* [SCR-07 v1.0] 닫기 정책 — SCR-05와 동일
@@ -1436,6 +1478,21 @@ const CradleGradingModal = ({
               </div>
               <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>{progress}%</div>
 
+              {/* [SCR-07 v2.9] 시간차 안내 — 6초가 지나도 채점 중이면 「다른 일을 하셔도 됩니다」를 크게 띄운다.
+                  교사가 이 화면을 계속 바라보며 기다리는 일이 많았다. 푸터 한 줄은 눈에 들어오지 않는다. */}
+              {!gradingFinished && gradingElapsed >= 6 && (
+                <div style={{ maxWidth: 560, margin: '18px auto 0', padding: '12px 16px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                  <span style={{ fontSize: '1.4rem' }}>☕</span>
+                  <span style={{ flex: 1 }}>
+                    <strong>기다리지 않으셔도 됩니다.</strong> 창을 닫아도 채점은 계속 진행되고, 끝나면 하단 알림으로 알려 드립니다.
+                  </span>
+                  <button type="button" onClick={() => onMinimize?.({ finished: false })}
+                    style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                    창 닫고 다른 작업 하기
+                  </button>
+                </div>
+              )}
+
               {/* [POP-28 #11·#12] 펜별 상태 전이 — 펜 연결 → AI 채점중 → AI 채점 완료.
                   업로드가 끝난 펜은 파일이 지워져 배지가 「데이터 삭제」로 바뀐다. 실패가 아니라 정상 완료의 흔적이다. */}
               <div style={{ maxWidth: 720, margin: '22px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
@@ -1446,7 +1503,7 @@ const CradleGradingModal = ({
                   <span style={{ flex: 1 }}>채점 진행</span>
                 </div>
                 <div style={{ maxHeight: 210, overflowY: 'auto' }}>
-                  {connectedPens.filter((p) => ['grading', 'uploaded', 'ok'].includes(verdicts[p.id]?.type)).map((p) => {
+                  {connectedPens.filter((p) => ['grading', 'uploaded', 'ok', 'grade_failed'].includes(verdicts[p.id]?.type)).map((p) => {
                     const v = verdicts[p.id];
                     const vt = badgeOf(v.type);
                     const st = selectedStudents.find((x) => x.id === v.studentId);
@@ -1457,7 +1514,7 @@ const CradleGradingModal = ({
                         <span style={{ width: 110 }}>
                           <span style={{ padding: '1px 8px', borderRadius: 999, background: vt.bg, border: `1px solid ${vt.border}`, color: vt.color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{vt.label}</span>
                         </span>
-                        <span style={{ flex: 1, color: v.type === 'uploaded' ? '#047857' : '#1D4ED8', fontWeight: 700 }}>{v.progress}</span>
+                        <span style={{ flex: 1, color: v.type === 'uploaded' ? '#047857' : v.type === 'grade_failed' ? '#B91C1C' : '#1D4ED8', fontWeight: 700 }}>{v.progress}</span>
                       </div>
                     );
                   })}
@@ -1473,8 +1530,28 @@ const CradleGradingModal = ({
               {/* [SCR-07 v2.4] 완료 화면은 세 줄만 — 완료 · 요약 · 다음 행동. 미연결 학생·잔류 펜 고지는 뺐다 */}
               <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#065F46', marginBottom: 8 }}>완료</div>
               <div style={{ fontSize: 'var(--neo-font-size-base)', color: '#047857', marginBottom: 14 }}>
-                채점 문항 <strong>{gradedIds.length * questionList.length}건</strong> · 학생 <strong>{gradedIds.length}명</strong>
+                채점 문항 <strong>{(gradedIds.length - failedPenIds.length) * questionList.length}건</strong> · 학생 <strong>{gradedIds.length - failedPenIds.length}명</strong>
+                {failedPenIds.length > 0 && <span style={{ color: '#B91C1C' }}> · 실패 <strong>{failedPenIds.length}명</strong></span>}
               </div>
+              {/* [SCR-07 v2.9] AI 채점 실패 — 원인(토큰 용량 초과)과 할 일(잠시 후 재시도 / 서비스팀 문의)을 함께 말한다 */}
+              {(failedPenIds.length > 0 || retrying) && (
+                <div style={{ maxWidth: 620, margin: '0 auto 14px', padding: '12px 16px', borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, textAlign: 'left' }}>
+                  {retrying ? (
+                    <div>⏳ 실패한 답안을 다시 채점하고 있습니다…</div>
+                  ) : (
+                    <>
+                      <div><strong>⚠ {failedPenIds.length}명은 AI 채점에 실패했습니다.</strong> 답안 분량이 커서 <strong>토큰 용량을 초과</strong>했습니다(서버 응답 지연). 나머지 학생의 채점 결과는 정상 반영됐습니다.</div>
+                      <div style={{ marginTop: 4, color: '#B45309' }}>잠시 후 [다시 시도]를 누르거나, 계속 실패하면 서비스팀에 문의해 주세요.</div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button type="button" onClick={retryFailed}
+                          style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>↻ 다시 시도</button>
+                        <button type="button" onClick={() => setToast('서비스팀 문의: 1544-0000 · support@neolab.net')}
+                          style={{ ...ghostBtn, padding: '6px 14px' }}>서비스팀 문의</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46', background: 'white', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 14px', display: 'inline-block' }}>
                 [확인]을 누르면 「채점 확인」 단계로 이동합니다.
               </div>
@@ -1512,7 +1589,11 @@ const CradleGradingModal = ({
               </>
             )}
             {step === 'completed' && (
-              <button onClick={() => onCompleted?.(gradedIds)}
+              <button onClick={() => {
+                  /* [SCR-07 v2.9] 실패한 펜의 학생은 채점 확인으로 넘기지 않는다 — 미채점에 남아 다음 시도에서 이어간다 */
+                  const failedStudentIds = failedPenIds.map((id) => verdicts[id]?.studentId).filter(Boolean);
+                  onCompleted?.(gradedIds.filter((id) => !failedStudentIds.includes(id)));
+                }}
                 style={{ padding: '9px 22px', borderRadius: 8, background: '#10B981', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-base)', cursor: 'pointer', fontFamily: 'inherit' }}>✓ 확인</button>
             )}
           </div>
