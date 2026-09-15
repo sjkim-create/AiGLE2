@@ -46,9 +46,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const screenTitle = isV2 ? '채점 관리 2' : '채점 관리';
   // ── 채점 관리 상태 ──
   const [selectedTask, setSelectedTask] = useState(1);
-  /* [TSK v3.8] 테스트 → 실제 전환된 과제 id (일방향) */
-  const [convertedTaskIds, setConvertedTaskIds] = useState([]);
-  const [convertConfirmOpen, setConvertConfirmOpen] = useState(false);
   // [v3.18] '전체' 탭 폐기 — 기본값 '미채점'
   const [activeTab, setActiveTab] = useState('미채점');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,8 +127,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // ── 목 데이터 ──
   const tasks = [
     { id: 1, type: '국어', title: '과제테스트', date: '2024.02.23', submissions: '0/10', description: '테스트' },
-    /* [TSK v3.8] 테스트 과제 — 배포·채점은 되지만 결과 발송이 막힌다. 실제 과제로 전환하면 풀린다 */
-    { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트', isTest: !convertedTaskIds.includes(2) }
+    { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트' }
   ];
   // sheets = TSK-02 「답안지 출력 장수 설정」(문항별 기준 장수).
   // 스캔 채점(SCR-05)의 결손 판정 기준으로 사용된다 — 실제 연결 장수가 이 값보다 적으면 누락으로 안내
@@ -735,7 +731,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   >
                     <span className="tag">[{task.type}]</span>
                     <span className="title">{task.title}</span>
-                    {task.isTest && <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: '#FFF7ED', color: '#C2410C', border: '1px solid #FDBA74', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, verticalAlign: 'middle' }}>테스트</span>}
                     <div className="meta">
                       <span>{task.date}</span>
                       <span style={{ color: 'var(--primary)', fontWeight: 800 }}>제출 {task.submissions}</span>
@@ -753,14 +748,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   <div className="stats-summary" style={{ fontSize: 'var(--neo-font-size-sm)', color: '#8A94A1' }}>
                     배포일: {currentTask.date} ∙ 1개 그룹 ∙ {roster.length}명
                     <button className="btn-card-detail" style={{ width: 'auto', height: 'auto', padding: '2px 8px', marginLeft: '10px', fontSize: 'var(--neo-font-size-xs)', borderRadius: '4px' }}>과제 상세보기 &gt;</button>
-                    {/* [TSK v3.8] 테스트 과제 — 결과 발송 불가 안내 + 실제 과제로 전환 */}
-                    {currentTask.isTest && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 10, padding: '3px 10px', borderRadius: 999, background: '#FFF7ED', border: '1px solid #FDBA74', fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', fontWeight: 700, verticalAlign: 'middle' }}>
-                        테스트 과제 · 학생에게 결과를 보내지 않습니다
-                        <button type="button" onClick={() => setConvertConfirmOpen(true)}
-                          style={{ padding: '2px 8px', borderRadius: 999, border: 'none', background: '#2A75F3', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>실제 과제로 전환</button>
-                      </span>
-                    )}
                   </div>
                 </div>
                 <div className="info-right">
@@ -916,10 +903,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   {bulkPreSendIds.length > 0 && (
                     <button
                       className="btn-bulk-grading"
-                      style={{ background: '#2A75F3', ...((isAnyBgActive || currentTask.isTest) ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+                      style={{ background: '#2A75F3', ...(isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
                       onClick={handleBulkResultSend}
-                      disabled={isAnyBgActive || currentTask.isTest}
-                      title={currentTask.isTest ? '테스트 과제는 학생에게 결과를 보내지 않습니다. 실제 과제로 전환하면 발송할 수 있습니다.' : isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
+                      disabled={isAnyBgActive}
+                      title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
                     >
                       📤 결과발송 ({bulkPreSendIds.length}명)
                     </button>
@@ -1820,23 +1807,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         </div>
       )}
 
-      {/* [TSK v3.8] 테스트 → 실제 과제 전환 확인 (일방향) */}
-      {convertConfirmOpen && (
-        <div onClick={() => setConvertConfirmOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} role="dialog" style={{ background: 'white', borderRadius: 14, width: 460, maxWidth: '94vw', padding: '22px 24px', boxShadow: '0 20px 50px rgba(15,23,42,0.28)' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225' }}>실제 과제로 전환할까요?</h3>
-            <p style={{ margin: '0 0 6px', fontSize: 'var(--neo-font-size-sm)', color: '#4E5968', lineHeight: 1.7 }}>
-              <strong>{currentTask.title}</strong><br />
-              지금까지의 답안지·번호표·제출물·채점 결과는 그대로 유지됩니다. 전환하면 학생에게 노출되고 결과 발송이 가능해지며 통계에 포함됩니다.
-            </p>
-            <p style={{ margin: '0 0 16px', fontSize: 'var(--neo-font-size-sm)', color: '#B45309', fontWeight: 700 }}>다시 테스트 과제로 되돌릴 수 없습니다.</p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn-card-detail" style={{ width: 'auto', height: 'auto', padding: '8px 14px' }} onClick={() => setConvertConfirmOpen(false)}>취소</button>
-              <button className="btn-primary" style={{ padding: '8px 16px' }} onClick={() => { setConvertedTaskIds((p) => [...p, currentTask.id]); setConvertConfirmOpen(false); }}>전환</button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* [SCR-07] 크래들 일괄 채점 모달 — 펜 연결 → 데이터 매핑 → AI 채점 → 완료 (4-Step) */}
       {isCradleModalOpen && (
         <CradleGradingModal
