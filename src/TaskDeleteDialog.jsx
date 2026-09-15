@@ -27,19 +27,20 @@ const TaskDeleteDialog = ({ task, onCancel, onConfirm }) => {
           <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, background: deployed ? '#D1FAE5' : '#FEF3C7', color: deployed ? '#065F46' : '#92400E' }}>{task.status}</span>
         </div>
 
+        {/* 헤드라인만 — 세부 설명은 두지 않는다. 배포된 과제는 결과 발송 항목에만 한 줄 경고 */}
         <div style={{ padding: '12px 14px', borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: 10 }}>
           <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#991B1B', marginBottom: 6 }}>함께 삭제되는 것</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 'var(--neo-font-size-sm)', color: '#7F1D1D' }}>
-            <div style={li}><span>✕</span><span>과제 정보 — 문항 · 모범답안 · 채점 기준</span></div>
-            <div style={li}><span>✕</span><span>학생 배포 정보 — 그룹 연결, 답안지·번호표 북코드 <span style={{ color: '#B45309' }}>(출력해 둔 답안지·번호표는 더 쓸 수 없습니다)</span></span></div>
-            <div style={li}><span>✕</span><span>학생 제출 답안 — 펜 필기 · 스캔본</span></div>
-            <div style={li}><span>✕</span><span>채점 이력 — AI 채점 결과 · 교사 채점 · 피드백 · 퇴고(2차) 이력</span></div>
-            <div style={li}><span>✕</span><span>결과 발송 이력 {deployed && <strong>— 학생에게 이미 발송된 결과도 사라져 학생 화면에서 보이지 않게 됩니다</strong>}</span></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 'var(--neo-font-size-sm)', color: '#7F1D1D', fontWeight: 600 }}>
+            <div style={li}><span>✕</span><span>과제 정보</span></div>
+            <div style={li}><span>✕</span><span>학생 제출 답안</span></div>
+            <div style={li}><span>✕</span><span>채점 이력</span></div>
+            <div style={li}><span>✕</span><span>결과 발송 이력{deployed && <span style={{ fontWeight: 400, color: '#B91C1C' }}> — 학생에게 이미 발송된 결과도 사라집니다</span>}</span></div>
+            <div style={li}><span>✕</span><span>답안지·번호표 출력물 사용 불가</span></div>
           </div>
         </div>
         <div style={{ padding: '10px 14px', borderRadius: 10, background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: 14 }}>
           <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#166534', marginBottom: 4 }}>유지되는 것</div>
-          <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#166534', lineHeight: 1.6 }}>학생 정보 · 그룹 정보 · 사용한 AI 토큰 기록(사용량 통계에는 「삭제된 과제」로 남습니다)</div>
+          <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#166534', fontWeight: 600 }}>학생 정보 · 그룹 정보</div>
         </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', cursor: 'pointer', marginBottom: 16 }}>
