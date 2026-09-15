@@ -52,7 +52,7 @@ export const BASE_TASKS = [
 // onAdd 시그니처: (mode) 또는 (taskObject). taskObject는 lib/taskSchema.js 기반.
 // onAddTask: wizard에서 task 객체를 직접 부모로 전달할 때 호출 (영속화용)
 // onOpenDetail: 상세보기 분기 라우팅 (source에 따라 detail 컴포넌트 선택)
-const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail }) => {
+const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [] }) => {
     const [viewMode, setViewMode] = useState('card'); // 'card' | 'list'
     const [statusFilter, setStatusFilter] = useState('전체'); // '전체' | '작성중' | '배포됨'
     // [v3.5] 과제 등록 화면 진입 — 「+ 새 과제 등록」 버튼 클릭 시
@@ -104,7 +104,14 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail }) => 
     }
 
     // [TSK-11] 공유 카탈로그에서 복사된 사본을 상단에 prepend
-    const allTasks = [...extraTasks, ...BASE_TASKS];
+    // [TSK v3.8] 삭제된 과제는 목록에서 걷어낸다
+    const allTasks = [...extraTasks, ...BASE_TASKS].filter((t) => !deletedTaskIds.includes(t.id));
+
+    /* [TSK v3.8] 삭제 버튼 — 목록·카드 공통. 확인창(무엇이 지워지는지)은 상위가 띄운다 */
+    const deleteBtn = (task) => onRequestDelete && (
+        <button className="btn-task-detail" onClick={() => onRequestDelete(task)} title="과제와 배포·채점 이력을 삭제합니다 (학생·그룹 정보는 유지)"
+            style={{ background: 'white', color: '#DC2626', border: '1px solid #FCA5A5' }}>삭제</button>
+    );
 
     const filteredTasks = statusFilter === '전체'
         ? allTasks
@@ -359,8 +366,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail }) => 
                                 <div className="comp-content">{task.competencies}</div>
                             </div>
 
-                            <div className="card-footer-buttons">
+                            <div className="card-footer-buttons" style={{ display: 'flex', gap: 6 }}>
                                 <button className="btn-task-detail" onClick={() => onOpenDetail && onOpenDetail(task)}>상세보기</button>
+                                {deleteBtn(task)}
                             </div>
                         </div>
                     ))}
@@ -408,8 +416,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail }) => 
                                     <td className="list-cell-num">{task.points}점</td>
                                     <td className="list-cell-muted">{task.lastUpdate}</td>
                                     <td>
-                                        <div className="list-row-actions">
+                                        <div className="list-row-actions" style={{ display: 'flex', gap: 6 }}>
                                             <button className="btn-task-detail" onClick={() => onOpenDetail && onOpenDetail(task)}>상세보기</button>
+                                            {deleteBtn(task)}
                                         </div>
                                     </td>
                                 </tr>
