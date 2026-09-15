@@ -104,13 +104,53 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
     }
 
     // [TSK-11] 공유 카탈로그에서 복사된 사본을 상단에 prepend
+    /* [TSK v3.9] 카드 우상단 ⋯ 메뉴 — 복사 · 공유 설정 · 삭제.
+     *   하단은 [미리보기] [열기] 두 개로 꽉 차 있어 셋째 버튼을 둘 자리가 없고, 삭제가 주 동작처럼 보여서도 안 된다.
+     *   자주 쓰지 않는 동작은 ⋯ 안에 모으고 삭제는 맨 아래(빨강). 확인창(무엇이 지워지는지)은 상위가 띄운다. */
+    const [menuTaskId, setMenuTaskId] = useState(null);
+    /* [TSK v3.9] 복사(사본 만들기) · 공유 설정 — 프로토타입 로컬 상태 */
+    const [visibilityOverride, setVisibilityOverride] = useState({});   // { [id]: '공유' | '비공유' }
+    const [shareTask, setShareTask] = useState(null);                   // 공유 설정 다이얼로그 대상
+    const [toast, setToast] = useState('');
+    useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
+    const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const duplicateTask = (task) => {
+        /* 사본은 「작성중 · 비공유」로 시작한다 — 배포·채점 이력은 따라가지 않고 문항·기준만 복사 */
+        const copy = { ...task, id: Date.now(), title: `${task.title} (사본)`, status: '작성중', visibility: '비공유', lastUpdate: today(), copiedFromTaskId: undefined, originalAuthorName: undefined, originalSchool: undefined };
+        onAddTask?.(copy);
+        setToast(`「${copy.title}」 사본을 만들었습니다. 작성중 상태로 목록 맨 위에 추가됩니다.`);
+    };
+    useEffect(() => {
+        if (menuTaskId == null) return undefined;
+        const close = () => setMenuTaskId(null);
+        document.addEventListener('click', close);
+        return () => document.removeEventListener('click', close);
+    }, [menuTaskId]);
     // [TSK v3.8] 삭제된 과제는 목록에서 걷어낸다
-    const allTasks = [...extraTasks, ...BASE_TASKS].filter((t) => !deletedTaskIds.includes(t.id));
+    const allTasks = [...extraTasks, ...BASE_TASKS]
+        .filter((t) => !deletedTaskIds.includes(t.id))
+        .map((t) => (visibilityOverride[t.id] ? { ...t, visibility: visibilityOverride[t.id] } : t));
 
-    /* [TSK v3.8] 삭제 버튼 — 목록·카드 공통. 확인창(무엇이 지워지는지)은 상위가 띄운다 */
-    const deleteBtn = (task) => onRequestDelete && (
-        <button className="btn-task-detail" onClick={() => onRequestDelete(task)} title="과제와 배포·채점 이력을 삭제합니다 (학생·그룹 정보는 유지)"
-            style={{ background: 'white', color: '#DC2626', border: '1px solid #FCA5A5' }}>삭제</button>
+    const menuItem = (label, onClick, danger) => (
+        <button type="button" onClick={(e) => { e.stopPropagation(); setMenuTaskId(null); onClick?.(); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: danger ? '#DC2626' : '#1E293B', fontWeight: danger ? 800 : 600, cursor: 'pointer' }}>
+            {label}
+        </button>
+    );
+    const moreMenu = (task) => onRequestDelete && (
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+            <button type="button" aria-label="더 보기" title="더 보기"
+                onClick={(e) => { e.stopPropagation(); setMenuTaskId(menuTaskId === task.id ? null : task.id); }}
+                style={{ background: 'none', border: 'none', fontSize: '1.15rem', lineHeight: 1, cursor: 'pointer', color: '#64748B', padding: '0 4px' }}>⋯</button>
+            {menuTaskId === task.id && (
+                <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 24, right: 0, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.15)', padding: 6, minWidth: 150, zIndex: 20 }}>
+                    {menuItem('복사 (사본 만들기)', () => duplicateTask(task))}
+                    {menuItem('공유 설정', () => setShareTask(task))}
+                    <div style={{ height: 1, background: '#F1F5F9', margin: '4px 0' }} />
+                    {menuItem('삭제', () => onRequestDelete(task), true)}
+                </div>
+            )}
+        </span>
     );
 
     const filteredTasks = statusFilter === '전체'
@@ -319,8 +359,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                     <span className={`task-status-tag ${getStatusClass(task.status)}`}>{task.status}</span>
                                     <span className={`task-status-tag ${getVisibilityClass(task.visibility)}`}>{task.visibility}</span>
                                 </div>
-                                <div className="card-teacher-meta">
+                                <div className="card-teacher-meta" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <span className="t-date">최근 수정 : {task.lastUpdate}</span>
+                                    {moreMenu(task)}
                                 </div>
                             </div>
 
@@ -366,9 +407,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                 <div className="comp-content">{task.competencies}</div>
                             </div>
 
-                            <div className="card-footer-buttons" style={{ display: 'flex', gap: 6 }}>
-                                <button className="btn-task-detail" onClick={() => onOpenDetail && onOpenDetail(task)}>상세보기</button>
-                                {deleteBtn(task)}
+                            <div className="card-footer-buttons">
+                                <button className="btn-task-preview" style={{ background: 'white', border: '1px solid #CBD5E1', color: '#334155' }} onClick={() => onOpenDetail && onOpenDetail(task)}>미리보기</button>
+                                <button className="btn-task-open" style={{ background: '#DBEAFE', border: 'none', color: '#1E3A8A' }} onClick={() => onOpenDetail && onOpenDetail(task)}>열기</button>
                             </div>
                         </div>
                     ))}
@@ -416,9 +457,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                     <td className="list-cell-num">{task.points}점</td>
                                     <td className="list-cell-muted">{task.lastUpdate}</td>
                                     <td>
-                                        <div className="list-row-actions" style={{ display: 'flex', gap: 6 }}>
-                                            <button className="btn-task-detail" onClick={() => onOpenDetail && onOpenDetail(task)}>상세보기</button>
-                                            {deleteBtn(task)}
+                                        <div className="list-row-actions" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                            <button className="btn-task-detail" onClick={() => onOpenDetail && onOpenDetail(task)}>열기</button>
+                                            {moreMenu(task)}
                                         </div>
                                     </td>
                                 </tr>
@@ -428,6 +469,38 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                 </div>
             )}
 
+
+            {/* [TSK v3.9] 공유 설정 */}
+            {shareTask && (
+                <div onClick={() => setShareTask(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                    <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="공유 설정" style={{ background: 'white', borderRadius: 14, width: 420, maxWidth: '94vw', padding: '22px 24px', boxShadow: '0 20px 50px rgba(15,23,42,0.28)' }}>
+                        <h3 style={{ margin: '0 0 4px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225' }}>공유 설정</h3>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 14 }}>{shareTask.title}</div>
+                        {[
+                            ['공유', '다른 교사가 공유된 과제 목록에서 보고 사본을 만들 수 있습니다.'],
+                            ['비공유', '나만 볼 수 있습니다.'],
+                        ].map(([v, desc]) => {
+                            const cur = (visibilityOverride[shareTask.id] || shareTask.visibility) === v;
+                            return (
+                                <label key={v} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, border: `1px solid ${cur ? '#2A75F3' : '#E2E8F0'}`, background: cur ? '#EFF6FF' : 'white', marginBottom: 8, cursor: 'pointer' }}>
+                                    <input type="radio" name="share" checked={cur} onChange={() => setVisibilityOverride((prev) => ({ ...prev, [shareTask.id]: v }))} style={{ marginTop: 3 }} />
+                                    <span>
+                                        <span style={{ fontWeight: 800, color: '#1E2225' }}>{v}</span>
+                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>{desc}</span>
+                                    </span>
+                                </label>
+                            );
+                        })}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                            <button className="btn-task-detail" onClick={() => { setToast(`「${shareTask.title}」 공유 설정을 「${visibilityOverride[shareTask.id] || shareTask.visibility}」로 저장했습니다.`); setShareTask(null); }}
+                                style={{ background: '#2A75F3', color: 'white', border: 'none' }}>저장</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {toast && (
+                <div style={{ position: 'fixed', left: '50%', bottom: 32, transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 16px', borderRadius: 10, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,0.3)', zIndex: 9750, whiteSpace: 'nowrap' }}>✓ {toast}</div>
+            )}
         </div>
     );
 };
