@@ -49,7 +49,7 @@ const MetaRow = ({ task }) => (
 // 「파일 업로드」 상세 — 업로드 파일 + 영역 시각화 + 문항별 OCR 텍스트·모범답안·성취기준·채점
 const FileUploadTaskDetail = ({ task, onBack, onDelete }) => {
   const d = task.detail || {};
-  const { uploadedFile, areas = [], questions = [], evalMode, autoScale } = d;
+  const { uploadedFile, areas = [], questions = [] } = d;
   return (
     <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
       <HeaderBar task={task} onBack={onBack} onDelete={onDelete} />
@@ -101,13 +101,10 @@ const FileUploadTaskDetail = ({ task, onBack, onDelete }) => {
           ))}
         </div>
 
-        {/* 평가 모드 + 채점 정책 */}
+        {/* [v3.74] 평가 기준 — 자동평가 폐기, 자율평가 루브릭 단일 체제 */}
         <div style={sectionStyle}>
-          <div style={sectionTitle}>⚖️ 평가 방식</div>
-          <div><span style={labelStyle}>평가 모드</span><span style={valueStyle}>{evalMode === 'auto' ? '자동평가' : '자율평가'}</span></div>
-          {evalMode === 'auto' && (
-            <div><span style={labelStyle}>채점 단계</span><span style={valueStyle}>{autoScale || 3}단계</span></div>
-          )}
+          <div style={sectionTitle}>⚖️ 평가 기준</div>
+          <div><span style={labelStyle}>채점 기준</span><span style={valueStyle}>문항 {questions.length}개 · 채점 기준 {questions.reduce((s, q) => s + ((q.criteria || []).length), 0)}개 (루브릭)</span></div>
         </div>
       </div>
     </div>
@@ -117,7 +114,7 @@ const FileUploadTaskDetail = ({ task, onBack, onDelete }) => {
 // 「직접 입력」 상세 — 지문·문항·성취기준·모범답안·채점
 const DirectInputTaskDetail = ({ task, onBack, onDelete }) => {
   const d = task.detail || {};
-  const { passage, questions = [], evalMode, autoScale } = d;
+  const { passage, questions = [] } = d;
   return (
     <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
       <HeaderBar task={task} onBack={onBack} onDelete={onDelete} />
@@ -150,12 +147,10 @@ const DirectInputTaskDetail = ({ task, onBack, onDelete }) => {
           ))}
         </div>
 
+        {/* [v3.74] 평가 기준 — 자동평가 폐기, 자율평가 루브릭 단일 체제 */}
         <div style={sectionStyle}>
-          <div style={sectionTitle}>⚖️ 평가 방식</div>
-          <div><span style={labelStyle}>평가 모드</span><span style={valueStyle}>{evalMode === 'auto' ? '자동평가' : '자율평가'}</span></div>
-          {evalMode === 'auto' && (
-            <div><span style={labelStyle}>채점 단계</span><span style={valueStyle}>{autoScale || 3}단계</span></div>
-          )}
+          <div style={sectionTitle}>⚖️ 평가 기준</div>
+          <div><span style={labelStyle}>채점 기준</span><span style={valueStyle}>문항 {questions.length}개 · 채점 기준 {questions.reduce((s, q) => s + ((q.criteria || []).length), 0)}개 (루브릭)</span></div>
         </div>
       </div>
     </div>

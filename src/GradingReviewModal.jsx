@@ -7,8 +7,8 @@
  *   · 우측: 「피드백 보기」 「원본 보기」 두 탭만 둔다 (상용의 「AI 과정 분석 결과 보기」 탭은 피드백 보기에 합친다)
  *   · 피드백 보기 = 등급평가 피드백(공통 영역) + 아래쪽 「AI 과정 분석」 전용 영역
  *       공통 영역: 등급 · 이런 점이 좋아요 · 조금만 더 노력해볼까요 · 함께 성장해요 · 내용 분석
- *         — 과정 분석이 끝나면 [과제 수행](등급평가) / [학습 태도](과정평가) 줄이 같은 칸에 함께 실린다
- *       전용 영역: 진단된 학습 행동 패턴 · 총평 · 풀이 과정 밀착 가이드
+ *         — 과정 분석이 끝나면 [과제 수행](등급평가) / [학습 태도](과정 분석) 줄이 같은 칸에 함께 실린다
+ *       전용 영역: 진단된 학습 행동 패턴(캐릭터) · 총평 · 학습 행동 밀착 가이드(문제 해석·접근 방법)
  *         — 펜 데이터가 부족하면(80획 미만 또는 필기 30초 미만) 진단 대신 안내 문구만 보인다
  */
 import React, { useState, useEffect, useMemo } from 'react';
@@ -76,7 +76,7 @@ const gradeFeedbackOf = (grade) => {
     return { ...base, label: grade || '우수', letter: GRADE_FEEDBACK[grade] ? base.letter : (GRADE_LETTER[grade] || base.letter) };
 };
 
-/* 과정평가 결과 샘플 — 풀이 과정 밀착 가이드는 문항 단위 고정 문안 */
+/* 과정 분석 결과 샘플 — 학습 행동 밀착 가이드(문제 해석·접근 방법)는 문항 단위 고정 문안. 단계별 풀이(steps)는 화면에 싣지 않는다 */
 export const PROCESS_GUIDE_SAMPLE = {
     interpretation: '지문에 제시된 교통카드 충전 금액, 청소년 지하철 요금, 그리고 현재 남은 잔액의 관계를 파악하여 변수 a를 포함한 일차방정식을 세워야 합니다.',
     approach: "'남은 잔액 = 충전 금액 - (지하철 요금 × 이용 횟수)'라는 기본 원리를 이용하되, 지문에 제시된 실제 잔액 수치를 등식의 우변에 배치하여 방정식을 완성해야 합니다.",
@@ -211,7 +211,7 @@ const GradingReviewModal = ({
     const hwInsufficient = !!hw?.insufficient;
     const gradeFb = useMemo(() => gradeFeedbackOf(selectedStudent?.aiGrade), [selectedStudent?.aiGrade]);
     const buildDraft = () => {
-        // 과정 분석이 끝나면(필기 충분) 같은 칸에 [과제 수행]=등급평가 / [학습 태도]=과정평가 를 함께 싣는다
+        // 과정 분석이 끝나면(필기 충분) 같은 칸에 [과제 수행]=등급평가 / [학습 태도]=과정 분석 를 함께 싣는다
         if (hw && !hwInsufficient && hw.finalFeedback) {
             return {
                 good: `[과제 수행] ${gradeFb.good}\n[학습 태도] ${hw.finalFeedback.whatsGood}`,
@@ -398,24 +398,14 @@ const GradingReviewModal = ({
                         })()}
                         <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 6 }}>총평</div>
                         <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.75, marginBottom: 16 }}>{hw.evaluationSummary?.totalEvaluation}</div>
-                        {hw.finalFeedback?.contentBottleneckAnalysis && (<>
-                            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 6 }}>병목 구간 진단</div>
-                            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.75, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{hw.finalFeedback.contentBottleneckAnalysis}</div>
-                        </>)}
                         {(() => { const g = hw.guide || PROCESS_GUIDE_SAMPLE; return (
                             <div>
-                                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 8 }}>풀이 과정 밀착 가이드</div>
+                                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 8 }}>학습 행동 밀착 가이드</div>
                                 <div style={{ borderLeft: '2px solid #CBD5E1', paddingLeft: 12, fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>
                                     <div style={{ fontWeight: 600, marginBottom: 2 }}>문제 해석</div>
                                     <div style={{ marginBottom: 10 }}>{g.interpretation}</div>
                                     <div style={{ fontWeight: 600, marginBottom: 2 }}>문제 접근 방법</div>
-                                    <div style={{ marginBottom: 10 }}>{g.approach}</div>
-                                    {g.steps.map((s, i) => (
-                                        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 4 }}>
-                                            <span style={{ flex: 'none', width: 18, height: 18, borderRadius: 4, background: '#DBEAFE', color: '#1D4ED8', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 3 }}>{i + 1}</span>
-                                            <span>{s}</span>
-                                        </div>
-                                    ))}
+                                    <div>{g.approach}</div>
                                 </div>
                             </div>
                         ); })()}

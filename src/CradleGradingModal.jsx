@@ -21,15 +21,17 @@
  *   Step 1에서 그룹 매칭까지 보여주면 실제로는 매칭 가능한 펜을 「불일치」로 오인시키거나
  *   그 반대가 된다. 그래서 Step을 이렇게 가른다:
  *     · Step 1 = **장비 상태** — 거치 · 연결 · 배터리 · 펌웨어 (그룹과 무관)
- *     · Step 2 = **데이터 판정** — 북코드 대조 · 번호표 판독 · 중복 검사 (그룹이 여기서 처음 개입)
+ *     · Step 2 = **데이터 판정** — 북코드 대조 · 기재란 OCR 판독 · 중복 검사 (그룹이 여기서 처음 개입)
  *   SCR-05의 `파일 업로드`(재료 확보) → `OCR 판별`(내용 판정) 구조와 정확히 대응한다.
  *
  * [SCR-07 v1.0] 판정 규칙 — POP-28 「일괄 채점 펜 상태 판정 규칙」 정본을 따른다
- *   1단계 북코드 대조 → 2단계 내용(번호표) 판정 → 3단계 중복 검사.
+ *   1단계 북코드 대조 → 2단계 내용(답안지 기재란 OCR) 판정 → 3단계 중복 검사.
+ *   [SCR-07 v4.19] 스마트펜 번호표 폐기 — 학생은 답안지 기재란(학년/반/번호·이름)에 펜으로 쓴 손글씨를 OCR로 읽어
+ *   배포된 그룹 명단과 대조해 찾는다. 펜을 스캔처럼 쓰는 것이다. 채점은 그대로다.
  *   위 단계에서 걸리면 아래 단계는 보지 않는다(사유가 서로 덮이지 않게).
  *
  * [SCR-07 v1.0] 미매칭 해소 — 펜 데이터 열람
- *   번호표를 잘못 체크했거나 아예 체크하지 않은 펜은 「누구의 답안인지」를 시스템이 모른다.
+ *   기재란을 비웠거나 OCR이 읽지 못한 펜은 「누구의 답안인지」를 시스템이 모른다.
  *   이때 교사는 그 펜에 담긴 **모든 북코드의 모든 페이지**를 넘겨보며 답안 내용·이름으로
  *   주인을 찾아 대상 학생에게 직접 연결한다. 이것이 이 화면의 핵심 기능이다.
  */
@@ -37,8 +39,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import RequiredProgramModal from './RequiredProgramModal';
 import appLogger from './appLogger';
-import LogDownloadDialog from './LogDownloadDialog';
-import PenDataDownloadDialog, { PEN_DATA_DIR } from './PenDataDownloadDialog';
+import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 舊 LogDownloadDialog·PenDataDownloadDialog(⋯ 메뉴) → [🚨 장애 신고]
 
 const STEPS = [
   /* [SCR-07 v2.7] 단계 안내는 타이틀 호버 툴팁으로 — 본문 안내 카드를 없애 크래들이 바로 보이게 한다 */
@@ -92,20 +93,21 @@ const DUPLICATE_TONE = { bg: '#FEF2F2', border: '#FCA5A5', color: '#991B1B', dot
 /** 판정 코드 → { badge, progress } (POP-28 §4). progress = 「채점 진행」 칸 문구 */
 const VERDICT_SPEC = {
   // 1단계 · 북코드 대조
-  empty:          { badge: 'nodata',     progress: '학생 미매칭 — 번호표 체크와 필기 데이터가 모두 없습니다' },
+  empty:          { badge: 'nodata',     progress: '학생 미매칭 — 필기 데이터가 없습니다' },
   other_group:    { badge: 'unsyncable', progress: null /* POP-28 #2 — 「그룹 불일치 [감지: 1-2반 → 선택: 1-1반]」 런타임 생성 */ },
   other_task:     { badge: 'unsyncable', progress: '학생 미매칭 — 이 과제 데이터가 아닙니다' },
   // 2단계 · 내용 판정
   roster_loading: { badge: 'loading',    progress: '' /* POP-28 #4 — 문구 없음 */ },
-  no_tag:         { badge: 'unsyncable', progress: '학생 미매칭 — 번호표를 체크하지 않았습니다' },
-  bad_tag:        { badge: 'unsyncable', progress: '학생 미매칭 — 번호표 체크 위치를 읽을 수 없습니다' },
-  not_in_roster:  { badge: 'unsyncable', progress: '학생 미매칭 — 명단에 없는 학생입니다' },
+  /* [SCR-07 v4.19] 번호표 조건(#5 미체크 · #6 위치 판독 불가) 폐기 → 기재란 OCR 조건으로 대체 */
+  no_ident:       { badge: 'unsyncable', progress: '학생 미매칭 — 답안지 기재란(학년/반/번호·이름)을 읽을 수 없습니다' },
+  ident_partial:  { badge: 'unsyncable', progress: null /* 런타임 생성 — 「학생 미매칭 — 기재란 일부만 일치 [읽음: …]」 */ },
+  not_in_roster:  { badge: 'unsyncable', progress: null /* 런타임 생성 — 「학생 미매칭 — 기재란의 학생이 명단에 없습니다 [읽음: …]」 */ },
   not_selected:   { badge: 'unsyncable', progress: '학생 미매칭 — 채점 목록에서 선택하지 않은 학생입니다' },
   // 3단계 · 중복 검사
   duplicate:      { badge: 'normal',     progress: '중복 데이터' },
   // 통과 이후
   /* [SCR-07 v2.2] POP-28 #10 문구 개정 — 舊 「펜 연결」은 #11 정상 흐름의 첫 상태와 같아 「데이터가 없는데 연결됐다?」로 읽혔다.
-   *   학생은 번호표로 찾았고 답안만 없다는 사실을 진행 칸이 말한다. 배지는 「데이터 없음」 그대로. */
+   *   학생은 기재란으로 찾았고 답안만 없다는 사실을 진행 칸이 말한다. 배지는 「데이터 없음」 그대로. */
   no_answer:      { badge: 'nodata',     progress: '답안 없음 — 답안지 미작성' },
   ok:             { badge: 'normal',     progress: '펜 연결' },
   grading:        { badge: 'normal',     progress: 'AI 채점중' },
@@ -128,7 +130,7 @@ const badgeOf = (code) => {
  *   1단계는 파일 «이름만» 보므로 대상 아닌 펜은 다운로드 자체를 건너뛴다. */
 const JUDGE_PHASES = [
   { key: 'books', label: '북코드 대조', desc: '펜 파일 이름만 보고 채점 대상인지 판정', call: 'GetOfflineFileNames', cost: '저렴' },
-  { key: 'content', label: '내용 판정', desc: '1단계를 통과한 펜만 읽어 번호표/답안 분리', call: 'ReadOfflineStrokesByBases', cost: '다운로드' },
+  { key: 'content', label: '기재란 판독', desc: '1단계를 통과한 펜만 읽어 답안지 기재란(학년/반/번호·이름)을 OCR로 판독', call: 'ReadOfflineStrokesByBases', cost: '다운로드' },
   { key: 'duplicate', label: '중복 검사', desc: '2단계를 통과한 펜끼리 학생 중복 확인', call: '—', cost: '—' },
 ];
 
@@ -140,28 +142,15 @@ const LINK_TOKEN = {
   failed:    { label: '실패',    color: '#991B1B', bg: '#FEE2E2' },
 };
 
-/* 번호표 격자 — 10행 × 4열, 페이지당 샘플 1칸 제외, 3페이지 (POP-28 §3) */
-const TAG_ROWS = 10;
-const TAG_COLS = 4;
-const TAG_PAGES = 3;
-/** 번호표 정원 = (40칸 − 샘플 1칸) × 3페이지 = 117명. 하드코딩이 아니라 계산값 (POP-28 §6) */
-const TAG_CAPACITY = (TAG_ROWS * TAG_COLS - 1) * TAG_PAGES;
+/* [SCR-07 v4.19] 舊 번호표 격자 상수(TAG_ROWS·TAG_COLS·TAG_PAGES·TAG_CAPACITY)·seqToCell 폐기 — 번호표를 쓰지 않는다 */
 
 /* ────────────────────────────────────────────────────────────
  * 에뮬레이터 목 데이터 생성
  *   선택된 학생 명단을 그대로 재료로 써서 「고른 그룹에 맞는 펜」을 만들고,
- *   뒤에 교사가 실제로 겪는 오류 케이스(번호표 미체크 · 그룹 불일치 · 중복 · 빈 펜)를 붙인다.
+ *   뒤에 교사가 실제로 겪는 오류 케이스(기재란 미기입 · 그룹 불일치 · 중복 · 빈 펜)를 붙인다.
  * ──────────────────────────────────────────────────────────── */
 
 const pad = (n, w = 3) => String(n).padStart(w, '0');
-
-/** 명단 순번(0-base) → 번호표 격자 좌표. 페이지당 샘플 1칸(0,0)을 건너뛴다 */
-const seqToCell = (seq) => {
-  const perPage = TAG_ROWS * TAG_COLS - 1;
-  const page = Math.floor(seq / perPage);
-  const inPage = (seq % perPage) + 1; // 샘플칸(index 0) 건너뜀
-  return { page: page + 1, row: Math.floor(inPage / TAG_COLS), col: inPage % TAG_COLS };
-};
 
 /** 답안 목 텍스트 — 문항별로 조금씩 다르게 만들어 페이지를 넘길 이유를 준다 */
 const mockAnswer = (questionTitle, page) => {
@@ -176,30 +165,20 @@ const mockAnswer = (questionTitle, page) => {
 
 /**
  * 펜 1자루를 만든다.
- *  scenario:
- *    'ok'          내 북코드 + 번호표 정상 + 답안 있음
- *    'no_tag'      내 북코드 + 답안 있음, **번호표 미체크** → 미매칭 (수동 연결 대상)
- *    'bad_tag'     격자 밖·칸 경계·샘플칸에 찍어 위치를 읽을 수 없음 (POP-28 #6)
- *    'not_in_roster' 명단에 없는 빈자리에 체크 (POP-28 #7)
- *    'other_group' 같은 과제 다른 그룹 북코드만 → 그룹 불일치
- *    'no_answer'   번호표만 찍고 답안 없음
- *    'duplicate'   이미 다른 펜이 매칭된 학생의 번호표가 또 찍혀 있음 → 3단계 중복 검사에 걸린다
- *    'empty'       아무 필기 없음
+ *  scenario ([SCR-07 v4.19] 번호표 시나리오 폐기 → 기재란 OCR 시나리오):
+ *    'ok'            내 북코드 + 기재란 OCR 자동 확정 + 답안 있음
+ *    'no_ident'      내 북코드 + 답안 있음, **기재란 미기입/판독 불가** → 미매칭 (직접 매칭 대상)
+ *    'ident_partial' 기재란 일부만 읽힘(이름은 읽었으나 번호가 다름 등) → 확인 필요
+ *    'not_in_roster' 기재란의 학생이 명단에 없음
+ *    'other_group'   같은 과제 다른 그룹 북코드만 → 그룹 불일치
+ *    'no_answer'     기재란만 쓰고 답안 없음
+ *    'duplicate'     이미 다른 펜이 매칭된 학생의 기재란이 또 읽힘 → 3단계 중복 검사에 걸린다 (identOverride)
+ *    'empty'         아무 필기 없음
  */
-const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTitle, questions, extraBooks = [], tagSeqOverride }) => {
+const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTitle, questions, extraBooks = [], identOverride }) => {
   const books = [];
 
-  const makeBook = ({ code, groupLabel, isMine, tagSeq, hasAnswer, ownerName, ownerGrade, tagFlaw }) => {
-    const tagPages = Array.from({ length: TAG_PAGES }, (_, i) => ({ no: i + 1, checked: null }));
-    /* [POP-28 #6] 격자 밖·칸 경계·샘플칸 체크 — 좌표는 읽혔지만 칸으로 환산할 수 없다.
-     * 「체크가 없다(#5)」와 구분되는 별개 실패라 별도 플래그로 표현한다. */
-    if (tagFlaw) {
-      tagPages[0].checked = { row: 0, col: 0, seq: null, flaw: tagFlaw };
-    } else if (tagSeq != null) {
-      const cell = seqToCell(tagSeq);
-      const tp = tagPages.find((p) => p.no === cell.page) || tagPages[0];
-      tp.checked = { row: cell.row, col: cell.col, seq: tagSeq };
-    }
+  const makeBook = ({ code, groupLabel, isMine, hasAnswer, ownerName, ownerGrade, ident }) => {
     const answerPages = hasAnswer
       ? questions.flatMap((q) =>
           Array.from({ length: q.sheets || 1 }, (_, i) => ({
@@ -212,9 +191,12 @@ const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTi
           }))
         )
       : [];
-    /* [SCR-07 v1.2] `ownerName`/`ownerGrade` = **답안지에 학생이 손으로 적은 기재란**.
-     * 번호표 판독 결과와 별개의 출처이고, 둘이 어긋날 때 진짜 주인을 말해 주는 쪽이 이것이다. */
-    return { code, groupLabel, isMine, taskTitle, tagPages, answerPages, ownerName, ownerGrade };
+    /* [SCR-07 v1.2] `ownerName`/`ownerGrade` = **답안지에 학생이 손으로 적은 기재란** (교사가 눈으로 보는 값).
+     * [v4.19] `ident` = 그 기재란을 **OCR이 읽은 결과** { name, grade, confidence: 'auto'|'partial'|'unread' }.
+     * 학생 식별의 근거는 이제 이것이다. 실서비스는 AiGLE Connect가 펜 획을 답안지 서식 위에 렌더한 이미지에서 기재란을 OCR한다. */
+    const identResult = ident !== undefined ? ident
+      : (ownerName ? { name: ownerName, grade: ownerGrade || '', confidence: 'auto' } : { name: '', grade: '', confidence: 'unread' });
+    return { code, groupLabel, isMine, taskTitle, answerPages, ownerName, ownerGrade, ident: identResult };
   };
 
   if (scenario === 'empty') {
@@ -222,21 +204,24 @@ const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTi
   } else if (scenario === 'other_group') {
     books.push(makeBook({
       code: siblingBook.code, groupLabel: siblingBook.groupLabel, isMine: false,
-      tagSeq: 3, hasAnswer: true, ownerName: siblingBook.ownerName, ownerGrade: siblingBook.ownerGrade,
+      hasAnswer: true, ownerName: siblingBook.ownerName, ownerGrade: siblingBook.ownerGrade,
     }));
   } else {
-    /* 번호표가 가리키는 자리와 답안지 주인이 **다를 수 있다**.
-     *   tagSeqOverride — 다른 학생 칸을 잘못 체크한 경우 (#9 중복의 실제 원인)
-     *   not_in_roster  — 명단 인원을 넘는 빈자리에 체크한 경우 (#7) */
-    const ownSeq = roster.findIndex((s) => s.id === student.id);
-    const seatSeq = scenario === 'not_in_roster' ? roster.length + 2
-      : tagSeqOverride != null ? tagSeqOverride : ownSeq;
+    /* OCR이 읽은 기재란과 답안지 진짜 주인이 **다를 수 있다**.
+     *   identOverride — 다른 학생의 학년/반/번호·이름이 읽힌 경우 (#9 중복의 실제 원인 — 친구 답안지에 썼거나 잘못 적음)
+     *   not_in_roster — 기재란은 읽혔는데 그 학생이 배포 명단에 없는 경우 (#7)
+     *   ident_partial — 이름은 읽혔는데 번호가 명단과 어긋나는 등 일부만 일치 (#6)
+     *   no_ident      — 기재란을 비웠거나 OCR이 읽지 못함 (#5) */
+    const ident = scenario === 'no_ident' ? { name: '', grade: '', confidence: 'unread' }
+      : scenario === 'ident_partial' ? { name: student?.name, grade: (student?.grade || '').replace(/\d+번$/, '99번'), confidence: 'partial' }
+      : scenario === 'not_in_roster' ? { name: '오세훈', grade: '1학년 1반 31번', confidence: 'auto' }
+      : identOverride ? { name: identOverride.name, grade: identOverride.grade, confidence: 'auto' }
+      : undefined;
     books.push(makeBook({
       code: myBook.code, groupLabel: myBook.groupLabel, isMine: true,
-      tagSeq: scenario === 'no_tag' ? null : seatSeq,
-      tagFlaw: scenario === 'bad_tag' ? '샘플칸' : null,
       hasAnswer: scenario !== 'no_answer',
       ownerName: student?.name, ownerGrade: student?.grade,
+      ident,
     }));
   }
 
@@ -246,7 +231,6 @@ const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTi
   // 전체 페이지 통합 번호 부여 (뷰어가 한 줄로 넘길 수 있게)
   let seq = 0;
   books.forEach((b) => {
-    b.tagPages.forEach((p) => { p.no = ++seq; });
     b.answerPages.forEach((p) => { p.no = ++seq; });
   });
 
@@ -270,15 +254,15 @@ const buildCradleFixture = (students, groupLabel, taskTitle, questions) => {
   const myBook = { code: '334212', groupLabel };
   const siblingBook = { code: '334213', groupLabel: '1학년 2반', ownerName: '한서윤', ownerGrade: '1학년 2반 4번' };
   const otherClassBooks = [
-    { code: '334214', groupLabel: '1학년 3반', ownerName: '김서준', ownerGrade: '1학년 3반 6번', tagSeq: 5 },
-    { code: '334215', groupLabel: '1학년 4반', ownerName: '이도윤', ownerGrade: '1학년 4반 3번', tagSeq: 2 },
-    { code: '334216', groupLabel: '1학년 5반', ownerName: '정하은', ownerGrade: '1학년 5반 1번', tagSeq: 0 },
+    { code: '334214', groupLabel: '1학년 3반', ownerName: '김서준', ownerGrade: '1학년 3반 6번' },
+    { code: '334215', groupLabel: '1학년 4반', ownerName: '이도윤', ownerGrade: '1학년 4반 3번' },
+    { code: '334216', groupLabel: '1학년 5반', ownerName: '정하은', ownerGrade: '1학년 5반 1번' },
   ];
 
   /* [SCR-07 v1.2] 교실에서 실제로 벌어지는 구성으로 줄였다.
-   *   정상 3 · 번호표 미체크 1 · **중복 1** · 그룹 불일치 1 · 빈 펜 1 = 7자루.
-   *   판정 로직은 POP-28 12개 조건을 모두 다루지만, 화면을 읽기 어렵게 만드는
-   *   드문 케이스(#6 체크 위치 오류 · #7 명단 밖 · #10 답안 미작성)는 기본 배치에서 뺐다. */
+   *   정상 3 · 기재란 미기입 1 · 기재란 일부 일치 1 · **중복 1** · 그룹 불일치 1 · 빈 펜 1.
+   *   판정 로직은 판정 규칙 12개 조건을 모두 다루지만, 화면을 읽기 어렵게 만드는
+   *   드문 케이스(#7 명단 밖 · #10 답안 미작성)는 기본 배치에서 뺐다. */
   const pens = [];
   const push = (scenario, student, extra = {}) => {
     if (pens.length >= SLOT_COUNT) return;
@@ -287,17 +271,17 @@ const buildCradleFixture = (students, groupLabel, taskTitle, questions) => {
 
   roster.forEach((student, i) => {
     if (i === 1) {
-      // #5 번호표 미체크 — 답안은 썼는데 번호표를 안 찍었다. 다른 반 북코드도 함께 들어 있다
-      push('no_tag', student, { extraBooks: otherClassBooks });
+      // #5 기재란 미기입 — 답안은 썼는데 학년/반/번호·이름을 안 썼다. 다른 반 북코드도 함께 들어 있다
+      push('no_ident', student, { extraBooks: otherClassBooks });
     } else if (i === 2) {
-      /* #6 번호표 체크 위치 판독 불가 — 우리 반 답안지에 썼는데 번호표를 샘플칸에 찍었다.
-       * 같은 그룹 답안지이므로 교사가 기재란 글씨를 보고 직접 매칭할 수 있다. */
-      push('bad_tag', student);
-    } else if (i === 3) {
-      /* #9 중복의 실제 원인 — 이 학생이 번호표에서 **다른 학생 칸**을 체크했다.
+      /* #6 기재란 일부만 일치 — 이름은 읽혔는데 번호가 명단과 다르다(잘못 적음·판독 오류).
+       * 같은 그룹 답안지이므로 교사가 답안지 글씨를 보고 직접 매칭할 수 있다. */
+      push('ident_partial', student);
+    } else if (i === 3 && roster[4]) {
+      /* #9 중복의 실제 원인 — 이 펜의 기재란에서 **다른 학생**(roster[4])의 학년/반/번호·이름이 읽혔다.
        * 그래서 그 학생의 정상 펜과 이 펜이 같은 사람을 가리키게 된다.
-       * 답안지 기재란에 이 펜의 진짜 주인 이름이 손글씨로 적혀 있어, 교사가 미리보기에서 보고 가려낸다. */
-      push('ok', student, { tagSeqOverride: 4 });
+       * 교사가 미리보기에서 답안 내용·글씨를 보고 진짜 주인을 가려낸다. */
+      push('ok', student, { identOverride: roster[4] });
     } else {
       push('ok', student);
     }
@@ -395,28 +379,20 @@ const CradleGradingModal = ({
   const [retrying, setRetrying] = useState(false);
   const failedOnceGradeRef = React.useRef(false);
   const [confirmClose, setConfirmClose] = useState(false);
-  /* [SCR-07 v2.5] 진단 로그 — 헤더 ⋯ 메뉴의 [로그 다운로드] + 장애 반복 시 인라인 안내.
-   *   실제 장애 로그(2026-09-07)에서 교사는 브릿지 끊김 뒤 80분간 재시도만 반복했다. 그 순간 「로그를 보내라」는
-   *   신호가 화면 어디에도 없었다. 연결 실패·읽기 실패가 한 세션에서 2회 이상이면 같은 다운로드 버튼을 그 자리에 밀어 넣는다. */
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [troubleCount, setTroubleCount] = useState(0);
+  /* [SCR-07 v4.20] 장애 반복 자동 툴팁(연결 실패 N회) 폐기 — 헤더 [🚨 장애 신고] 버튼만 상시 노출. */
+  /* [SCR-07 v4.18 · BRD-16] 헤더 ⋯ 메뉴([로그 다운로드]·[펜 데이터 다운로드]) 폐기 → 헤더에 [🚨 장애 신고] 버튼 상시 노출.
+   *   교사가 로그·펜 데이터를 직접 내려받아 고객센터에 보내는 대신, 신고 한 번으로 학교·교사·과제·그룹 정보와
+   *   진단 로그·펜 데이터가 시스템 관리자 > 게시판 > 장애신고에 등록된다. */
   const teacherId = 'tch20261zim';
   const [toast, setToast] = useState('');
-  const [logDialogOpen, setLogDialogOpen] = useState(false);
-  const [penDataDialogOpen, setPenDataDialogOpen] = useState(false);
-  const handleDownloadLog = () => { setMenuOpen(false); setLogDialogOpen(true); };
-  const doDownloadLog = (date) => { const name = appLogger.downloadLog({ teacherId, date }); setLogDialogOpen(false); setToast(`진단 로그를 내려받았습니다 — ${name}`); };
+  const [incidentOpen, setIncidentOpen] = useState(false);
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
-  const noteTrouble = () => setTroubleCount((n) => n + 1);
-  /* [SCR-07 v2.6] 장애 반복 시 배너는 사실만 말하고, 다운로드 경로는 헤더 ⋯ 옆 **자동 툴팁**이 가리킨다.
-   *   배너에 버튼을 두면 같은 기능이 두 군데 생겨 헷갈린다. 툴팁은 ⋯ 메뉴를 한 번 열면 사라진다. */
-  const [hintDismissed, setHintDismissed] = useState(false);
   const [hoverStep, setHoverStep] = useState(null);
   /* [SCR-07 v2.8] 구성 변경 안내는 배너 대신 [↻ 다시 읽기] 위 툴팁 — 구성이 바뀌는 순간 자동으로 뜨고, 호버해도 뜬다.
    *   자동 툴팁은 ✕로 닫거나 다시 읽기를 누르면 사라지며, 다음 구성 변경 때 다시 뜬다. */
   const [rereadHover, setRereadHover] = useState(false);
   const [rereadHintClosed, setRereadHintClosed] = useState(false);
-  const showLogHint = troubleCount >= 2 && !hintDismissed && !menuOpen;
+  const handleIncidentSubmitted = (report) => { setToast(`장애 신고가 접수되었습니다 — ${report.id} (Jira ${report.jira?.key})`); };
 
   // 과제 문항 — 비어 있으면 1문항으로 가정
   const questionList = useMemo(
@@ -463,7 +439,7 @@ const CradleGradingModal = ({
     const pen = penPool.find((p) => p.slot === slot);
     if (!pen) return;
     /* [SCR-07 v1.3] 다시 꽂힌 펜은 «아직 안 읽은» 상태로 되돌린다.
-     * 빼는 사이에 번호표를 다시 찍었을 수 있으므로, 이전 판정을 그대로 믿으면 안 된다. */
+     * 빼는 사이에 기재란을 고쳐 썼을 수 있으므로, 이전 판정을 그대로 믿으면 안 된다. */
     setJudgedPenIds((prev) => prev.filter((id) => id !== pen.id));
     setDocked((prev) => ({ ...prev, [slot]: { ...pen, link: 'linking' } }));
     /* [SCR-07 v2.3] 연결 실패 — 접촉 불량 등으로 크래들이 펜을 못 잡는 경우. 첫 거치에서 한 번만 실패시켜
@@ -475,7 +451,6 @@ const CradleGradingModal = ({
       setDocked((prev) => (prev[slot] ? { ...prev, [slot]: { ...prev[slot], link: willFail ? 'failed' : 'connected' } } : prev));
       if (willFail) {
         appLogger.error('usb-pen-monitor', '펜 연결 실패', { mac: pen.mac, penId: pen.id, error: { message: 'USB handshake timeout', code: 'E-PEN-LINK-TIMEOUT' } });
-        noteTrouble();
       } else {
         appLogger.info('usb-pen-monitor', '펜 연결 완료', { mac: pen.mac, penId: pen.id, firmware: pen.firmware, battery: pen.battery });
       }
@@ -515,7 +490,7 @@ const CradleGradingModal = ({
   const updateAllFirmware = () => connectedPens.filter((p) => p.needsUpdate).forEach((p) => runFirmwareUpdate(p.id));
 
   /* ────────────────────────────────────────────────────────────
-   * Step 2 판정 — POP-28 1단계(북코드) → 2단계(번호표) → 3단계(중복)
+   * Step 2 판정 — 1단계(북코드) → 2단계(기재란 OCR ↔ 배포 명단) → 3단계(중복)  [v4.19 번호표 폐기]
    * ──────────────────────────────────────────────────────────── */
   const myBookCode = '334212';
   const siblingCodes = ['334213', '334214', '334215', '334216']; // 같은 과제의 2~5반 북코드
@@ -525,7 +500,7 @@ const CradleGradingModal = ({
   const verdictOf = (type, extra = {}) => ({
     type,
     stage: ['empty', 'other_group', 'other_task'].includes(type) ? 1
-      : ['roster_loading', 'no_tag', 'bad_tag', 'not_in_roster', 'not_selected'].includes(type) ? 2
+      : ['roster_loading', 'no_ident', 'ident_partial', 'not_in_roster', 'not_selected'].includes(type) ? 2
         : type === 'duplicate' ? 3 : 4,
     progress: VERDICT_SPEC[type]?.progress ?? '',
     studentId: null,
@@ -535,7 +510,7 @@ const CradleGradingModal = ({
   /* 펜 1자루의 1·2단계 판정 (중복 검사는 아래에서 전체를 놓고 한 번에).
    * POP-28 §1: **1단계에서 걸리면 2단계로 가지 않는다** — 그래서 1·2단계 사유가 서로 덮지 않는다. */
   const judgeOne = useCallback((pen) => {
-    /* [SCR-07 v2.0] 직접 매칭이 있으면 판정보다 우선한다 — 교사가 답안을 보고 내린 결정이 번호표 판독보다 확실하다.
+    /* [SCR-07 v2.0] 직접 매칭이 있으면 판정보다 우선한다 — 교사가 답안을 보고 내린 결정이 OCR 판독보다 확실하다.
      * 매칭한 북코드의 답안 묶음이 아직 펜에 있어야 한다(펜을 바꿔 꽂았으면 무효). */
     const mm = manualMatch[pen.id];
     if (mm && targetIds.includes(mm.studentId)) {
@@ -561,12 +536,19 @@ const CradleGradingModal = ({
 
     // ── 2단계 · 내용 판정 (여기부터는 내 북코드가 있는 펜만) ──
     if (!rosterReady) return verdictOf('roster_loading');        // #4
-    // 번호표를 여러 번 찍었으면 **가장 나중에 찍은 것 1개**만 쓴다 (POP-28 §2)
-    const tag = [...mine.tagPages].reverse().find((p) => p.checked);
-    if (!tag) return verdictOf('no_tag');                        // #5
-    if (tag.checked.flaw) return verdictOf('bad_tag', { flaw: tag.checked.flaw }); // #6
-    const student = selectedStudents[tag.checked.seq];
-    if (!student) return verdictOf('not_in_roster', { seq: tag.checked.seq }); // #7
+    /* [v4.19] 답안지 기재란 OCR 결과를 배포 명단과 대조한다.
+     *   여러 장이면 각 장의 기재란을 읽고 **가장 많이 일치한 학생 1명**으로 본다 (프로토타입은 첫 장 값 하나). */
+    const ident = mine.ident || { confidence: 'unread' };
+    if (ident.confidence === 'unread' || !(ident.name || ident.grade)) return verdictOf('no_ident'); // #5
+    const read = [ident.grade, ident.name].filter(Boolean).join(' ');
+    const norm = (t) => String(t || '').replace(/\s+/g, '');
+    const exact = selectedStudents.find((st) => norm(st.name) === norm(ident.name) && norm(st.grade) === norm(ident.grade));
+    const byName = selectedStudents.find((st) => norm(st.name) === norm(ident.name));
+    if (!exact && byName) {                                       // #6 일부만 일치 — 이름은 맞는데 학년/반/번호가 다름
+      return verdictOf('ident_partial', { name: byName.name, progress: `학생 미매칭 — 기재란 일부만 일치 [읽음: ${read}]` });
+    }
+    if (!exact) return verdictOf('not_in_roster', { progress: `학생 미매칭 — 기재란의 학생이 명단에 없습니다 [읽음: ${read}]` }); // #7
+    const student = exact;
     if (!targetIds.includes(student.id)) return verdictOf('not_selected', { name: student.name }); // #8
 
     // ── 통과 이후 ──
@@ -630,7 +612,7 @@ const CradleGradingModal = ({
   /* 목록 정렬 — 확인이 필요한 펜을 맨 위로(POP-28 #9), 나머지는 슬롯 순서.
    * 교사가 할 일이 목록 아래에 묻히지 않게 하는 것이 유일한 정렬 기준이다.
    * [SCR-07 v1.5] 크래들 3대(30자루)가 되면서 「아무 필기 없음」·「다른 그룹」처럼 1단계에서
-   * 걸린 펜이 수십 자루 생긴다. 이들은 번호표 재체크로 풀 수 없어 교사가 할 일이 없으므로
+   * 걸린 펜이 수십 자루 생긴다. 이들은 기재란을 고쳐 써도 풀 수 없어 교사가 할 일이 없으므로
    * 조치 가능한 펜(중복·2단계) → 정상 → 1단계 순으로 내린다. */
   /* [SCR-07 v2.4] 정렬은 **판정이 끝난 시점에 한 번만** 고정한다.
    *   직접 매칭으로 상태가 바뀔 때마다 다시 정렬하면 방금 만진 행이 아래로 튀어 교사가 눈으로 따라가지 못한다.
@@ -872,7 +854,7 @@ const CradleGradingModal = ({
                   <button
                     type="button"
                     /* [SCR-07 v1.3] 거치/제거는 단계와 무관한 하드웨어 동작이라 2단계에서도 열어 둔다.
-                       번호표를 다시 체크하려면 펜을 빼야 하고, 다 찍으면 다시 꽂아야 하기 때문이다.
+                       기재란을 다시 쓰려면 펜을 빼야 하고, 다 쓰면 다시 꽂아야 하기 때문이다.
                        다만 2단계에서 «거치된 펜»을 누르면 제거가 아니라 데이터 열람이 자연스럽다. */
                     onClick={() => (pen
                       ? (step === 'connect' ? undockPen(slot) : pickPen(pen.id))
@@ -948,7 +930,7 @@ const CradleGradingModal = ({
    * ──────────────────────────────────────────────────────────── */
   return createPortal(
     <div onClick={handleCloseAttempt} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-      <div onClick={(e) => { e.stopPropagation(); if (menuOpen) setMenuOpen(false); }} style={{ position: 'relative', background: '#F8FAFC', borderRadius: 16, width: '92vw', height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+      <div onClick={(e) => { e.stopPropagation(); }} style={{ position: 'relative', background: '#F8FAFC', borderRadius: 16, width: '92vw', height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
 
         {/* 헤더 */}
         <div style={{ padding: '18px 24px 12px', background: 'white', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -960,30 +942,11 @@ const CradleGradingModal = ({
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
-            {/* [SCR-07 v2.5] ⋯ 메뉴 — [로그 다운로드]. 환경설정의 같은 버튼과 같은 파일을 만든다 (2단계 한가운데서 전화한 교사가 창을 닫지 않고 뽑는 경로) */}
-            <button type="button" onClick={() => { setMenuOpen((x) => !x); setHintDismissed(true); }} aria-label="더 보기" title="더 보기"
-              style={{ background: 'none', border: showLogHint ? '2px solid #2A75F3' : 'none', borderRadius: 8, fontSize: '1.3rem', cursor: 'pointer', color: showLogHint ? '#2A75F3' : '#64748B', padding: '0 6px', lineHeight: 1 }}>⋯</button>
-            {showLogHint && (
-              <div role="tooltip" onClick={() => { setMenuOpen(true); setHintDismissed(true); }}
-                style={{ position: 'absolute', top: 34, right: 36, background: '#1E293B', color: 'white', padding: '8px 12px', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(15,23,42,0.3)', cursor: 'pointer', zIndex: 5 }}>
-                <span style={{ position: 'absolute', top: -6, right: 14, width: 12, height: 12, background: '#1E293B', transform: 'rotate(45deg)' }} />
-                연결 실패 {troubleCount}회 — 반복되면 여기서 진단 로그를 내려받아 고객센터에 보내 주세요 ↗
-                <button type="button" aria-label="닫기" onClick={(e) => { e.stopPropagation(); setHintDismissed(true); }}
-                  style={{ marginLeft: 10, background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', padding: 0 }}>✕</button>
-              </div>
-            )}
-            {menuOpen && (
-              <div style={{ position: 'absolute', top: 30, right: 36, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.15)', padding: 6, minWidth: 200, zIndex: 5 }}>
-                <button type="button" onClick={handleDownloadLog}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', cursor: 'pointer' }}>
-                  ⬇ 로그 다운로드
-                </button>
-                <button type="button" onClick={() => { setMenuOpen(false); setPenDataDialogOpen(true); }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', cursor: 'pointer' }}>
-                  ⬇ 펜 데이터 다운로드
-                </button>
-              </div>
-            )}
+            {/* [SCR-07 v4.18 · BRD-16] [🚨 장애 신고] — ⋯ 메뉴 대신 헤더에 바로 노출 */}
+            <button type="button" onClick={() => setIncidentOpen(true)} title="학교·교사·과제·그룹 정보와 진단 로그·펜 데이터를 함께 시스템 관리자에게 신고합니다."
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              🚨 장애 신고
+            </button>
             <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
           </div>
         </div>
@@ -1351,8 +1314,8 @@ const CradleGradingModal = ({
                         </div>
                       );
                       /* 직접 매칭 액션 — 「이 답안을 [학생 ▾]의 답안으로 채점」. 학생이 정해져 있으면(답안 찾기) 버튼 하나.
-                       * [SCR-07 v2.1] **선택 그룹 북코드 답안 묶음에서만** 매칭된다. 학생 식별의 근거는 번호표 체크 위치이고,
-                       *   번호표를 잘못 찍은 휴먼 에러(중복·미체크·판독 불가)를 같은 그룹 답안지를 보고 바로잡는 것이 이 기능이다.
+                       * [SCR-07 v2.1] **선택 그룹 북코드 답안 묶음에서만** 매칭된다. [v4.19] 학생 식별의 근거는 답안지 기재란 OCR이고,
+                       *   기재란 미기입·판독 오류·중복을 같은 그룹 답안지를 보고 바로잡는 것이 이 기능이다.
                        *   다른 반 북코드 답안지는 이 그룹에 매핑할 수 없다 — 열람만 허용하고 버튼은 비활성화한다. */
                       const matchAction = (pen, book, fixedStudent) => {
                         if (!book.isMine) {
@@ -1420,7 +1383,7 @@ const CradleGradingModal = ({
                           return noteBox('warn', (<><div>같은 학생에 두 펜이 붙었습니다. 답안을 확인하고, 학생을 고르세요.</div>{curBook && matchAction(selectedPen, curBook)}</>));
                         }
                         if (v?.stage === 2) {
-                          return noteBox('warn', (<><div>번호표로 학생을 찾지 못했습니다. 답안을 확인하고, 학생을 고르세요.</div>{curBook && matchAction(selectedPen, curBook)}</>));
+                          return noteBox('warn', (<><div>답안지 기재란으로 학생을 찾지 못했습니다. 답안을 확인하고, 학생을 고르세요.</div>{curBook && matchAction(selectedPen, curBook)}</>));
                         }
                         if (v?.type === 'other_group') {
                           return noteBox('muted', (
@@ -1608,9 +1571,11 @@ const CradleGradingModal = ({
 
       {/* [POP-30] 필수 프로그램 확인 — 크래들 채점은 AiGLE Connect만 요구한다.
           Ncode Print Doctor는 목록에 남기되 흐리게 두어 「지금 할 일」이 하나로 보이게 한다. */}
-      <LogDownloadDialog open={logDialogOpen} onClose={() => setLogDialogOpen(false)} onDownload={doDownloadLog} />
-      <PenDataDownloadDialog open={penDataDialogOpen} penCount={connectedPens.length}
-        onClose={(r) => { setPenDataDialogOpen(false); if (r === 'started') setToast(`펜 데이터 ${connectedPens.length}개를 다운로드\\${PEN_DATA_DIR} 폴더에 저장하고 있습니다.`); }} />
+      {/* [BRD-16] 장애 신고 — 학교·교사·과제·그룹 + 진단 로그·펜 데이터 자동 첨부 */}
+      <IncidentReportDialog open={incidentOpen} onClose={() => setIncidentOpen(false)} onSubmitted={handleIncidentSubmitted}
+        context={{ source: '크래들 일괄 채점', school: '공주 고등학교', teacher: '김 b', teacherId, teacherEmail: 'tch20261zim@gjhs.kr',
+          task: taskTitle, group: groupLabel, studentCount: selectedStudents.length,
+          penFiles: connectedPens.map((p) => `${p.id}_${String(p.mac || '').replace(/:/g, '').slice(0, 6)}.pen`) }} />
       <RequiredProgramModal
         open={programModalOpen}
         onClose={() => setProgramModalOpen(false)}

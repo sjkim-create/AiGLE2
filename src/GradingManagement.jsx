@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf } from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_GUIDE_SAMPLE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
@@ -77,7 +77,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const [isConnectInstalled, setIsConnectInstalled] = useState(() => isConnectDownloaded());
   const [isConnectRunning, setIsConnectRunning] = useState(false);
 
-  // ── 일괄 필기 과정 평가 상태 ──
+  // ── 일괄 필기 과정 분석 상태 ──
   const [isBulkHwModalOpen, setIsBulkHwModalOpen] = useState(false);
   const [bulkHwStatus, setBulkHwStatus] = useState('ready'); // 'ready' | 'processing' | 'completed'
   const [bulkHwProgress, setBulkHwProgress] = useState(0);
@@ -320,7 +320,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     else setSelectedIds([...selectedIds, id]);
   };
 
-  // ── 일괄 필기 과정 평가 ──
+  // ── 일괄 필기 과정 분석 ──
   const bulkHwEligibleIds = selectedIds.filter(id => {
     const s = students.find(st => st.id === id);
     return s && (s.status === '채점 확인' || s.status === '결과 발송 전' || s.status === '결과 발송 완료');
@@ -330,12 +330,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     const eligible = bulkHwEligibleIds;
     const ineligibleCount = selectedIds.length - eligible.length;
     if (eligible.length === 0) {
-      alert('AI 등급평가가 완료된 학생만 과정평가를 실행할 수 있습니다.');
+      alert('AI 등급평가가 완료된 학생만 과정 분석를 실행할 수 있습니다.');
       return;
     }
     if (ineligibleCount > 0) {
       const proceed = window.confirm(
-        `선택된 ${selectedIds.length}명 중 ${ineligibleCount}명은 AI 등급평가 미완료 상태입니다.\nAI 등급평가가 완료된 ${eligible.length}명만 과정평가됩니다. 계속하시겠습니까?`
+        `선택된 ${selectedIds.length}명 중 ${ineligibleCount}명은 AI 등급평가 미완료 상태입니다.\nAI 등급평가가 완료된 ${eligible.length}명만 과정 분석됩니다. 계속하시겠습니까?`
       );
       if (!proceed) return;
     }
@@ -892,7 +892,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       ✓ 검토 완료 처리 ({bulkReviewCompleteIds.length}명)
                     </button>
                   )}
-                  {/* 채점 확인·결과 발송 탭 (수학 한정) — 일괄 과정평가 */}
+                  {/* 채점 확인·결과 발송 탭 (수학 한정) — 일괄 과정 분석 */}
                   {activeTab !== '미채점' && bulkHwEligibleIds.length > 0 && currentTask.type === '수학' && (
                     <button
                       className="btn-bulk-grading"
@@ -901,7 +901,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       disabled={isAnyBgActive}
                       title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
                     >
-                      ✎ 일괄 과정평가 ({bulkHwEligibleIds.length}명)
+                      ✎ 일괄 과정 분석 ({bulkHwEligibleIds.length}명)
                     </button>
                   )}
                   {/* 결과 발송 탭 — 결과발송 */}
@@ -1056,9 +1056,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <div
                           className="card-badge"
                           style={{ background: '#F5F3FF', color: '#8B5CF6', fontWeight: 700 }}
-                          title={`과정평가: ${student.handwritingEvaluation.systemDataLog?.processPattern || ''}`}
+                          title={`과정 분석: ${student.handwritingEvaluation.systemDataLog?.processPattern || ''}`}
                         >
-                          ✎ 과정평가 완료
+                          ✎ 과정 분석 완료
                         </div>
                       )}
                     </div>
@@ -1356,7 +1356,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
               {exportStatus !== 'processing' && <button className="btn-modal-close" onClick={closeModal}>×</button>}
               <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', marginBottom: '0.5rem' }}>📤 채점 결과 내보내기</h2>
               <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: '1rem' }}>
-                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 과정평가 완료 학생은 PDF에 과정평가 내용이 포함됩니다.
+                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 과정 분석 완료 학생은 PDF에 과정 분석 내용이 포함됩니다.
               </p>
 
               {/* [v2.2] 출력 형식 라디오 — 형식 선택에 따라 옵션 영역 동적 분기 */}
@@ -1421,7 +1421,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>이름</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>학년/반/번호</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>상태</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>과정평가</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>과정 분석</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left', width: '70px' }}>미리보기</th>
                         </tr>
                       </thead>
@@ -1498,7 +1498,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             </div>
 
             {/* [v2.4] 리포트 미리보기 팝업 — 페이지 구조 분리
-                 페이지 1: 타이틀 + 문항별 성취도 + 문항 내용[조건부] + 등급평가 + 과정평가[조건부]
+                 페이지 1: 타이틀 + 문항별 성취도 + 문항 내용[조건부] + 등급평가 + 과정 분석[조건부]
                  페이지 2~N: 타이틀 + 학생 답안 (답안 1개당 1페이지, 맨 뒤)
                  화면: 단일 스크롤 + 점선 구분선 + 페이지 배지
                  출력: @media print로 A4 강제 분할 */}
@@ -1596,10 +1596,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <div>정삼각형, 정육각형, 정십이각형의 한 내각의 크기 / 270°를 구성할 수 있는 조합 찾기: <strong>매우 우수(A)</strong> — 학생은 정삼각형, 정육각형, 정십이각형의 한 내각의 크기를 정확히 명시하였으며, 이를 조합하여 270°를 만드는 두 가지 방법(150°+ 60°+ 60°, 150°+ 120°)을 모두 정확하게 찾아내고 그 이유를 논리적으로 설명하였습니다.</div>
                       </div>
 
-                      {/* 4. 과정평가 [조건부, 과정평가 완료 학생만] */}
+                      {/* 4. 과정 분석 [조건부, 과정 분석 완료 학생만] */}
                       {previewStudent.handwritingEvaluation && (
                         <>
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 과정평가</h3>
+                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 과정 분석</h3>
                           <div style={{ background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
                             {/* 유형 캐릭터 — 학생에게 가는 리포트에 상세 화면과 같은 캐릭터를 싣는다 */}
                             {(() => {
@@ -1631,18 +1631,22 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                                 </div>
                               );
                             })()}
-                            {!previewStudent.handwritingEvaluation.insufficient && (<>
-                            <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>등급 매핑 총평</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.evaluationSummary?.totalEvaluation || '-'}</div>
-                            <div style={{ fontWeight: 700, color: '#10B981', marginBottom: '0.25rem' }}>학생의 강점</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.finalFeedback?.whatsGood || '-'}</div>
-                            <div style={{ fontWeight: 700, color: '#F59E0B', marginBottom: '0.25rem' }}>개선 필요 지점</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.finalFeedback?.whatNeedsWork || '-'}</div>
-                            <div style={{ fontWeight: 700, color: '#2A75F3', marginBottom: '0.25rem' }}>성장 방향 제안</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.finalFeedback?.letsGrowTogether || '-'}</div>
-                            <div style={{ fontWeight: 700, color: '#8B5CF6', marginBottom: '0.25rem' }}>행동 지표 분석 및 병목 구간</div>
-                            <div>{previewStudent.handwritingEvaluation.finalFeedback?.contentBottleneckAnalysis || '-'}</div>
-                            </>)}
+                            {/* 강점·개선·성장 제안은 등급평가 피드백에 합쳐졌으므로 여기서는 총평과 밀착 가이드만 싣는다 */}
+                            {!previewStudent.handwritingEvaluation.insufficient && (() => {
+                              const hw = previewStudent.handwritingEvaluation;
+                              const g = hw.guide || PROCESS_GUIDE_SAMPLE;
+                              return (<>
+                                <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>총평</div>
+                                <div style={{ marginBottom: '0.75rem' }}>{hw.evaluationSummary?.totalEvaluation || '-'}</div>
+                                <div style={{ fontWeight: 700, color: '#8B5CF6', marginBottom: '0.35rem' }}>학습 행동 밀착 가이드</div>
+                                <div style={{ borderLeft: '2px solid #DDD6FE', paddingLeft: '12px' }}>
+                                  <div style={{ fontWeight: 700, color: '#1E293B', marginBottom: '0.15rem' }}>문제 해석</div>
+                                  <div style={{ marginBottom: '0.6rem' }}>{g.interpretation}</div>
+                                  <div style={{ fontWeight: 700, color: '#1E293B', marginBottom: '0.15rem' }}>문제 접근 방법</div>
+                                  <div>{g.approach}</div>
+                                </div>
+                              </>);
+                            })()}
                           </div>
                         </>
                       )}
@@ -1671,7 +1675,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         );
       })()}
 
-      {/* ── 일괄 과정평가 모달 ── */}
+      {/* ── 일괄 과정 분석 모달 ── */}
       {isBulkHwModalOpen && (
         <div className="modal-overlay" onClick={() => bulkHwStatus === 'completed' && setIsBulkHwModalOpen(false)}>
           <div
@@ -1685,7 +1689,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
               <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✎</div>
               <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225' }}>
-                {bulkHwStatus === 'processing' ? '일괄 과정평가 진행 중' : '일괄 과정평가 결과'}
+                {bulkHwStatus === 'processing' ? '일괄 과정 분석 진행 중' : '일괄 과정 분석 결과'}
               </h2>
             </div>
 
@@ -1736,7 +1740,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                 {bulkHwResults.success.length > 0 && (
                   <div style={{ marginBottom: '1rem', border: '1px solid #E5E7EB', borderRadius: '10px', overflow: 'hidden' }}>
                     <div style={{ padding: '0.75rem 1rem', background: '#F5F3FF', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#6D28D9', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>✎ 과정평가 완료 학생</span>
+                      <span>✎ 과정 분석 완료 학생</span>
                       <span style={{ fontWeight: 400, color: '#8A94A1' }}>클릭 시 상세보기</span>
                     </div>
                     <div style={{ maxHeight: '220px', overflowY: 'auto' }}>

@@ -4,26 +4,31 @@
  *
  * 인과관계(입력 순서):
  *   문항 내용이 있어야 채점 기준을 만들 수 있으므로 문항 입력이 채점 기준 설정보다 선행한다.
- *   - 자동평가: 문항별 성취기준을 선택 → 채점 단계(3/4/5) 선택 시 DB 평가지표 노출
- *   - 자율평가: 문항 내용을 기반으로 AI가 채점 기준을 자동 생성. 문항별 1~5개 채점 기준,
- *               각 기준에 배점 + 배점 단계(수준)를 넣으면 점수 표가 자동 생성된다.
+ *   - [v3.74] 자동평가 폐기 — 평가 기준은 자율평가 루브릭 단일 체제.
+ *   - Step 4 「평가 기준」 진입 시 성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계한다.
+ *     문항별 범주(채점 기준) 3개 기본(1~5개 추가·삭제), 범주마다 평가 내용 3개(점수 구간 3개 고정, 배점 → 0점).
+ *     채점 등급(3/4/5등급) 기본값은 학교급별(초등 3 / 중·고등 5).
  *   - 입력한 점수는 등급으로 환산되어 결과를 낸다.
  *
- * Step 1 기본 정보 → Step 2 문항 입력 → Step 3 평가 방식·채점 기준 → Step 4 등급 환산·미리보기
+ * Step 1 기본 정보 → Step 2 문항 입력 → Step 3 성취기준 → Step 4 평가 기준 → Step 5 그룹 배포·출력
  *
- * 주의: 「AI 자동 생성」은 현재 샘플(stub) 동작이며 실제 LLM 연동은 미구현이다.
+ * 주의: 「AI 루브릭 자동 설계」는 현재 샘플(stub) 동작이며 실제 LLM 연동은 미구현이다.
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { subjectsOf, gradesOf, competenciesOf, evalAreasOf } from './lib/gradingShared';
+import {
+  subjectsOf, gradesOf, competenciesOf, evalAreasOf,
+  defaultGradeScale,
+  defaultInterval, buildScoreRows, makeCriterion,
+  aiFillCriteria, designRubric, criteriaHaveContent,
+} from './lib/gradingShared';
 import { buildDirectInputTask } from './lib/taskSchema';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
-import NumberTagPreviewModal from './NumberTagPreviewModal';
 
 const STEPS = [
   { n: 1, label: '기본 정보',          icon: '📋' },
   { n: 2, label: '문항 입력',          icon: '📝' },
   { n: 3, label: '성취기준',           icon: '🎯' },
-  { n: 4, label: '평가 방식·채점 기준', icon: '⚖️' },
+  { n: 4, label: '평가 기준',          icon: '⚖️' },
   { n: 5, label: '그룹 배포·출력',      icon: '🚀' },
 ];
 
@@ -40,7 +45,7 @@ const MOCK_STANDARDS = [
 const MOCK_COMPETENCIES = ['비판적·창의적 사고 역량', '자기 성찰·계발 역량', '의사소통 역량', '공동체·대인관계 역량'];
 const MOCK_EVAL_AREAS = ['듣기·말하기', '읽기', '쓰기', '문법', '문학'];
 
-// 평가 단계(등급 체계)별 루브릭 레벨 — DSH-02 등급명·색상과 정합. 자동평가의 DB 평가지표.
+// 평가 단계(등급 체계)별 루브릭 레벨 — DSH-02 등급명·색상과 정합.
 const LEVEL_META = {
   '매우 우수': { color: '#10B981', bg: '#D1FAE5', desc: '성취기준을 탁월하게 달성하며, 논리·근거·표현이 모두 빼어나다.' },
   '우수':     { color: '#2A75F3', bg: '#EFF6FF', desc: '성취기준을 충실히 달성하며, 논리적 일관성과 근거가 분명하다.' },
@@ -55,39 +60,6 @@ const RUBRIC_LEVELS = {
   5: ['매우 우수', '우수', '보통', '노력', '매우 노력'],
 };
 
-// 자동평가 채점 단계 — DB 평가지표 템플릿은 3단계/5단계로 제공된다 (2022 개정 교육과정 내용체계 기반)
-const AUTO_SCALES = [3, 5];
-// 채점 기준표 등급 컬럼 (라벨 + 알파벳 등급)
-const AUTO_LEVELS = {
-  3: [{ name: '우수', letter: 'A' }, { name: '보통', letter: 'B' }, { name: '노력', letter: 'C' }],
-  5: [{ name: '매우 우수', letter: 'A' }, { name: '우수', letter: 'B' }, { name: '보통', letter: 'C' }, { name: '노력', letter: 'D' }, { name: '매우 노력', letter: 'E' }],
-};
-// 채점 기준표 행(범주) — 2022 개정 교육과정 내용체계 4범주
-const RUBRIC_CATEGORIES = [
-  { key: 'A', name: '지식 이해 및 통합 적용' },
-  { key: 'B', name: '과정·기능 및 탐구 수행' },
-  { key: 'C', name: '논리적 구성 및 표현력' },
-  { key: 'D', name: '가치·태도 및 성찰' },
-];
-// 범주 × 단계별 템플릿 서술 — [categoryKey][scale] = [등급 순서대로]
-const RUBRIC_TEMPLATE = {
-  A: {
-    3: ['대화의 원리와 공동체의 담화 관습을 정확히 이해하여 실제 소통 상황에 능숙하게 적용함.', '대화의 원리를 대체로 이해하고 있으나 실제 상황 적용이 다소 전형적임.', '대화의 원리나 담화 관습에 대한 기초적인 이해가 부족함.'],
-    5: ['대화의 원리와 공동체의 담화 관습을 깊이 있게 이해하여 다양한 소통 상황에 창의적으로 적용함.', '대화의 원리와 담화 관습을 정확히 이해하여 실제 소통 상황에 능숙하게 적용함.', '대화의 원리를 대체로 이해하고 있으나 실제 상황 적용이 다소 전형적임.', '대화의 원리나 담화 관습에 대한 이해가 부분적임.', '대화의 원리나 담화 관습에 대한 기초적인 이해가 부족함.'],
-  },
-  B: {
-    3: ['자신의 소통 과정을 정교하게 점검하며 상황에 맞는 유연한 소통 전략을 수행함.', '소통 과정에 대한 기본적인 점검을 수행하나 전략 활용이 단편적임.', '자신의 듣기·말하기 과정을 점검하거나 조정하는 기능이 미흡함.'],
-    5: ['자신의 소통 과정을 비판적으로 점검하고 다양한 전략을 통합적으로 운용함.', '자신의 소통 과정을 정교하게 점검하며 상황에 맞는 유연한 소통 전략을 수행함.', '소통 과정에 대한 기본적인 점검을 수행하나 전략 활용이 단편적임.', '소통 과정 점검이 단순하며 전략 수행에 어려움이 있음.', '자신의 듣기·말하기 과정을 점검하거나 조정하는 기능이 미흡함.'],
-  },
-  C: {
-    3: ['상대의 의도를 고려하여 자신의 생각을 논리적이고 정중하게 조직하여 표현함.', '자신의 생각을 전달 가능한 수준으로 조직하나 표현의 정교함이 부족함.', '표현이 모호하며 대화의 논리적 연결이 부자연스러움.'],
-    5: ['상대와 맥락을 깊이 고려하여 생각을 설득력 있고 정교하게 조직·표현함.', '상대의 의도를 고려하여 자신의 생각을 논리적이고 정중하게 조직하여 표현함.', '자신의 생각을 전달 가능한 수준으로 조직하나 표현의 정교함이 부족함.', '생각의 조직이 느슨하며 표현이 다소 모호함.', '표현이 모호하며 대화의 논리적 연결이 부자연스러움.'],
-  },
-  D: {
-    3: ['상대를 존중하고 공감하는 태도가 탁월하며 자신의 언어 습관을 깊이 있게 성찰함.', '소통 예절을 준수하며 일반적인 수준의 자기 성찰을 수행함.', '소통 태도가 소극적이며 공동체의 담화 예절 준수가 미흡함.'],
-    5: ['상대를 깊이 존중·공감하며 자신의 언어 습관을 지속적으로 성찰·개선함.', '상대를 존중하고 공감하는 태도가 탁월하며 자신의 언어 습관을 깊이 있게 성찰함.', '소통 예절을 준수하며 일반적인 수준의 자기 성찰을 수행함.', '소통 예절 준수가 부분적이며 자기 성찰이 피상적임.', '소통 태도가 소극적이며 공동체의 담화 예절 준수가 미흡함.'],
-  },
-};
 // 성취기준 텍스트에서 코드([10국어1-01-01]) 추출
 const stdCode = (text) => {
   const m = (text || '').match(/\[([^\]]+)\]/);
@@ -110,57 +82,18 @@ const GRADE_NAMES = {
   5: GRADE_CUTOFFS[5].map((b) => b.name),
 };
 
-// ── 자율평가 점수 모델: 배점(M)·단계(n)·간격(d)의 논리 제약 ──────────────
-// 점수 행은 배점에서 간격만큼 차감한다: [M, M-d, M-2d, ...]  (최저 등급이 0점 미만이 되지 않도록)
-//  • 단계 n: 2 ~ (M+1)  → 간격 1이면 배점부터 0점까지 모든 정수를 단계로 둘 수 있어 최대 단계 = 배점+1
-//  • 간격 d: 1 ~ floor(M/(n-1))  → 최대 간격이면 최저 등급 = 0점
-//  예) 배점 6점 → 최대 7단계(간격1 → 6/5/4/3/2/1/0)
-const clampLevels = (maxPoints) => {
-  const M = Number(maxPoints) || 0;
-  if (M < 2) return 2;
-  return Math.max(2, M + 1);
-};
-// 배점 간격 최대값 — floor(배점/(단계-1)). 이 최대 간격을 쓰면 최저 등급이 정확히 0점이 된다
-//  예) 6점·3단계 → 간격 3 → [6,3,0] / 6점·4단계 → 간격 2 → [6,4,2,0] / 6점·2단계 → 간격 6 → [6,0]
-const maxIntervalFor = (maxPoints, levels) => {
-  const M = Number(maxPoints) || 0;
-  const n = Math.max(2, Number(levels) || 2);
-  if (M < 2) return 1;
-  return Math.max(1, Math.floor(M / (n - 1)));
-};
-// 기본 간격 — 최저 등급이 0점이 되도록 최대 간격을 기본값으로 (배점부터 0점까지)
-const defaultInterval = (maxPoints, levels) => maxIntervalFor(maxPoints, levels);
-// 점수 행 생성 — 예) 6점·3단계·간격2 → [6, 4, 2]
-const buildScoreRows = (maxPoints, levels, interval, prevRows = []) => {
-  const M = Number(maxPoints) || 0;
-  // [v3.73] 단계 수(n)는 사용자가 스텝퍼로 정한 값을 그대로 쓴다 — 배점(M)으로 clamp 하지 않는다.
-  // 舊 로직은 배점을 직접 타이핑하는 도중의 빈 값·1점 같은 중간 상태에서 n을 2로 강등시켜,
-  // 늘려둔 입력 구간과 거기 적어둔 평가 내용을 되돌릴 수 없게 지웠다.
-  const n = Math.max(2, Number(levels) || 2);
-  const d = Math.max(1, Math.min(maxIntervalFor(M, n), Number(interval) || 1));
-  return Array.from({ length: n }, (_, i) => ({
-    score: Math.max(0, M - i * d),
-    desc: prevRows[i]?.desc || '',
-  }));
-};
-
 let _uid = 1;
 const uid = (p) => `${p}-${_uid++}`;
 
-const makeCriterion = () => {
-  // [v3.73] 기본 점수 입력 구간 = 3단계 유지. 배점 입력 시 2단계로 줄어들던 현상은 buildScoreRows의 단계 clamp 제거로 해소했다
-  const maxPoints = 6, levels = 3, interval = defaultInterval(maxPoints, levels); // 6·3단계 → 간격3 → [6,3,0]
-  return { id: uid('c'), name: '', maxPoints, levels, interval, rows: buildScoreRows(maxPoints, levels, interval) };
-};
 const makeQuestion = (idx) => ({
   id: uid('q'),
   content: '',
   evaluationAreas: [],  // [v2.7] 문항별 핵심평가영역 (다중) — 독립 관리
   standard: '',         // 문항별 성취기준 1개 (sid) — v2.31 standards[0]과 동기화
   standards: [],        // [v2.31] 문항별 성취기준 다중 선택 (sid 배열)
-  points: '',           // 자동평가: 문항 배점
+  points: '',           // 문항 총 배점 (채점 기준 배점 합과 일치해야 함)
   modelAnswer: { html: '' }, // [v2.67] contenteditable HTML 단일 (텍스트+이미지 inline)
-  criteria: [makeCriterion()], // 자율평가: 채점 기준 1~5개
+  criteria: [makeCriterion()], // 채점 기준 1~5개 — Step 4 최초 진입 시 AI가 자동 설계로 교체
 });
 
 // 인라인 에디터 — 툴바가 붙은 편집 영역(textarea가 곧 에디터). 서식 버튼은 표시용.
@@ -210,35 +143,28 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   // [v2.11] worksheetOpen·worksheetMode state 폐기 — 미리보기 영역·모달 통째 제거
   // [v2.10] 응시 설정 — 복사·붙여넣기 차단 (학생 응시 화면 정책, TaskRegistration 직접입력1과 동일)
   const [blockCopyPaste, setBlockCopyPaste] = useState(false);
-  // [v2.15] 자율평가 평가내용의 수식 입력 모달 — { qid, cid, ri, initialLatex, mode: 'new'|'edit', editIdx? }
+  // [v2.15] 평가내용의 수식 입력 모달 — { qid, cid, ri, initialContent }
   const [formulaModal, setFormulaModal] = useState(null);
   // AI 개선 모달 (문항 내용)
   const [aiImprove, setAiImprove] = useState(null); // { qid, original, improved }
-  const [evalMode, setEvalMode] = useState('auto'); // 'auto' | 'self'
-  const [autoScale, setAutoScale] = useState(3);     // 자동평가 채점 단계(3/5) → DB 평가지표 템플릿
+  const evalMode = 'self'; // [v3.74] 자동평가 폐기 — 자율평가 단일 체제 (저장 스키마 호환용 고정값)
   const [resultScale, setResultScale] = useState(3); // 등급 환산 체계
-  const [selfScale, setSelfScale] = useState(3);     // [v3.47] 자율평가 단계 — 모든 채점기준 levels + 등급 환산 일괄 동기화 (3/4/5)
-  const [demoScore, setDemoScore] = useState('');    // 등급 환산 미리보기 입력
-  const [gradePreviewOpen, setGradePreviewOpen] = useState(false); // 등급 환산 미리보기 모달
+  const [selfScale, setSelfScale] = useState(3);     // 채점 등급(3/4/5) — Step 4 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정. 점수 구간은 3개 고정
+  // [v3.74] Step 4 진입 시 AI 루브릭 자동 설계 완료 여부 { [qid]: true } — 문항당 1회만 설계, 이후는 교사 수정 보존
+  const [rubricReady, setRubricReady] = useState({});
   const [worksheetPreviewOpen, setWorksheetPreviewOpen] = useState(false); // [TSK-05 v2.30] 평가 답안지 미리보기 모달
-  const [numberTagPreviewOpen, setNumberTagPreviewOpen] = useState(false); // [TSK-05 v3.4] 스마트펜 번호표 미리보기 모달
   const [stdOpen, setStdOpen] = useState({}); // 문항별 성취기준 목록 펼침 상태 { [qid]: bool }
-  // [v2.44] 자동평가 채점 기준표 영역 — 다중 standards 시 현재 보고 있는 sid 추적 { [qid]: sid }
-  const [activeRubricStdMap, setActiveRubricStdMap] = useState({});
-  // [v2.44] 자율평가 등급 환산 미리보기 — 우측 fixed 패널 펼침/숨김 (기본 펼침)
-  const [previewExpanded, setPreviewExpanded] = useState(true);
   // [v2.58] 한 배너 통합 — 활용(좌) + 주의(우) 비대칭 분할. warnExpanded=true 시 주의가 큰 영역
   const [warnExpanded, setWarnExpanded] = useState(false);
   const [taskStdOpen, setTaskStdOpen] = useState(false); // [v3.46] 과제 단위 성취기준 펼침 상태 — 미선택=자동 펼침
   const [modelAnsOpen, setModelAnsOpen] = useState({}); // 문항별 모범답안 펼침 { [qid]: bool } — 미지정 시 펼침
   const toggleModelAns = (qid) => setModelAnsOpen((p) => ({ ...p, [qid]: !(p[qid] ?? true) }));
   const [modelAnsFocused, setModelAnsFocused] = useState(false); // [v2.66] 활성 문항 모범답안 textarea focus — 오버레이 자동 숨김
-  const [rubricOverrides, setRubricOverrides] = useState({}); // 채점 기준표 셀 수정값: `${qid}|${sid}|${catKey}|${lvIdx}` → text
-  // 그룹 배포 (TSK-05) — 번호표 배포 = 과제 할당(채점 관리 미채점, 학생 노출 X), 학생 배포 = 노출
+  // 그룹 배포 (TSK-05) — [v3.75] printed = 답안지 출력 완료(채점 관리 미채점 등록, 학생 노출 X), studentDeployed = 학생 노출
   const [groupList, setGroupList] = useState([
-    { id: 1, label: '1학년 1반', studentCount: 28, checked: false, codeDeployed: false, studentDeployed: false },
-    { id: 2, label: '1학년 2반', studentCount: 27, checked: false, codeDeployed: false, studentDeployed: false },
-    { id: 3, label: '1학년 3반', studentCount: 26, checked: false, codeDeployed: false, studentDeployed: false },
+    { id: 1, label: '1학년 1반', studentCount: 28, checked: false, printed: false, studentDeployed: false },
+    { id: 2, label: '1학년 2반', studentCount: 27, checked: false, printed: false, studentDeployed: false },
+    { id: 3, label: '1학년 3반', studentCount: 26, checked: false, printed: false, studentDeployed: false },
   ]);
   // [v2.52] 학생 1명당 인쇄할 답안지 수 — 기본 1, 범위 1~10 (v2.54: 호환용 유지)
   const [answerSheetCopies, setAnswerSheetCopies] = useState(1);
@@ -247,38 +173,6 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   const getCopies = (qid) => copiesPerQuestion[qid] ?? 1;
   const setCopies = (qid, n) => setCopiesPerQuestion((p) => ({ ...p, [qid]: Math.max(1, Math.min(10, n)) }));
   const totalCopies = questions.reduce((s, q) => s + getCopies(q.id), 0);
-
-  // 채점 기준표 셀 값 (수정값 우선, 없으면 템플릿) — 문항·성취기준 단위 키
-  const rubricCell = (qid, sid, catKey, lvIdx, scale) => {
-    const k = `${qid}|${sid}|${catKey}|${lvIdx}`;
-    if (k in rubricOverrides) return rubricOverrides[k];
-    return RUBRIC_TEMPLATE[catKey]?.[scale]?.[lvIdx] || '';
-  };
-  const setRubricCell = (qid, sid, catKey, lvIdx, text) =>
-    setRubricOverrides((p) => ({ ...p, [`${qid}|${sid}|${catKey}|${lvIdx}`]: text }));
-  // [정책] 채점 기준표 재생성 — 빈 칸(override === '')만 템플릿 값으로 채움, 수동 수정 보존. 재생성하려면 ✕로 비운 뒤 호출.
-  const regenerateRubric = (qid, sid, scale) => {
-    if (!sid) { toast('이 문항의 성취기준을 먼저 선택해 주세요.'); return; }
-    let filled = 0, skipped = 0;
-    setRubricOverrides((p) => {
-      const next = { ...p };
-      RUBRIC_CATEGORIES.forEach((cat) => {
-        for (let lvIdx = 0; lvIdx < scale; lvIdx++) {
-          const k = `${qid}|${sid}|${cat.key}|${lvIdx}`;
-          const cur = k in next ? next[k] : (RUBRIC_TEMPLATE[cat.key]?.[scale]?.[lvIdx] || '');
-          if (cur && cur.trim()) { skipped++; continue; }
-          const tpl = RUBRIC_TEMPLATE[cat.key]?.[scale]?.[lvIdx] || '';
-          if (tpl) { next[k] = tpl; filled++; }
-        }
-      });
-      return next;
-    });
-    if (filled === 0) toast('빈 칸이 없습니다. ✕ 버튼으로 칸을 비운 뒤 다시 실행하세요.');
-    else toast(`빈 칸 ${filled}개를 템플릿으로 채웠습니다. 수동 수정한 ${skipped}개 칸은 보존됨.`);
-  };
-  // 단일 셀 비우기 (override = '')
-  const clearRubricCell = (qid, sid, catKey, lvIdx) =>
-    setRubricOverrides((p) => ({ ...p, [`${qid}|${sid}|${catKey}|${lvIdx}`]: '' }));
 
   const toast = (m) => showToast && showToast(m);
 
@@ -322,40 +216,34 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
     }));
   }, [basicInfo.subject]);
 
-  // [v3.47] 자율평가 selfScale 변경 시 — resultScale(등급 환산 체계)만 동기화. 채점기준 c.levels(점수 행 수)는 채점기준별 자유 유지.
-  useEffect(() => {
-    if (evalMode !== 'self') return;
-    setResultScale(selfScale);
-  }, [selfScale, evalMode]);
+  // [v3.47] selfScale 변경 시 — resultScale(등급 환산 체계)만 동기화. 채점기준 c.levels(점수 행 수)는 채점기준별 자유 유지.
+  useEffect(() => { setResultScale(selfScale); }, [selfScale]);
 
-  // [v3.45] 브라우저 닫기 시 자율평가 합 불일치가 있으면 균등 재분배 후 자동 저장 (sessionStorage)
+  // [v3.74] Step 4 「평가 기준」 진입 시 — 아직 설계되지 않은 문항의 채점 루브릭을 AI가 자동 설계 (샘플 stub)
+  //   · 성취기준(핵심평가영역)·문항 내용을 근거로 범주(채점 기준) 3개 × 평가 내용 3개(점수 구간 3개 고정)
+  //   · 채점 등급 기본값 = 학교급별 (초등 3등급 / 중·고등 5등급). 최초 1회만 적용, 이후 교사 수정 보존
+  //   · 교사가 이미 채점 기준을 입력한 문항(복원 데이터 등)은 건드리지 않고 설계 완료로 간주
   useEffect(() => {
-    const handler = () => {
-      if (evalMode !== 'self') return;
-      const hasMismatch = questions.some((q) => {
-        const total = Number(q.points) || 0;
-        if (!total) return false;
-        const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-        return sum !== total;
-      });
-      if (!hasMismatch) return;
-      try {
-        const redistributed = questions.map((q) => {
-          const total = Number(q.points) || 0;
-          if (!total) return q;
-          const n = q.criteria.length;
-          if (!n) return q;
-          const base = Math.floor(total / n);
-          const rem = total - base * n;
-          return { ...q, criteria: q.criteria.map((c, i) => ({ ...c, maxPoints: base + (i < rem ? 1 : 0) })) };
-        });
-        sessionStorage.setItem(`autoSavedTask_${basicInfo.title || 'untitled'}`,
-          JSON.stringify({ title: basicInfo.title, evalMode, questions: redistributed, autoRedistributed: true, timestamp: Date.now() }));
-      } catch {}
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [evalMode, questions, basicInfo.title]);
+    if (step !== 4) return;
+    const pending = questions.filter((q) => !rubricReady[q.id]);
+    if (pending.length === 0) return;
+    const scale = defaultGradeScale(basicInfo.schoolLevel);
+    if (Object.keys(rubricReady).length === 0) setSelfScale(scale);
+    const designed = {};
+    pending.filter((q) => !criteriaHaveContent(q.criteria)).forEach((q) => {
+      const std = MOCK_STANDARDS.find((x) => x.id === q.standard);
+      designed[q.id] = designRubric(std?.area || '평가 영역');
+    });
+    setQuestions((qs) => qs.map((q) => {
+      const criteria = designed[q.id];
+      if (!criteria) return q;
+      return { ...q, criteria }; // [v3.77] 배점·총 배점은 비워 둔다 (교사 입력)
+    }));
+    setRubricReady((p) => { const n = { ...p }; pending.forEach((q) => { n[q.id] = true; }); return n; });
+    if (Object.keys(designed).length > 0) toast(`성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. (${basicInfo.schoolLevel} 기본 ${scale}등급 · 범주 3개 · 범주별 평가 내용 3개) 검토 후 수정하세요.`);
+  }, [step]);
+
+  // [v3.77] 舊 [v3.45] 브라우저 닫기 시 균등 재분배 자동 저장 폐기 — 총 배점은 범주 배점에 영향을 주지 않는다
 
 
   // ── 상태 업데이트 헬퍼 ──────────────────────────────────────────────
@@ -389,7 +277,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
     if (isModelAnswerFilled(q)) return true;
     if (q.standard) return true;
     if (q.points !== '' && Number(q.points) > 0) return true;
-    if (Array.isArray(q.criteria) && q.criteria.some((c) => (c.name && c.name.trim()) || c.rows.some((r) => r.desc && r.desc.trim()))) return true;
+    if (criteriaHaveContent(q.criteria)) return true;
     return false;
   };
   // 탭의 (삭제 -) 클릭 처리 — 내용이 있으면 확인 모달, 없으면 즉시 삭제
@@ -599,45 +487,19 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   };
 
   // 자율평가 — 채점 기준 CRUD
-  // [정책] 자율평가 — q.points(총 배점) 입력 시 채점기준 추가/재분배에 사용. 미입력이면 makeCriterion 기본값 유지.
-  // 균등 분배 후 maxPoints에 맞게 levels·interval·rows도 자동 재구성 (기존 평가 내용은 보존)
-  const rebuildCriterionForMaxPoints = (c, mp) => {
-    const M = mp;
-    // [v3.73] 총 배점 재분배도 단계 수는 유지한다 — 배점만 바뀌고 입력 구간·평가 내용은 그대로
-    const levels = Math.max(2, c.levels || 2);
-    // 배점이 아직 2점 미만인 「입력 중」 상태에서는 간격도 건드리지 않는다 (배점을 되돌리면 원래 점수 배열로 복귀)
-    const interval = M >= 2
-      ? Math.max(1, Math.min(maxIntervalFor(M, levels), c.interval || 1))
-      : Math.max(1, c.interval || 1);
-    return { ...c, maxPoints: mp, levels, interval, rows: buildScoreRows(mp, levels, interval, c.rows) };
-  };
-  const distributeTotal = (criteria, total) => {
-    const n = criteria.length;
-    if (!total || n === 0) return criteria;
-    const base = Math.floor(total / n);
-    const rem = total - base * n;
-    return criteria.map((c, i) => rebuildCriterionForMaxPoints(c, base + (i < rem ? 1 : 0)));
-  };
+  // [v3.77] 총 배점 → 범주 배점 균등 재분배(distributeTotal·redistributeTotal) 폐기 — 총 배점은 범주 배점에 영향을 주지 않는다
   const addCriterion = (qid) =>
     setQuestions((qs) => qs.map((q) => {
       if (q.id !== qid) return q;
       if (q.criteria.length >= 5) { toast('채점 기준은 문항당 최대 5개까지 추가할 수 있습니다.'); return q; }
-      const nextCriteria = [...q.criteria, makeCriterion()];
-      const total = Number(q.points) || 0;
-      return { ...q, criteria: total ? distributeTotal(nextCriteria, total) : nextCriteria };
-    }));
-  const redistributeTotal = (qid) =>
-    setQuestions((qs) => qs.map((q) => {
-      if (q.id !== qid) return q;
-      const total = Number(q.points) || 0;
-      if (!total) { toast('먼저 총 배점을 입력해 주세요.'); return q; }
-      return { ...q, criteria: distributeTotal(q.criteria, total) };
+      return { ...q, criteria: [...q.criteria, makeCriterion()] }; // [v3.74] 범주 추가 — 점수 구간 3개 고정, 배점 빈 값
     }));
   const removeCriterion = (qid, cid) =>
     setQuestions((qs) => qs.map((q) => {
       if (q.id !== qid) return q;
       if (q.criteria.length <= 1) { toast('채점 기준은 문항당 최소 1개가 필요합니다.'); return q; }
-      return { ...q, criteria: q.criteria.filter((c) => c.id !== cid) };
+      const criteria = q.criteria.filter((c) => c.id !== cid);
+      return { ...q, criteria, points: String(criteria.reduce((sum, c) => sum + (Number(c.maxPoints) || 0), 0)) }; // [v3.79] 총 배점 = 합계 동기화
     }));
   const updateCriterion = (qid, cid, patch) =>
     setQuestions((qs) => qs.map((q) => {
@@ -650,9 +512,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
         if ('maxPoints' in patch || 'levels' in patch || 'interval' in patch) {
           const M = Number(merged.maxPoints) || 0;
           merged.levels = Math.max(2, Number(merged.levels) || 2);
-          merged.interval = M >= 2
-            ? Math.max(1, Math.min(maxIntervalFor(M, merged.levels), Number(merged.interval) || 1))
-            : Math.max(1, Number(merged.interval) || 1);
+          // [v3.74] 배점 간격 선택 폐기 — 배점이 바뀌면 간격은 최대값(배점÷2)으로 재산출 (배점 → 0점 균등 분배)
+          merged.interval = M >= 2 ? defaultInterval(M, merged.levels) : Math.max(1, Number(merged.interval) || 1);
           merged.rows = buildScoreRows(merged.maxPoints, merged.levels, merged.interval, c.rows);
         }
         return merged;
@@ -665,26 +526,9 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
       return { ...q, criteria: nextCriteria };
     }));
 
-  // [v2.32] 총 배점 변경 → 채점 기준 maxPoints 자동 균등 재분배
-  const updateQuestionPoints = (qid, raw) =>
-    setQuestions((qs) => qs.map((q) => {
-      if (q.id !== qid) return q;
-      const total = Number(raw) || 0;
-      if (total <= 0 || q.criteria.length === 0) return { ...q, points: raw };
-      return { ...q, points: raw, criteria: distributeTotal(q.criteria, total) };
-    }));
+  // [v3.79] 총 배점 입력 폐기 — 범주 배점 합계를 표시만 한다 (q.points는 합계로 항상 동기화)
 
-  // 배점 단계 +/- (최소 2, 최대 min(5, 배점+1))
-  const changeCriterionLevels = (qid, cid, delta) => {
-    const q = questions.find((x) => x.id === qid);
-    const c = q?.criteria.find((x) => x.id === cid);
-    if (!c) return;
-    const M = Number(c.maxPoints) || 0;
-    const next = c.levels + delta;
-    if (next < 2) { toast('배점 단계는 최소 2단계입니다.'); return; }
-    if (next > clampLevels(M)) { toast(`배점 ${M}점에서는 최대 ${clampLevels(M)}단계까지 가능합니다. 배점을 높이면 단계를 늘릴 수 있습니다.`); return; }
-    updateCriterion(qid, cid, { levels: next });
-  };
+  // [v3.74] 점수 구간(배점 단계)은 3개 고정 — 舊 changeCriterionLevels(스텝퍼) 폐기
   const updateRowDesc = (qid, cid, rowIdx, desc) =>
     setQuestions((qs) => qs.map((q) => {
       if (q.id !== qid) return q;
@@ -731,7 +575,9 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
       };
     }));
   // 균등 분배 — 배점부터 0점까지 균등 분배(간격을 최대로 재설정, 평가 내용은 보존)
-  const redistribute = (qid, cid) =>
+  const redistribute = (qid, cid) => {
+    const c0 = questions.find((x) => x.id === qid)?.criteria.find((x) => x.id === cid);
+    if (c0 && !(Number(c0.maxPoints) > 0)) { toast('먼저 배점을 입력해 주세요.'); return; }
     setQuestions((qs) => qs.map((q) => {
       if (q.id !== qid) return q;
       return {
@@ -743,45 +589,25 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
         }),
       };
     }));
+  };
   // [v2.43] distributeAllByGrade 함수 폐기 — 배점 단계 기능과 역할 중복
   // 점수 내림차순(위 → 아래로 낮아짐) 여부
   const rowsDescending = (rows) => rows.every((r, i) => i === 0 || (Number(rows[i - 1].score) || 0) > (Number(r.score) || 0));
 
-  // 자율평가 — AI 자동 생성(샘플).
-  // 교사가 설정한 채점 기준의 배점·단계·간격(점수 구조)은 그대로 유지하고,
-  // 기준명(주제)·단계별 평가 내용만 성취기준·문항에 맞게 채운다.
-  const AI_CRITERIA_NAMES = ['내용 이해와 적용', '논리적 구성', '표현의 정확성', '근거의 타당성', '창의적 사고'];
-  const AI_QUALITIES = ['탁월하게', '충실히', '대체로', '부분적으로', '미흡하게'];
+  // AI 채점 기준 생성(샘플) — 교사가 설정한 배점·단계·간격(점수 구조)은 그대로 유지하고,
+  // 빈 채점 기준명·평가 내용만 성취기준·문항에 맞게 채운다. (수동 수정한 칸 보존 — 재생성하려면 ✕로 비운 뒤 재호출)
   const aiGenerateCriteria = (qid) => {
     const q = questions.find((x) => x.id === qid);
     if (!q || !q.content.trim()) { toast('AI 생성을 위해 문항 내용을 먼저 입력해 주세요.'); return; }
     const std = MOCK_STANDARDS.find((s) => s.id === q.standard);
-    const area = std?.area || '평가 영역';
-    const qualityFor = (i, n) => (n <= 1 ? AI_QUALITIES[0] : AI_QUALITIES[Math.round((i / (n - 1)) * (AI_QUALITIES.length - 1))]);
-    // [정책] 사용자가 수동 수정한 값(비어있지 않은 name·desc)은 보존. 빈 칸만 AI가 채운다.
-    // 재생성하고 싶으면 ✕ 버튼으로 비운 뒤 재호출.
-    let filled = 0, skipped = 0;
-    const criteria = q.criteria.map((c, ci) => {
-      const aiName = AI_CRITERIA_NAMES[ci % AI_CRITERIA_NAMES.length];
-      const n = c.rows.length;
-      const nextName = (c.name && c.name.trim()) ? (skipped++, c.name) : (filled++, aiName);
-      const rows = c.rows.map((r, ri) => {
-        if (r.desc && r.desc.trim()) { skipped++; return r; }
-        filled++;
-        const usedName = nextName || aiName;
-        return { ...r, desc: `${area} 영역에서 '${usedName}'을(를) ${qualityFor(ri, n)} 충족함. (성취기준 기준 ${r.score}점 수준)` };
-      });
-      return { ...c, name: nextName, rows };
-    });
+    const { criteria, filled, skipped } = aiFillCriteria(q.criteria, std?.area || '평가 영역');
     updateQuestion(qid, { criteria });
     if (filled === 0) toast('빈 칸이 없습니다. ✕ 버튼으로 칸을 비운 뒤 다시 실행하세요.');
     else toast(`빈 칸 ${filled}개를 AI가 채웠습니다. 수동 수정한 ${skipped}개 칸은 보존됨. (성취기준 기반 — 검토·수정하세요)`);
   };
 
   // ── 합계/환산 ──────────────────────────────────────────────────────
-  const totalPoints = evalMode === 'auto'
-    ? questions.reduce((s, q) => s + (Number(q.points) || 0), 0)
-    : questions.reduce((s, q) => s + q.criteria.reduce((cs, c) => cs + (Number(c.maxPoints) || 0), 0), 0);
+  const totalPoints = questions.reduce((s, q) => s + q.criteria.reduce((cs, c) => cs + (Number(c.maxPoints) || 0), 0), 0);
 
   // [v3.51] % 기반 cutoff 등급 환산
   const scoreToGrade = (score, max, scale) => {
@@ -792,37 +618,30 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   };
 
   // ── 그룹 배포 (그룹별 인라인 토글) ───────────────────────────────────
-  const printableGroups = groupList.filter((g) => g.codeDeployed); // 번호표 배포된 그룹 = 출력 대상
-  const canPrint = printableGroups.length > 0;
-  // [v2.25] 번호표 인쇄 한도 = 3페이지 × 39명 = 117명. 초과 그룹은 배포 차단
-  const TAG_PRINT_LIMIT = 117;
-  // 번호표 배포 ⇄ 취소 (학생 배포 중이면 취소 불가, 117명 초과면 배포 불가)
-  const toggleGroupCode = (gid) => setGroupList((prev) => prev.map((g) => {
-    if (g.id !== gid) return g;
-    if (!g.codeDeployed) {
-      if (g.studentCount > TAG_PRINT_LIMIT) {
-        toast(`「${g.label}」(${g.studentCount}명)은 번호표 인쇄 한도(${TAG_PRINT_LIMIT}명)를 초과하여 배포할 수 없습니다. 그룹을 분할해 주세요.`);
-        return g;
-      }
-      toast(`「${g.label}」 번호표 배포 (과제 할당 · 채점 관리 미채점)`);
-      return { ...g, codeDeployed: true };
-    }
-    if (g.studentDeployed) { toast('학생 배포 중인 그룹은 번호표 배포를 취소할 수 없습니다. 먼저 학생 배포를 취소하세요.'); return g; }
-    toast(`「${g.label}」 번호표 배포 취소 (과제 할당 해제)`); return { ...g, codeDeployed: false };
+  // [v3.75] 「번호표 배포」 버튼 폐기. 채점 관리 미채점 진입 트리거 = 답안지 다운로드(인쇄) 완료(g.printed). [v3.80] 스마트펜 번호표 폐기 — 학생 식별은 답안지 기재란(학년/반/번호·이름) OCR
+  //   학생 배포는 출력이 완료된 그룹만 가능 — 답안지 없이 학생에게만 노출되어 미채점에 잡히지 않는 상태를 방지한다.
+  //   학생 배포 ⇄ 취소는 학생 노출 여부만 바꾼다 (미채점 등록은 유지).
+  // [v3.80] 舊 번호표 인쇄 한도(117명) 폐기 — 번호표를 쓰지 않는다
+  // 출력 모달에서 인쇄(다운로드)가 시작되면 해당 그룹을 출력 완료로 기록 → 미채점 등록 + 학생 배포 활성화
+  const markGroupPrinted = (label) => setGroupList((prev) => prev.map((g) => {
+    if (g.label !== label || g.printed) return g;
+    toast(`「${g.label}」 답안지 출력 완료 — 채점 관리 미채점에 등록되었고 학생 배포가 가능해졌습니다.`);
+    return { ...g, printed: true };
   }));
-  // 학생 배포 ⇄ 취소 (배포 시 번호표 자동 배포, 117명 초과면 배포 불가)
+  // 학생 배포 ⇄ 취소
   const toggleGroupStudent = (gid) => setGroupList((prev) => prev.map((g) => {
     if (g.id !== gid) return g;
     if (!g.studentDeployed) {
-      if (g.studentCount > TAG_PRINT_LIMIT) {
-        toast(`「${g.label}」(${g.studentCount}명)은 번호표 인쇄 한도(${TAG_PRINT_LIMIT}명)를 초과하여 배포할 수 없습니다. 그룹을 분할해 주세요.`);
-        return g;
-      }
-      toast(`「${g.label}」 학생 배포`);
-      return { ...g, codeDeployed: true, studentDeployed: true };
+      if (!g.printed) { toast('답안지 인쇄에서 다운로드를 진행한 후 배포할 수 있습니다.'); return g; }
+      toast(`「${g.label}」 학생 배포 — 학생에게 과제가 노출됩니다.`);
+      return { ...g, studentDeployed: true };
     }
-    toast(`「${g.label}」 학생 배포 취소`); return { ...g, studentDeployed: false };
+    toast(`「${g.label}」 학생 배포 취소 — 학생이 과제를 확인할 수 없는 상태가 됩니다. 과제를 수정한 경우 기 출력한 문제지를 다시 인쇄하세요. (답안지는 무관)`);
+    return { ...g, studentDeployed: false };
   }));
+  // [v3.75] 과제 수정 잠금 — 학생 배포된 그룹이 하나라도 있으면 Step 1~4 수정 불가. 수정하려면 학생 배포를 먼저 취소해야 한다
+  //   (학생 답안이 제출된 과제도 수정 불가 — 등록 화면에서는 발생하지 않으므로 과제 관리/상세 쪽 정책)
+  const editLocked = groupList.some((g) => g.studentDeployed);
 
   // ── 진행 가능 여부 ──────────────────────────────────────────────────
   const stepValid = (n) => {
@@ -835,20 +654,14 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
       isModelAnswerFilled(q)
     );
     if (n === 4) {
-      if (evalMode === 'auto') return questions.every((q) => Number(q.points) > 0);
-      // 자율평가: 채점기준 valid + 총 배점 입력 시 합 일치 필수
+      // 채점기준 valid + 총 배점 입력 시 합 일치 필수
       return questions.every((q) => {
         const ok = q.criteria.every((c) =>
           Number(c.maxPoints) > 0 && c.name.trim() &&
           c.rows.every((r) => r.score !== '') && rowsDescending(c.rows)
         );
         if (!ok) return false;
-        const total = Number(q.points) || 0;
-        if (total > 0) {
-          const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-          if (sum !== total) return false;
-        }
-        return true;
+        return true; // [v3.79] 총 배점은 범주 배점 합계로 자동 산출 — 별도 조건 없음
       });
     }
     return true;
@@ -867,51 +680,25 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   // 기본 정보(과제명)만 입력되면 저장 가능
   const canSave = !!basicInfo.title.trim();
 
-  // 자율평가 — 채점기준 합과 총 배점 불일치 문항 list (정합성 검증용)
-  const getMismatchQuestions = () => {
-    if (evalMode !== 'self') return [];
-    return questions.map((q, idx) => {
-      const total = Number(q.points) || 0;
-      if (!total) return null;
-      const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-      if (sum === total) return null;
-      return { idx: idx + 1, qid: q.id, total, sum, diff: sum - total };
-    }).filter(Boolean);
-  };
-  const [saveMismatchModal, setSaveMismatchModal] = useState(null); // { items: [...] } | null
+  // [v3.79] 총 배점 = 범주 배점 합계(표시 전용) — 불일치 검사·정합성 모달 폐기
   const performSave = () => {
     // [v3.46] 영속화 — 부모에게 task 객체 전달
     if (onAdd) {
       const task = buildDirectInputTask({
         basicInfo, passage, questions,
-        evalMode, autoScale, rubricOverrides, groupList, isShared,
+        evalMode, groupList, isShared,
       });
       onAdd(task);
     }
     const deployed = groupList.filter((g) => g.studentDeployed).length;
-    const codeOnly = groupList.filter((g) => g.codeDeployed && !g.studentDeployed).length;
-    const deployMsg = deployed || codeOnly ? ` · 학생배포 ${deployed}그룹/번호표 ${codeOnly}그룹` : '';
-    toast(`과제 「${basicInfo.title || '제목 없음'}」 저장 완료 (${evalMode === 'auto' ? '자동평가' : '자율평가'} · 총 ${totalPoints}점${deployMsg})`);
+    const printedOnly = groupList.filter((g) => g.printed && !g.studentDeployed).length;
+    const deployMsg = deployed || printedOnly ? ` · 학생배포 ${deployed}그룹/출력 ${printedOnly}그룹` : '';
+    toast(`과제 「${basicInfo.title || '제목 없음'}」 저장 완료 (총 ${totalPoints}점${deployMsg})`);
     onBack && onBack();
   };
   const handleSave = () => {
     if (!canSave) { toast('과제명을 입력해야 저장할 수 있습니다.'); return; }
-    const mismatches = getMismatchQuestions();
-    if (mismatches.length > 0) {
-      setSaveMismatchModal({ items: mismatches });
-      return;
-    }
     performSave();
-  };
-  // 모달에서 [모든 문항 균등 재분배 후 저장] 클릭
-  const redistributeAllAndSave = () => {
-    setQuestions((qs) => qs.map((q) => {
-      const total = Number(q.points) || 0;
-      if (!total) return q;
-      return { ...q, criteria: distributeTotal(q.criteria, total) };
-    }));
-    setSaveMismatchModal(null);
-    setTimeout(performSave, 0);
   };
   const handleExitNoSave = () => {
     if (window.confirm('저장하지 않고 나가시겠습니까? 작성 중인 내용은 사라집니다.')) onBack && onBack();
@@ -932,7 +719,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   const [isShared, setIsShared] = useState(false); // 기본값 미공유 → 「공유확인」, 공유 시 「공유취소」 토글
   const fileInputRef = useRef(null);
   const handleExport = () => {
-    const data = { basicInfo, passage, questions, evalMode, autoScale, selfScale, resultScale, rubricOverrides };
+    const data = { basicInfo, passage, questions, evalMode, selfScale, resultScale };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -950,12 +737,13 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
         const data = JSON.parse(ev.target.result);
         if (data.basicInfo) setBasicInfo((p) => ({ ...p, ...data.basicInfo }));
         if (typeof data.passage === 'string') setPassage(data.passage);
-        if (Array.isArray(data.questions)) setQuestions(data.questions);
-        if (data.evalMode) setEvalMode(data.evalMode);
-        if (data.autoScale) setAutoScale(data.autoScale);
+        if (Array.isArray(data.questions)) {
+          setQuestions(data.questions);
+          // [v3.74] 가져온 문항은 채점 기준을 이미 갖고 있으므로 Step 4 진입 시 자동 설계를 건너뛴다
+          setRubricReady(Object.fromEntries(data.questions.map((q) => [q.id, true])));
+        }
         if (data.resultScale) setResultScale(data.resultScale);
         if (data.selfScale) setSelfScale(data.selfScale);
-        if (data.rubricOverrides) setRubricOverrides(data.rubricOverrides);
         toast('과제를 가져왔습니다.');
       } catch {
         toast('가져오기 실패 — 올바른 과제 파일(JSON)이 아닙니다.');
@@ -1041,27 +829,23 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
             </React.Fragment>
           ))}
         </div>
-        {/* [v3.45] 자율평가 합 불일치 지속 안내 — 모달 닫혀도 항상 표시. 정합성 맞춰야 다음·저장 가능 */}
-        {evalMode === 'self' && (() => {
-          const items = getMismatchQuestions();
-          if (items.length === 0) return null;
-          return (
-            <div style={{ background: '#FEF3C7', borderTop: '1px solid #FDE68A', padding: '10px 1.5rem', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', fontWeight: 800 }}>⚠ 채점 합계 ≠ 총 배점</span>
-              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
-                {items.map((m) => `문항 ${m.idx}(${m.diff > 0 ? '+' : ''}${m.diff}점)`).join(' · ')}
-              </span>
-              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginLeft: 'auto' }}>정합성을 맞춰야 저장됩니다. 브라우저를 그냥 닫으면 자동으로 균등 재분배됩니다.</span>
-              <button onClick={() => items.forEach((m) => redistributeTotal(m.qid))}
-                style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #B45309', background: 'white', color: '#B45309', fontWeight: 800, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>↻ 모두 균등 재분배</button>
-            </div>
-          );
-        })()}
+        {/* [v3.77] 舊 [v3.45] 합 불일치 상단 영구 배너([↻ 모두 균등 재분배]) 폐기 — 총 배점 입력란 오류 표시로 일원화 */}
       </div>
 
       {/* 본문 (스크롤 영역) */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
        <div style={{ maxWidth: 920, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+
+        {/* [v3.75] 과제 수정 잠금 안내 — 학생 배포 중이면 Step 1~4는 읽기 전용 */}
+        {editLocked && step < 5 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 'var(--neo-font-size-sm)', color: '#991B1B', fontWeight: 700 }}>
+            <span>🔒</span>
+            <span>학생 배포 중인 과제는 수정할 수 없습니다. 수정하려면 Step 5에서 학생 배포를 취소하세요.</span>
+            <button onClick={() => setStep(5)} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontWeight: 700, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>Step 5로 이동</button>
+          </div>
+        )}
+        {/* 잠금 시 pointer-events:none → 휠 스크롤은 바깥 스크롤 컨테이너가 받는다 */}
+        <div inert={editLocked && step < 5 ? true : undefined} style={editLocked && step < 5 ? { pointerEvents: 'none', opacity: 0.6, userSelect: 'none' } : undefined}>
 
         {/* Step 1 — 기본 정보 */}
         {step === 1 && (
@@ -1354,8 +1138,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                       </div>
                       {!warnExpanded && (
                         <div style={{ lineHeight: 1.6 }}>
-                          <div>• <strong>자동평가</strong>: 성취기준이 <strong>채점 기준</strong>으로 그대로 사용됩니다.</div>
-                          <div>• <strong>자율평가</strong>: <strong>AI 채점 기준 생성</strong> 시 평가 내용의 참고 자료로 활용됩니다.</div>
+                          <div>• Step 4 <strong>평가 기준</strong> 진입 시 성취기준·문항 내용을 분석해 <strong>채점 루브릭을 자동 설계</strong>합니다.</div>
+                          <div>• <strong>AI 채점 기준 생성</strong> 시에도 평가 내용의 참고 자료로 활용됩니다.</div>
                         </div>
                       )}
                     </div>
@@ -1369,7 +1153,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                       {warnExpanded && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                           {[
-                            { icon: '✨', title: '1개 권장', desc: '자동평가는 성취기준 1개가 적절' },
+                            { icon: '✨', title: '1개 권장', desc: '루브릭 설계에는 성취기준 1개가 적절' },
                             { icon: '🎯', title: '모두 반영', desc: '선택한 성취기준이 채점 기준으로 사용' },
                             { icon: '⚠️', title: 'AI 응답 영향', desc: '평가내용이 많으면 응답 느려지거나 실패' },
                           ].map((item, i) => (
@@ -1493,183 +1277,13 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
           );
         })()}
 
-        {/* Step 4 — 평가 방식 & 채점 기준 */}
+        {/* Step 4 — 평가 기준 ([v3.74] 자동평가 폐기 → 자율평가 루브릭 단일 체제. 진입 시 AI 자동 설계) */}
         {step === 4 && (
           <div>
-            <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 16 }}>⚖️ Step 4. 평가 방식 · 채점 기준</h2>
+            <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 16 }}>⚖️ Step 4. 평가 기준</h2>
 
-            {/* 평가 방식 토글 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
-              {[
-                { id: 'auto', icon: '🤖', t: '자동평가', d: '문항별 성취기준 기반, 채점 단계(3/5)에 맞는 DB 평가지표로 채점' },
-                { id: 'self', icon: '✍️', t: '자율평가', d: '문항별 채점 기준을 직접/AI로 작성 (배점·단계·간격)' },
-              ].map((m) => {
-                const on = evalMode === m.id;
-                return (
-                  <button key={m.id} onClick={() => setEvalMode(m.id)} style={{
-                    textAlign: 'left', padding: '14px 16px', borderRadius: 14, cursor: 'pointer',
-                    border: `2px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white',
-                  }}>
-                    <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: on ? '#1D4ED8' : '#1E293B', marginBottom: 4 }}>{m.icon} {m.t}</div>
-                    <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>{m.d}</div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* ── 자동평가 — 문항 탭 + 총 배점 요약 + 활성 문항 카드 ── */}
-            {evalMode === 'auto' && questions.length > 0 && (() => {
-              const effectiveActiveId = (questions.find((qq) => qq.id === activeQId)?.id) ?? questions[0]?.id;
-              const activeIdx = questions.findIndex((qq) => qq.id === effectiveActiveId);
-              const activeQ = questions[activeIdx];
-              const totalAuto = questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
-              const levels = AUTO_LEVELS[autoScale];
-              // [v2.44] 다중 standards 지원 — activeRubricStdMap에서 sid 추출, 기본 standards[0]
-              const activeStandards = activeQ ? (activeQ.standards && activeQ.standards.length > 0 ? activeQ.standards : (activeQ.standard ? [activeQ.standard] : [])) : [];
-              const currentRubricSid = activeQ ? (activeRubricStdMap[activeQ.id] && activeStandards.includes(activeRubricStdMap[activeQ.id]) ? activeRubricStdMap[activeQ.id] : activeStandards[0]) : null;
-              const std = currentRubricSid ? MOCK_STANDARDS.find((s) => s.id === currentRubricSid) : null;
-              return (
-              <div>
-                {/* [v3.49] 자동평가 채점 등급 (3/5등급) — DB 평가지표 단계 + 결과 등급명 */}
-                <div style={{ ...card, background: '#F8FAFC' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 등급</span>
-                    {AUTO_SCALES.map((n) => (
-                      <button key={n} onClick={() => setAutoScale(n)} style={chip(autoScale === n)}>{autoScale === n ? '✓ ' : ''}{n}등급</button>
-                    ))}
-                    {/* [v2.50] 자명한 안내문 제거 */}
-                  </div>
-                </div>
-
-                {/* 문항 탭 — 추가된 문항만 노출 */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  {questions.map((q, idx) => {
-                    const focused = q.id === effectiveActiveId;
-                    const pts = Number(q.points) || 0;
-                    return (
-                      <button key={q.id} onClick={() => setActiveQId(q.id)} title={`문항 ${idx + 1} 보기`}
-                        style={{ flex: '1 1 0', minWidth: 130, padding: '10px 12px', borderRadius: 10,
-                          border: focused ? '2px solid #2A75F3' : '1px solid #CBD5E1',
-                          background: focused ? '#EFF6FF' : 'white',
-                          color: focused ? '#1D4ED8' : '#1E293B',
-                          fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        <span>📝</span>
-                        <span>문항 {idx + 1}</span>
-                        <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#1D4ED8', background: '#DBEAFE', padding: '2px 7px', borderRadius: 999 }}>{pts}점</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* 활성 문항 카드 */}
-                {activeQ && (
-                  <div key={activeQ.id} style={card}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>문항 {activeIdx + 1}</span>
-                      {/* [v2.49] 다중 성취기준 시 코드 버튼 — 활성 sid는 강조. 클릭 시 셀렉트박스와 동시 갱신 */}
-                      {activeStandards.length === 0 ? (
-                        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>Step 2에서 성취기준을 선택해 주세요.</span>
-                      ) : (
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          {activeStandards.map((sid) => {
-                            const s = MOCK_STANDARDS.find((x) => x.id === sid);
-                            if (!s) return null;
-                            const isActive = sid === currentRubricSid;
-                            return (
-                              <button key={sid} onClick={() => setActiveRubricStdMap((p) => ({ ...p, [activeQ.id]: sid }))}
-                                title={s.text}
-                                style={{
-                                  padding: '3px 10px', borderRadius: 999, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
-                                  border: isActive ? '1px solid #047857' : '1px solid #E2E8F0',
-                                  background: isActive ? '#D1FAE5' : 'white',
-                                  color: isActive ? '#047857' : '#64748B',
-                                  cursor: 'pointer',
-                                }}>
-                                [{stdCode(s.text)}]
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점</span>
-                        <input type="number" min={0} style={{ ...input, width: 90 }} value={activeQ.points} placeholder="배점" onChange={(e) => updateQuestion(activeQ.id, { points: e.target.value })} />
-                        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
-                      </div>
-                    </div>
-                    {std && (
-                      <div>
-                        {/* [v2.48] 1행: 성취기준 셀렉트 + 원본 템플릿 복원 버튼 */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                          {activeStandards.length >= 2 && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 240 }}>
-                              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700, flexShrink: 0 }}>성취기준</span>
-                              <select value={currentRubricSid || ''} onChange={(e) => setActiveRubricStdMap((p) => ({ ...p, [activeQ.id]: e.target.value }))}
-                                style={{ ...input, padding: '6px 8px', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1D4ED8', flex: 1, minWidth: 0 }}>
-                                {activeStandards.map((sid) => {
-                                  const s = MOCK_STANDARDS.find((x) => x.id === sid);
-                                  if (!s) return null;
-                                  return <option key={sid} value={sid}>{s.text}</option>;
-                                })}
-                              </select>
-                            </div>
-                          )}
-                          <button onClick={() => regenerateRubric(activeQ.id, currentRubricSid, autoScale)}
-                            title="수정한 셀을 원본 템플릿(DB의 2022 개정 교육과정 내용체계)으로 되돌립니다. 빈 칸만 채워지며, 수정한 칸은 ✕로 비운 뒤 호출하세요."
-                            style={{ marginLeft: activeStandards.length >= 2 ? 0 : 'auto', padding: '6px 12px', borderRadius: 8, border: '1px solid #2A75F3', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>↺ 원본 템플릿 복원</button>
-                        </div>
-                        {/* [v2.51] 2행: 안내 텍스트 단독 — 박스 보더·배경 제거, 텍스트만 */}
-                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', padding: '4px 0 8px', marginBottom: 10 }}>
-                          📌 2022 개정 교육과정을 기준으로 한 평가지표입니다. 필요에 따라 수정하세요.
-                        </div>
-                        <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: 10 }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)', minWidth: 200 + levels.length * 180 }}>
-                            <thead>
-                              <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
-                                <th style={{ textAlign: 'left', padding: '10px 12px', color: '#475569', fontWeight: 800, width: 180, background: '#F8FAFC' }}>범주</th>
-                                {levels.map((lv) => {
-                                  const meta = LEVEL_META[lv.name] || { color: '#475569' };
-                                  return <th key={lv.letter} style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 800, color: meta.color, background: '#F8FAFC' }}>{lv.name} ({lv.letter})</th>;
-                                })}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {RUBRIC_CATEGORIES.map((cat) => (
-                                <tr key={cat.key} style={{ borderTop: '1px solid #F1F5F9', verticalAlign: 'top' }}>
-                                  <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1E293B' }}>{cat.key}. {cat.name}</td>
-                                  {levels.map((lv, lvIdx) => {
-                                    const cellVal = rubricCell(activeQ.id, currentRubricSid, cat.key, lvIdx, autoScale);
-                                    const hasVal = !!(cellVal && cellVal.trim());
-                                    return (
-                                    <td key={lv.letter} style={{ padding: '6px 8px' }}>
-                                      <div style={{ position: 'relative' }}>
-                                        <textarea value={cellVal} onChange={(e) => setRubricCell(activeQ.id, currentRubricSid, cat.key, lvIdx, e.target.value)}
-                                          style={{ width: '100%', minHeight: 72, border: '1px solid #E2E8F0', borderRadius: 6, padding: '6px 8px', paddingRight: hasVal ? 24 : 8, fontSize: 'var(--neo-font-size-xs)', lineHeight: 1.5, color: '#334155', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
-                                        {hasVal && (
-                                          <button onClick={() => clearRubricCell(activeQ.id, currentRubricSid, cat.key, lvIdx)}
-                                            title="비우기 (재생성 시 템플릿으로 다시 채움)"
-                                            style={{ position: 'absolute', right: 4, top: 4, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#E2E8F0', color: '#475569', cursor: 'pointer', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>✕</button>
-                                        )}
-                                      </div>
-                                    </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              );
-            })()}
-
-            {/* ── 자율평가 — 문항 탭 + 총 배점 요약 + 활성 문항 카드 ── */}
-            {evalMode === 'self' && questions.length > 0 && (() => {
+            {/* ── 문항 탭 + 총 배점 요약 + 활성 문항 카드 ── */}
+            {questions.length > 0 && (() => {
               const effectiveActiveId = (questions.find((qq) => qq.id === activeQId)?.id) ?? questions[0]?.id;
               const activeIdx = questions.findIndex((qq) => qq.id === effectiveActiveId);
               const activeQ = questions[activeIdx];
@@ -1677,7 +1291,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
               const totalSelf = questions.reduce((s, q) => s + qTotal(q), 0);
               return (
               <div>
-                {/* [v3.49] 자율평가 채점 등급 — 자동평가와 명칭 통일. 합산 점수의 등급명만 결정 (채점기준 「배점 단계」와 별개) */}
+                {/* [v3.49] 채점 등급 — 합산 점수의 등급명만 결정 (채점기준 「배점 단계」와 별개). [v3.74] 기본값 학교급별 (초등 3등급 / 중·고등 5등급). 점수 구간은 3개 고정 */}
                 <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 등급</span>
                   {[3, 4, 5].map((n) => (
@@ -1696,7 +1310,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                   </span>
                 </div>
                 <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '10px 12px', borderRadius: 8, marginBottom: 14, lineHeight: 1.6 }}>
-                  문항마다 채점 기준을 1~5개까지 만들 수 있습니다.
+                  🤖 성취기준과 문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. 범주(채점 기준)는 문항마다 기본 3개이며 1~5개로 추가·삭제할 수 있습니다. 범주별 평가 내용은 점수 구간 3개(예: 6 / 3 / 0)에 하나씩 3개이고, 채점 등급(3/4/5등급)과 무관합니다.
                 </div>
 
                 {/* 문항 탭 */}
@@ -1739,36 +1353,19 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                         const s = MOCK_STANDARDS.find((x) => x.id === q.standard);
                         return s
                           ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#047857', background: '#D1FAE5', padding: '3px 9px', borderRadius: 999 }}>[{s.area}] {stdCode(s.text)}</span>
-                          : <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>Step 2에서 선택해 주세요.</span>;
+                          : <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>Step 3에서 선택해 주세요.</span>;
                       })()}
                     </div>
 
-                    {/* [v2.62] 총 배점 입력 행 — [↻ 균등 재분배] 버튼 폐기. 합 불일치 정합화는 상단 영구 경고 배너 [↻ 모두 균등 재분배] / 저장 정합성 모달로 일원화 */}
+                    {/* [v3.79] 총 배점 — 입력 없음. 범주 배점 합계를 표시만 한다 */}
                     {(() => {
-                      const total = Number(q.points) || 0;
                       const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                      const diff = sum - total;
-                      const ok = total > 0 && diff === 0;
                       return (
                         <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 12px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569' }}>총 배점</span>
-                          <input type="number" min={0} style={{ ...input, width: 90 }} value={q.points} placeholder="예: 100"
-                            onChange={(e) => updateQuestionPoints(q.id, e.target.value)} />
+                          <strong style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: sum > 0 ? '#1D4ED8' : '#94A3B8' }}>{sum}</strong>
                           <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
-                          {total > 0 ? (
-                            <>
-                              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>
-                                · 채점기준 합계 <strong style={{ color: ok ? '#10B981' : '#B45309' }}>{sum}점</strong>
-                              </span>
-                              {!ok && (
-                                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', fontWeight: 700 }}>
-                                  ⚠ 총 배점 대비 {diff > 0 ? '+' : ''}{diff}점 차이
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>· 입력 시 채점기준 추가/재분배 기준이 됩니다. 미입력 시 채점기준별 개별 배점.</span>
-                          )}
+                          <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>· 각 범주의 배점 합계로 자동 산출됩니다.</span>
                         </div>
                       );
                     })()}
@@ -1796,37 +1393,18 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                           {/* 배점 */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점</span>
-                            <input type="number" min={2} style={{ ...input, width: 80 }} value={c.maxPoints}
+                            <input type="number" min={2} placeholder="배점" style={{ ...input, width: 80 }} value={c.maxPoints}
                               onChange={(e) => updateCriterion(q.id, c.id, { maxPoints: e.target.value })} />
                             <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
                           </div>
-                          {/* [v3.47] 배점 단계 — 채점기준별 자유 (점수 행 수). 등급 환산 체계와 독립적으로 동작. */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점 단계</span>
-                            <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #CBD5E1', borderRadius: 8, overflow: 'hidden' }}>
-                              <button onClick={() => changeCriterionLevels(q.id, c.id, -1)} disabled={c.levels <= 2}
-                                style={{ width: 30, height: 32, border: 'none', background: c.levels <= 2 ? '#F1F5F9' : 'white', color: c.levels <= 2 ? '#CBD5E1' : '#475569', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, cursor: c.levels <= 2 ? 'not-allowed' : 'pointer' }}>−</button>
-                              <span style={{ minWidth: 48, textAlign: 'center', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{c.levels}단계</span>
-                              <button onClick={() => changeCriterionLevels(q.id, c.id, 1)} disabled={c.levels >= clampLevels(c.maxPoints)}
-                                style={{ width: 30, height: 32, border: 'none', background: c.levels >= clampLevels(c.maxPoints) ? '#F1F5F9' : 'white', color: c.levels >= clampLevels(c.maxPoints) ? '#CBD5E1' : '#475569', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, cursor: c.levels >= clampLevels(c.maxPoints) ? 'not-allowed' : 'pointer' }}>+</button>
-                            </div>
-                          </div>
-                          {/* 배점 간격 — 최대 간격이면 최저 등급이 0점이 됨 (배점/(단계-1)) */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점 간격</span>
-                            <select style={{ ...input, width: 84 }} value={c.interval}
-                              onChange={(e) => updateCriterion(q.id, c.id, { interval: Number(e.target.value) })}>
-                              {Array.from({ length: maxIntervalFor(c.maxPoints, c.levels) }, (_, k) => k + 1).map((v) => (
-                                <option key={v} value={v}>{v}점</option>
-                              ))}
-                            </select>
-                          </div>
+                          {/* [v3.74] 배점 단계 스텝퍼 폐기 — 점수 구간 3개 고정 */}
+                          {/* [v3.74] 배점 간격 드롭다운 폐기 — 간격은 항상 최대값(배점÷2)으로 자동 산출, [↻ 점수 균등 분배]만 유지 */}
                           {/* [v2.38] 점수 균등 분배만 채점 기준 단위로 유지. 등급 균등 분배는 총 배점 영역에서 전체 일괄 처리 */}
-                          <button onClick={() => redistribute(q.id, c.id)} title="배점부터 0점까지 간격만큼 균등하게 점수를 분배합니다."
+                          <button onClick={() => redistribute(q.id, c.id)} title="입력한 배점을 3개 구간(배점 → 0점)에 균등하게 다시 분배합니다."
                             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>↻ 점수 균등 분배</button>
                         </div>
                         <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>
-                          간격으로 자동 분배된 점수를 기본으로 채워두며, 아래 표에서 각 단계 점수를 직접 수정할 수 있습니다. (0~배점, 정수)
+                          배점을 입력하면 3개 구간(배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)
                         </div>
                         {/* 점수 표 — 점수 직접 편집 가능 */}
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
@@ -1852,7 +1430,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                                   {/* [v2.16] 평가내용 — input처럼 보이는 에디터. [∑+ 수식] / chip 클릭 모두 평가내용 전체를 편집기에 로드 */}
                                   <EvalContentEditor
                                     desc={r.desc}
-                                    placeholder={`${r.score}점 수준의 평가 내용`}
+                                    placeholder={`${r.score !== '' ? `${r.score}점` : ['상', '중', '하'][ri] || ''} 수준의 평가 내용`}
                                     onChange={(v) => updateRowDesc(q.id, c.id, ri, v)}
                                     onOpenEditor={() => setFormulaModal({ qid: q.id, cid: c.id, ri, initialContent: r.desc || '' })}
                                   />
@@ -1866,58 +1444,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                     ))}
                     <button onClick={() => addCriterion(q.id)} style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>+ 채점 기준 추가 ({q.criteria.length}/5)</button>
 
-                    {/* [v2.44] 등급 환산 미리보기 — 우측 fixed 패널 + 토글 */}
-                    {(() => {
-                      const qMax = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                      if (previewExpanded) {
-                        return (
-                          <div style={{ position: 'fixed', right: 16, top: 120, width: 320, background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '12px 14px', zIndex: 100, boxShadow: '0 4px 16px rgba(15,23,42,0.12)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#0C4A6E' }}>📊 등급 환산 미리보기</span>
-                              <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#0369A1', background: 'white', padding: '2px 8px', borderRadius: 999, border: '1px solid #BAE6FD' }}>{selfScale}등급</span>
-                              <button onClick={() => setPreviewExpanded(false)} title="접기" style={{ marginLeft: 'auto', padding: '3px 8px', borderRadius: 6, border: '1px solid #BAE6FD', background: 'white', color: '#0369A1', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>접기 ⮟</button>
-                            </div>
-                            {qMax <= 0 ? (
-                              <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', lineHeight: 1.55 }}>
-                                채점기준에 배점이 입력되면 자동 표시됩니다.
-                              </div>
-                            ) : (
-                              <>
-                                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569', marginBottom: 8 }}>활성 문항 만점 <strong style={{ color: '#0369A1' }}>{qMax}점</strong></div>
-                                {/* [v2.45] 등급별 1행씩 세로 배치 */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  {GRADE_CUTOFFS[selfScale].map((b, bi, arr) => {
-                                    const meta = LEVEL_META[b.name] || { color: '#475569', bg: '#F1F5F9' };
-                                    const upper = bi === 0 ? 100 : arr[bi - 1].min;
-                                    const minExact = (b.min / 100) * qMax;
-                                    const maxExact = bi === 0 ? qMax : (upper / 100) * qMax;
-                                    const lo = Math.ceil(minExact);
-                                    const hi = bi === 0 ? qMax : (Number.isInteger(maxExact) ? maxExact - 1 : Math.floor(maxExact));
-                                    const empty = lo > hi;
-                                    const label = empty ? '(없음)' : lo === hi ? `${lo}점` : `${lo}~${hi}점`;
-                                    return (
-                                      <div key={b.name} style={{ background: empty ? '#F8FAFC' : meta.bg, border: `1px solid ${empty ? '#E2E8F0' : meta.bg}`, borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                        <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: empty ? '#94A3B8' : meta.color }}>{b.name}</div>
-                                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: empty ? '#94A3B8' : '#1E293B', fontWeight: 700, fontStyle: empty ? 'italic' : 'normal' }}>{label}</div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#0369A1', marginTop: 8, lineHeight: 1.5 }}>
-                                  ※ 채점 결과는 위 등급으로 환산. 점수는 내부 산출용이며 사용자에게는 등급만 노출됩니다.
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div onClick={() => setPreviewExpanded(true)} title="펼치기"
-                          style={{ position: 'fixed', right: 0, top: 140, background: '#0369A1', color: 'white', padding: '10px 8px', borderRadius: '8px 0 0 8px', cursor: 'pointer', zIndex: 100, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, boxShadow: '-2px 0 8px rgba(15,23,42,0.12)', writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.05em' }}>
-                          📊 등급 환산 미리보기 ⮜
-                        </div>
-                      );
-                    })()}
+                    {/* [v3.76] 등급 환산 미리보기 패널 폐기 — 채점 등급 카드의 환산 안내 문구로 갈음 */}
                   </div>
                   );
                 })()}
@@ -1926,19 +1453,19 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
             })()}
           </div>
         )}
+        </div>{/* /잠금 래퍼 */}
 
         {/* Step 5 — 그룹 배포 · 문답지 출력 */}
         {step === 5 && (() => {
           const badge = (bg, color) => ({ background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 10 });
-          const codeBtn = (on) => ({ padding: '7px 14px', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #EF4444' : 'none', background: on ? 'white' : '#F59E0B', color: on ? '#EF4444' : 'white' });
           const studentBtn = (on) => ({ padding: '7px 14px', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #EF4444' : 'none', background: on ? 'white' : '#2A75F3', color: on ? '#EF4444' : 'white' });
           return (
             <div>
               <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 6 }}>🚀 Step 5. 그룹 배포 · 문답지 출력</h2>
               <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 16 }}>
-                응시 설정 → 그룹 배포 → 문답지 출력 순으로 진행합니다.
-                <strong> 번호표 배포</strong> = 과제 할당(채점 관리 미채점 진입, 학생 화면 미노출),
-                <strong> 학생 배포</strong> = 학생에게 노출(번호표도 함께 배포).
+                응시 설정 → 문답지 출력 → 학생 배포 순으로 진행합니다.
+                <strong> 답안지 다운로드(인쇄)</strong> = 채점 관리 미채점 진입(학생 화면 미노출),
+                <strong> 학생 배포</strong> = 학생에게 노출. 학생 배포는 답안지 출력이 완료된 그룹만 가능하며, 학생 배포 중에는 과제를 수정할 수 없습니다. 스마트펜 번호표는 사용하지 않습니다 — 학생이 답안지 기재란에 쓴 학년/반/번호·이름을 OCR로 읽어 식별합니다.
               </p>
 
               {/* [v2.29] 응시·출력 설정 카드 — 배포 전에 학생 응시 정책 + 답안지 출력 매수를 함께 결정 (v2.10 응시 설정 + v2.21 출력 매수 통합) */}
@@ -2030,6 +1557,48 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                 </div>
               </div>
 
+              {/* [v3.78] 문답지 출력 — 배포 그룹 카드 위로 이동 (출력 → 학생 배포 순서와 화면 순서 일치)
+                  [v2.10] 통합 문답지 출력 → 3-카드 분리 → [v3.80] 스마트펜 번호표 카드 폐기 (문제지·답안지 2-카드) */}
+              <div style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: 6 }}>🖨️ 문답지 출력</h3>
+            <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 16 }}>
+              입력한 문항을 기반으로 <strong>문제지·답안지</strong>를 출력합니다. 답안지의 기재란(학년/반/번호·이름)에 학생이 직접 쓰고, 스캔 채점 시 OCR로 학생을 식별합니다.
+            </p>
+
+            {/* [v2.11] 미리보기 영역 폐기 / [v2.12] 「번호표 배포 필요」 비활성 정책 폐기 — 항상 활성
+                [v3.75] 답안지 미리보기 모달의 [🖨 인쇄]가 그룹별 출력 완료(printed)를 기록 → 미채점 등록 + 학생 배포 활성화 */}
+            <div style={card}>
+              {/* [v2.21] 답안지 카드만 학생당 N장 spinner 인라인 — 3 카드 모두 div + [PDF 출력] 버튼 분리로 일관성 유지 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[
+                  { icon: '📄', label: '문제지 출력', desc: '입력한 문항으로 구성된 문제지', key: 'question' },
+                  { icon: '📝', label: '답안지 출력', desc: '학년/반/번호·이름 기재란 포함 (OCR 학생 식별)', key: 'answer' },
+                ].map((btn) => (
+                  <div key={btn.label}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '18px 10px', borderRadius: 12, border: '1px solid #CBD5E1', background: 'white', color: '#1E293B' }}>
+                    <span style={{ fontSize: '1.8rem' }}>{btn.icon}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }}>{btn.label}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', textAlign: 'center' }}>{btn.desc}</span>
+                    {/* [v2.30] 답안지 카드 「학생당 N장 인쇄」 안내 제거 — 매수는 응시·출력 설정 카드에서 결정·표시 (중복 노출 방지)
+                        [TSK-05 v2.30] answer 카드는 미리보기 모달로 이관
+                        [v3.80] 번호표 카드 폐기, question은 기존 toast 유지 */}
+                    <button onClick={() => {
+                      if (btn.key === 'answer') {
+                        setWorksheetPreviewOpen(true);
+                      } else {
+                        toast(`${btn.label} PDF 생성 중... (샘플)`);
+                      }
+                    }}
+                      style={{ marginTop: 8, padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {btn.key === 'answer' ? '👁 미리보기' : '📥 PDF 출력'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* [v2.14] 「번호표 배포된 그룹」 칩 영역 폐기 — 출력 카드만 노출 */}
+          </div>
+
               <div style={card}>
                 <label style={label}>배포 그룹</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -2037,18 +1606,15 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                     <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 10 }}>
                       <span style={{ fontWeight: 700, color: '#1E293B', fontSize: 'var(--neo-font-size-base)' }}>{g.label}</span>
                       <span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>{g.studentCount}명</span>
-                      {g.codeDeployed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>📋 번호표 배포</span>}
+                      {/* [v3.75] 번호표 배포 배지·버튼 폐기 → 출력 완료 배지 + 학생 배포(출력 완료 그룹만 활성) */}
+                      {g.printed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>🖨 답안지 출력 완료 · 미채점 등록</span>}
+                      {!g.printed && <span style={badge('#F1F5F9', '#64748B')}>출력 전</span>}
                       {g.studentDeployed && <span style={badge('#DBEAFE', '#1D4ED8')}>🚀 학생 배포</span>}
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                        {/* [v2.13] 학생 배포 상태일 때 번호표 버튼 숨김 — 학생 배포가 번호표 배포 포함 */}
-                        {!g.studentDeployed && (
-                          <button onClick={() => toggleGroupCode(g.id)}
-                            title={g.codeDeployed ? '과제 할당을 해제합니다 (채점 관리 미채점에서 제거).' : 'ncode를 할당해 번호표를 인쇄할 수 있게 합니다. 학생 화면에는 아직 노출되지 않습니다.'}
-                            style={codeBtn(g.codeDeployed)}>{g.codeDeployed ? '↩ 번호표 배포 취소' : '📋 번호표 배포'}</button>
-                        )}
                         <button onClick={() => toggleGroupStudent(g.id)}
-                          title={g.studentDeployed ? '학생 화면에서 과제를 숨깁니다.' : '학생에게 과제를 노출합니다(번호표 미배포 시 함께 배포).'}
-                          style={studentBtn(g.studentDeployed)}>{g.studentDeployed ? '↩ 학생 배포 취소' : '🚀 학생 배포'}</button>
+                          aria-disabled={!g.printed && !g.studentDeployed}
+                          title={g.studentDeployed ? '학생이 과제를 확인할 수 없는 상태가 됩니다.' : (g.printed ? '학생에게 과제가 노출됩니다.' : '답안지 인쇄에서 다운로드를 진행한 후 배포할 수 있습니다.')}
+                          style={{ ...studentBtn(g.studentDeployed), ...(!g.printed && !g.studentDeployed ? { background: '#E2E8F0', color: '#94A3B8', cursor: 'not-allowed' } : {}) }}>{g.studentDeployed ? '↩ 학생 배포 취소' : '🚀 학생 배포'}</button>
                       </div>
                     </div>
                   ))}
@@ -2058,51 +1624,6 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
           );
         })()}
 
-        {/* 문답지 출력 (그룹 배포 단계에 포함)
-            [v2.10] 통합 문답지 출력 → 스마트펜 번호표·문제지 출력·답안지 출력 3-카드 분리 (TSK-12와 통일) */}
-        {step === 5 && (
-          <div style={{ borderTop: '2px dashed #E2E8F0', marginTop: 20, paddingTop: 20 }}>
-            <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: 6 }}>🖨️ 문답지 출력</h3>
-            <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 16 }}>
-              입력한 문항을 기반으로 <strong>스마트펜 번호표·문제지·답안지</strong>를 각각 출력합니다.
-            </p>
-
-            {/* [v2.11] 미리보기 영역 폐기 / [v2.12] 「번호표 배포 필요」 비활성 정책 폐기 — 항상 활성 */}
-            <div style={card}>
-              {/* [v2.21] 답안지 카드만 학생당 N장 spinner 인라인 — 3 카드 모두 div + [PDF 출력] 버튼 분리로 일관성 유지 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                {[
-                  { icon: '✎', label: '스마트펜 번호표', desc: '3페이지로 제한(최대 117명)까지 인쇄 가능', key: 'tag' },
-                  { icon: '📄', label: '문제지 출력', desc: '입력한 문항으로 구성된 문제지', key: 'question' },
-                  { icon: '📝', label: '답안지 출력', desc: '스마트펜 인식용 답안지', key: 'answer' },
-                ].map((btn) => (
-                  <div key={btn.label}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '18px 10px', borderRadius: 12, border: '1px solid #CBD5E1', background: 'white', color: '#1E293B' }}>
-                    <span style={{ fontSize: '1.8rem' }}>{btn.icon}</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }}>{btn.label}</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', textAlign: 'center' }}>{btn.desc}</span>
-                    {/* [v2.30] 답안지 카드 「학생당 N장 인쇄」 안내 제거 — 매수는 응시·출력 설정 카드에서 결정·표시 (중복 노출 방지)
-                        [TSK-05 v2.30] answer 카드는 미리보기 모달로 이관
-                        [TSK-05 v3.4] tag 카드도 미리보기 모달로 이관, question은 기존 toast 유지 */}
-                    <button onClick={() => {
-                      if (btn.key === 'answer') {
-                        setWorksheetPreviewOpen(true);
-                      } else if (btn.key === 'tag') {
-                        setNumberTagPreviewOpen(true);
-                      } else {
-                        toast(`${btn.label} PDF 생성 중... (샘플)`);
-                      }
-                    }}
-                      style={{ marginTop: 8, padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      {(btn.key === 'answer' || btn.key === 'tag') ? '👁 미리보기' : '📥 PDF 출력'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* [v2.14] 「번호표 배포된 그룹」 칩 영역 폐기 — 출력 카드만 노출 */}
-          </div>
-        )}
        </div>
       </div>
 
@@ -2113,20 +1634,9 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
             {step === 1 ? '과제명을 입력하세요.'
               : step === 2 ? '모든 문항의 내용을 입력하세요.'
               : step === 3 ? '각 문항마다 핵심평가영역(1개 이상) · 성취기준(1개) · 모범답안(상·중·하)을 입력하세요. (핵심역량은 Step 1에서 선택)'
-              : step === 4 ? (evalMode === 'auto' ? '문항별 배점을 입력하세요.' : (() => {
-                  const mismatch = questions.find((q) => {
-                    const total = Number(q.points) || 0;
-                    if (!total) return false;
-                    const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                    return sum !== total;
-                  });
-                  if (mismatch) {
-                    const total = Number(mismatch.points) || 0;
-                    const sum = mismatch.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                    return `⚠ 문항 ${questions.indexOf(mismatch) + 1} — 채점기준 합 ${sum}점 ≠ 총 배점 ${total}점. [↻ 균등 재분배] 또는 직접 수정 후 진행하세요.`;
-                  }
+              : step === 4 ? (() => {
                   return '채점 기준의 이름·배점을 입력하고, 각 단계 점수를 채워 위→아래로 낮아지게 하세요.';
-                })())
+                })()
               : ''}
           </span>
         )}
@@ -2160,34 +1670,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
       </div>
 
       {/* 문항 삭제 확인 모달 — 내용이 입력된 문항을 삭제할 때 */}
-      {/* 저장 시 정합성 확인 모달 — 자율평가 채점기준 합 ≠ 총 배점 */}
-      {saveMismatchModal && (
-        <div onClick={() => setSaveMismatchModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: 520, maxWidth: '92vw', maxHeight: '86vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ padding: '18px 22px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
-              <h2 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, margin: 0, color: '#1E293B' }}>채점 합계가 총 배점과 다릅니다</h2>
-            </div>
-            <div style={{ padding: '4px 22px 12px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.5 }}>
-              <p style={{ margin: '0 0 10px' }}>다음 문항에서 채점기준 합계와 총 배점이 일치하지 않습니다. 의도된 가중치라면 그대로 저장하고, 실수였다면 균등 재분배 후 저장하세요.</p>
-              <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 12px', maxHeight: 240, overflowY: 'auto' }}>
-                {saveMismatchModal.items.map((m) => (
-                  <div key={m.qid} style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', marginBottom: 4 }}>
-                    · <strong>문항 {m.idx}</strong> — 채점기준 합 <strong>{m.sum}점</strong> / 총 배점 <strong>{m.total}점</strong> <span style={{ color: '#B45309' }}>({m.diff > 0 ? '+' : ''}{m.diff}점)</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ padding: '0 22px 12px', fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>
-              💡 정합성을 맞춰야 저장할 수 있습니다. 브라우저를 그냥 닫으면 균등 재분배 후 자동 저장됩니다.
-            </div>
-            <div style={{ display: 'flex', gap: 8, padding: '12px 22px 18px', justifyContent: 'flex-end', borderTop: '1px solid #F1F5F9', flexWrap: 'wrap' }}>
-              <button onClick={() => setSaveMismatchModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>돌아가서 수정</button>
-              <button onClick={redistributeAllAndSave} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#10B981', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>↻ 모든 문항 균등 재분배 후 저장</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* [v3.79] 저장 정합성 모달 폐기 — 총 배점은 범주 배점 합계 표시 전용 */}
 
       {deleteConfirm && (() => {
         const q = questions.find((qq) => qq.id === deleteConfirm.qid);
@@ -2206,7 +1689,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                   {isModelAnswerFilled(q) && <>· 모범답안<br /></>}
                   {q.standard && <>· 성취기준 선택<br /></>}
                   {q.points !== '' && Number(q.points) > 0 && <>· 배점<br /></>}
-                  {Array.isArray(q.criteria) && q.criteria.some((c) => (c.name && c.name.trim()) || c.rows.some((r) => r.desc && r.desc.trim())) && <>· 채점 기준<br /></>}
+                  {criteriaHaveContent(q.criteria) && <>· 채점 기준<br /></>}
                 </p>
                 <p style={{ margin: 0, fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>삭제하면 위 내용은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?</p>
               </div>
@@ -2220,7 +1703,6 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
       })()}
 
       {/* [v2.11] 문답지 미리보기 모달 폐기 — 미리보기 영역과 함께 제거 */}
-      {/* [v3.49] 등급 환산 미리보기 모달 폐기 — 활성 문항 카드 하단 인라인 박스로 일원화 */}
 
       {/* AI 개선 결과 모달 */}
       {aiImprove && (
@@ -2275,14 +1757,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
         onClose={() => setWorksheetPreviewOpen(false)}
         subject={basicInfo?.subject || '국어'}
         taskTitle={basicInfo?.title || '과제명'}
-      />
-
-      {/* [TSK-05 v3.4] 스마트펜 번호표 미리보기 모달 */}
-      <NumberTagPreviewModal
-        open={numberTagPreviewOpen}
-        onClose={() => setNumberTagPreviewOpen(false)}
-        subject={basicInfo?.subject || '수학'}
-        taskTitle={basicInfo?.title || '과제명'}
+        groups={groupList.map((g) => g.label)}
+        onPrint={markGroupPrinted}
       />
     </div>
   );

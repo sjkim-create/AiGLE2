@@ -1,0 +1,293 @@
+/**
+ * IncidentBoard.jsx
+ * [BRD-16] 시스템 관리자 > 게시판 > 장애신고
+ *   · 목록 화면과 상세(수정) 화면으로 나뉜다 (v1.2 — 舊 좌우 분할 폐기)
+ *   · 목록: 접수 일시 · 학교명 · 교사명 · 과제명 · 그룹 · 증상 · 상태. 접수 일시(기본)·학교명·교사명 헤더 클릭 정렬
+ *   · 상세: 신고 정보 · 첨부(진단 로그 · 펜 데이터) 다운로드 · Jira · 개발자 답변(있을 때만) · 운영팀 답변 편집 → 메일 발송
+ *   · Jira 자동 등록·개발자 댓글 수신은 서버(Functions + Jira Webhook) 연동 예정 — 시뮬레이션 버튼
+ *   · 저장소는 Firestore(incidentStore v2.0) — 목록·상세는 onSnapshot 으로 실시간 갱신. 진단 로그 본문은 내려받을 때만 서브문서에서 읽는다
+ *   · 상태 3단계: 장애 접수 → 개발자 확인 완료 → 메일 발송
+ */
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  listIncidents, subscribeIncidents, receiveJiraComment, saveReplyDraft, sendReplyMail, downloadText, fetchIncidentLog, INCIDENT_STATUS,
+  replyPartsOf, composeReply, DEFAULT_GREETING, DEFAULT_CLOSING,
+} from './lib/incidentStore';
+
+const STATUS_STYLE = {
+  '장애 접수':       { bg: '#FEF3C7', color: '#B45309' },
+  '개발자 확인 완료': { bg: '#EFF6FF', color: '#1D4ED8' },
+  '메일 발송':       { bg: '#D1FAE5', color: '#047857' },
+};
+const Badge = ({ status }) => {
+  const s = STATUS_STYLE[status] || STATUS_STYLE['장애 접수'];
+  return <span style={{ background: s.bg, color: s.color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>{status}</span>;
+};
+
+const SIM_DEV_COMMENTS = [
+  'AiGLE Connect 브릿지 소켓 재연결 타임아웃(5초)이 원인. 3.0.14에서 15초로 조정해 배포 예정.',
+  '해당 학생 답안이 12,000자 이상으로 채점 프롬프트 토큰 상한을 초과. 서버 측 분할 채점 패치 적용 예정(이번 주).',
+  '펜 펌웨어 1.09 이하에서 오프라인 파일 목록 응답이 비어 오는 버그. 펜 펌웨어 업데이트(환경설정)로 해결됨.',
+];
+
+const SORT_KEYS = { createdAt: '접수 일시', school: '학교명', teacher: '교사명' };
+
+const btn = (extra = {}) => ({ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', ...extra });
+const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', marginBottom: 4 };
+
+/* ── 목록 ─────────────────────────────────────────────── */
+const IncidentList = ({ items, onOpen }) => {
+  const [filter, setFilter] = useState('전체');
+  const [sort, setSort] = useState({ key: 'createdAt', dir: 'desc' });
+
+  const rows = useMemo(() => {
+    const base = filter === '전체' ? items : items.filter((r) => r.status === filter);
+    const { key, dir } = sort;
+    return base.slice().sort((a, b) => {
+      const av = a[key] || '', bv = b[key] || '';
+      const c = av < bv ? -1 : av > bv ? 1 : 0;
+      // 같은 값이면 접수 일시 최신순
+      const tie = c === 0 && key !== 'createdAt' ? (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) : 0;
+      return (dir === 'asc' ? c : -c) || tie;
+    });
+  }, [items, filter, sort]);
+
+  const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'createdAt' ? 'desc' : 'asc' }));
+
+  const cell = { padding: '11px 12px', fontSize: 'var(--neo-font-size-sm)', borderBottom: '1px solid #F1F5F9', verticalAlign: 'middle' };
+  const th = (key, text) => (
+    <th key={text} onClick={key ? () => toggleSort(key) : undefined}
+      style={{ ...cell, background: '#F8FAFC', color: sort.key === key ? '#1D4ED8' : '#64748B', fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap', cursor: key ? 'pointer' : 'default', userSelect: 'none' }}>
+      {text}{key && <span style={{ marginLeft: 4, fontSize: 'var(--neo-font-size-xs)', color: sort.key === key ? '#1D4ED8' : '#CBD5E1' }}>{sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}</span>}
+    </th>
+  );
+
+  return (
+    <div className="content-container" style={{ padding: 24, height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>🚨 장애신고</h1>
+        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>교사 화면에서 접수된 장애 신고 — 행을 누르면 상세에서 확인·답변합니다</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {['전체', ...INCIDENT_STATUS].map((s) => (
+            <button key={s} onClick={() => setFilter(s)} style={btn({ borderColor: filter === s ? '#2A75F3' : '#E2E8F0', color: filter === s ? '#1D4ED8' : '#475569', background: filter === s ? '#EFF6FF' : 'white' })}>
+              {s} ({s === '전체' ? items.length : items.filter((r) => r.status === s).length})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              {th('createdAt', SORT_KEYS.createdAt)}
+              {th('school', SORT_KEYS.school)}
+              {th('teacher', SORT_KEYS.teacher)}
+              {th(null, '과제명')}
+              {th(null, '그룹')}
+              {th(null, '증상')}
+              {th(null, '상태')}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={7} style={{ ...cell, textAlign: 'center', color: '#94A3B8', padding: 28 }}>접수된 장애 신고가 없습니다.</td></tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; }}>
+                <td style={{ ...cell, color: '#475569', whiteSpace: 'nowrap' }}>{r.createdAt}</td>
+                <td style={{ ...cell, fontWeight: 700 }}>{r.school}</td>
+                <td style={{ ...cell, fontWeight: 700 }}>{r.teacher}</td>
+                <td style={cell}>{r.task}</td>
+                <td style={cell}>{r.group}</td>
+                <td style={{ ...cell, color: '#475569' }}>{r.symptom}</td>
+                <td style={cell}><Badge status={r.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+/* ── 상세 (수정) ─────────────────────────────────────────── */
+const IncidentDetail = ({ item, index, onBack, showToast }) => {
+  // [v1.5] 메일 = 인사말 + 본문(개발자 답변) + 맺음말. 세 칸 모두 수정 가능
+  const [parts, setParts] = useState(() => replyPartsOf(item || {}));
+  const [mailTo, setMailTo] = useState(item?.teacherEmail || '');
+  useEffect(() => { setParts(replyPartsOf(item || {})); setMailTo(item?.teacherEmail || ''); }, [item?.id, item?.replyParts, item?.devComment, item?.teacherEmail]);
+  const setPart = (k) => (e) => setParts((p) => ({ ...p, [k]: e.target.value }));
+
+  const toast = (m) => showToast && showToast(m, 'success');
+  if (!item) return null;
+  const sent = item.status === '메일 발송';
+
+  const simulateJiraComment = () => {
+    receiveJiraComment(item.id, SIM_DEV_COMMENTS[index % SIM_DEV_COMMENTS.length]);
+    toast(`Jira ${item.jira?.key} 개발자 댓글을 가져왔습니다 — 상태 「개발자 확인 완료」. (서버 연동 예정 — 시뮬레이션)`);
+  };
+  // 로그 본문은 목록에 싣지 않고 내려받을 때 서브문서에서 읽는다
+  const onDownloadLog = async () => {
+    const name = item.attachments.log.name;
+    try {
+      const log = await fetchIncidentLog(item.id);
+      if (!log) { showToast && showToast('진단 로그 본문을 찾지 못했습니다.', 'error'); return; }
+      downloadText(log.name || name, log.text || '');
+      toast(`진단 로그를 내려받았습니다 — ${log.name || name}${log.truncated ? ' (최근 부분만 보관)' : ''}`);
+    } catch (e) {
+      showToast && showToast(`진단 로그를 읽지 못했습니다 — ${e.message}`, 'error');
+    }
+  };
+  const onSaveDraft = () => { saveReplyDraft(item.id, parts); toast('답변을 임시저장했습니다.'); };
+  const onSendMail = () => {
+    if (!parts.body.trim()) { showToast && showToast('본문(개발자 답변)을 입력하세요.', 'error'); return; }
+    if (!mailTo.trim()) { showToast && showToast('수신 메일 주소를 입력하세요.', 'error'); return; }
+    sendReplyMail(item.id, { to: mailTo.trim(), parts });
+    toast(`${item.teacher} 선생님(${mailTo.trim()})께 답변 메일을 발송했습니다. (프로토타입 — 실제 발송 없음)`);
+  };
+
+  const box = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: 18 };
+
+  return (
+    <div className="content-container" style={{ padding: 24, height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
+     <div style={{ maxWidth: 960, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <button onClick={onBack} style={btn()}>← 목록</button>
+        <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>장애 신고 상세</h1>
+        <Badge status={item.status} />
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{item.id} · {item.createdAt} · {item.source}</span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* 신고 정보 */}
+        <div style={box}>
+          <div style={{ ...label, marginBottom: 10 }}>신고 정보</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px 16px', fontSize: 'var(--neo-font-size-sm)' }}>
+            <div><div style={label}>학교명</div><strong>{item.school}</strong></div>
+            <div><div style={label}>교사명</div><strong>{item.teacher}</strong> <span style={{ color: '#94A3B8' }}>({item.teacherId})</span></div>
+            <div><div style={label}>과제명</div><strong>{item.task}</strong></div>
+            <div><div style={label}>그룹</div><strong>{item.group}</strong></div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={label}>증상</div>
+              <strong>{item.symptom}</strong>
+              {item.detail && <div style={{ marginTop: 6, color: '#475569', whiteSpace: 'pre-wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px' }}>{item.detail}</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* 첨부 */}
+        <div style={box}>
+          <div style={{ ...label, marginBottom: 10 }}>첨부 (개발자 확인용)</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {item.attachments?.log ? (
+              <button onClick={onDownloadLog} style={btn()}>
+                ⬇ 진단 로그 <span style={{ color: '#94A3B8', fontWeight: 600 }}>{item.logDate || '전체 기간'} · {item.attachments.log.name}</span>
+              </button>
+            ) : <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>진단 로그 없음</span>}
+            {item.attachments?.penData?.length ? (
+              <button onClick={() => { const names = item.attachments.penData; downloadText(`${item.id}_pen-data.txt`, `# AiGLE pen data (prototype)\n# incident : ${item.id}\n${names.map((n) => `DOWNLOAD/AiGLE-PEN00/${n}`).join('\n')}\n`); toast(`펜 데이터 ${names.length}개를 내려받았습니다.`); }} style={btn()}>
+                ⬇ 펜 데이터 <span style={{ color: '#94A3B8', fontWeight: 600 }}>{item.attachments.penData.length}개</span>
+              </button>
+            ) : <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>펜 데이터 없음</span>}
+          </div>
+        </div>
+
+        {/* Jira + 개발자 답변 */}
+        <div style={box}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ ...label, marginBottom: 0 }}>Jira</div>
+            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>서버 연동 예정 — 시뮬레이션</span>
+            {item.jira && (
+              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', marginLeft: 6 }}>
+                <a href={item.jira.url} target="_blank" rel="noreferrer" style={{ fontWeight: 800, color: '#1D4ED8' }}>{item.jira.key}</a>
+                <span style={{ color: '#64748B' }}> · 게시판 등록 시 자동 등록 ({item.jira.registeredAt})</span>
+              </span>
+            )}
+          </div>
+          {/* [v1.6] 개발자 답변 원문 블록 삭제 — 본문 칸(본문 — 개발자 답변)에 이미 채워지므로 중복 표시하지 않는다 */}
+          {!item.devComment && !sent && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>아직 개발자 답변이 없습니다. 개발자가 Jira에 댓글을 쓰면 아래 본문에 채워지고 상태가 「개발자 확인 완료」로 바뀝니다.</span>
+              <button onClick={simulateJiraComment} style={btn({ whiteSpace: 'nowrap' })}>Jira 댓글 가져오기 (시뮬레이션)</button>
+            </div>
+          )}
+        </div>
+
+        {/* 운영팀 답변 */}
+        <div style={box}>
+          {sent ? (
+            <>
+              <div style={{ ...label, marginBottom: 8 }}>발송된 메일</div>
+              <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', marginBottom: 8 }}>
+                <strong style={{ color: '#047857' }}>✓ {item.mail?.sentAt} 발송</strong> · 수신 <strong>{item.mail?.to}</strong>
+              </div>
+              <pre style={{ margin: 0, padding: '14px 16px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, whiteSpace: 'pre-wrap', fontFamily: 'inherit', lineHeight: 1.7, color: '#1E293B', fontSize: 'var(--neo-font-size-sm)' }}>{item.replyDraft || composeReply(replyPartsOf(item))}</pre>
+            </>
+          ) : (
+            <>
+          <div style={{ ...label, marginBottom: 8 }}>운영팀 답변 메일 — 인사말 · 본문(개발자 답변) · 맺음말. 모두 수정할 수 있습니다</div>
+          {(() => {
+            const ta = (extra = {}) => ({ width: '100%', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box', resize: 'vertical', background: sent ? '#F8FAFC' : 'white', ...extra });
+            const sub = (text, action) => (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>{text}</span>
+                {action}
+              </div>
+            );
+            const resetBtn = (k, make) => !sent && (
+              <button type="button" onClick={() => setParts((p) => ({ ...p, [k]: make(item) }))} style={btn({ padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' })}>기본 문장으로</button>
+            );
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  {sub('인사말', resetBtn('greeting', DEFAULT_GREETING))}
+                  <textarea value={parts.greeting} onChange={setPart('greeting')} disabled={sent} style={ta({ minHeight: 64 })} />
+                </div>
+                <div>
+                  {sub('본문 — 개발자 답변', item.devComment && !sent && (
+                    <button type="button" onClick={() => setParts((p) => ({ ...p, body: item.devComment }))} style={btn({ padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' })}>개발자 답변 원문으로</button>
+                  ))}
+                  <textarea value={parts.body} onChange={setPart('body')} disabled={sent}
+                    placeholder="개발자 답변이 들어오면 여기에 채워집니다. 사용자에게 보낼 문장으로 다듬으세요."
+                    style={ta({ minHeight: 110, borderColor: '#93C5FD' })} />
+                </div>
+                <div>
+                  {sub('맺음말', resetBtn('closing', DEFAULT_CLOSING))}
+                  <textarea value={parts.closing} onChange={setPart('closing')} disabled={sent} style={ta({ minHeight: 72 })} />
+                </div>
+                <details style={{ fontSize: 'var(--neo-font-size-sm)' }}>
+                  <summary style={{ cursor: 'pointer', color: '#475569', fontWeight: 700 }}>발송 메일 미리보기</summary>
+                  <pre style={{ margin: '8px 0 0', padding: '12px 14px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, whiteSpace: 'pre-wrap', fontFamily: 'inherit', lineHeight: 1.7, color: '#1E293B' }}>{composeReply(parts)}</pre>
+                </details>
+              </div>
+            );
+          })()}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>수신</span>
+            <input value={mailTo} onChange={(e) => setMailTo(e.target.value)} disabled={sent} placeholder="교사 메일 주소"
+              style={{ flex: '1 1 220px', padding: '7px 10px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }} />
+            <button onClick={onSaveDraft} style={btn()}>임시저장</button>
+            <button onClick={onSendMail} style={btn({ background: '#2A75F3', color: 'white', borderColor: '#2A75F3' })}>✉ 메일 발송</button>
+          </div>
+            </>
+          )}
+        </div>
+      </div>
+     </div>
+    </div>
+  );
+};
+
+/* ── 컨테이너 ─────────────────────────────────────────── */
+const IncidentBoard = ({ showToast }) => {
+  const [items, setItems] = useState(() => listIncidents());
+  const [openId, setOpenId] = useState(null);
+  useEffect(() => subscribeIncidents((list) => setItems(list.slice())), []);
+  const idx = items.findIndex((r) => r.id === openId);
+  if (openId && idx >= 0) return <IncidentDetail item={items[idx]} index={idx} onBack={() => setOpenId(null)} showToast={showToast} />;
+  return <IncidentList items={items} onOpen={setOpenId} />;
+};
+
+export default IncidentBoard;

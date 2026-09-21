@@ -11,13 +11,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
-  AUTO_SCALES, AUTO_LEVELS, RUBRIC_CATEGORIES, RUBRIC_TEMPLATE, stdCode, GRADE_CUTOFFS, GRADE_NAMES,
-  clampLevels, maxIntervalFor, defaultInterval, buildScoreRows, rowsDescending, makeCriterion, scoreToGrade,
+  stdCode, GRADE_CUTOFFS, GRADE_NAMES,
+  defaultInterval, buildScoreRows, rowsDescending, makeCriterion, scoreToGrade,
+  defaultGradeScale,
+  aiFillCriteria, designRubric, criteriaHaveContent,
   subjectsOf, gradesOf, competenciesOf, evalAreasOf,
 } from './lib/gradingShared';
 import { buildFileUploadTask } from './lib/taskSchema';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
-import NumberTagPreviewModal from './NumberTagPreviewModal';
 // Vite-friendly worker URL (CDN fallback). pdfjs-dist v5+ uses .mjs worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
@@ -36,7 +37,7 @@ const STEPS = [
   { n: 2, label: '영역 편집',             icon: '🎯' },
   { n: 3, label: '문항 입력',             icon: '📝' },
   { n: 4, label: '성취기준',              icon: '✅' },
-  { n: 5, label: '평가 방식·채점 기준',   icon: '⚖️' },
+  { n: 5, label: '평가 기준',            icon: '⚖️' },
   { n: 6, label: '그룹 배포·출력',        icon: '🚀' },
 ];
 
@@ -58,7 +59,6 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   const [activeAreaType, setActiveAreaType] = useState('question');
   const [selectedAreaId, setSelectedAreaId] = useState(null);
   const [worksheetPreviewOpen, setWorksheetPreviewOpen] = useState(false); // [TSK-05 v2.30] 평가 답안지 미리보기 모달
-  const [numberTagPreviewOpen, setNumberTagPreviewOpen] = useState(false); // [TSK-05 v3.4] 스마트펜 번호표 미리보기 모달
   const [basicInfo, setBasicInfo] = useState({
     title: '',
     type: '서술형',
@@ -78,8 +78,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   const [rubricMode, setRubricMode] = useState('auto'); // 'auto' | 'manual'
   const [rubricManualText, setRubricManualText] = useState('');
   // 그룹 배포 상태
-  // 그룹 배포 — 그룹별 번호표/학생 배포 (TSK-13 동일)
-  const [groupList, setGroupList] = useState(MOCK_GROUPS.map((g) => ({ id: g.id, label: g.name, studentCount: g.studentCount, codeDeployed: false, studentDeployed: false })));
+  // 그룹 배포 — 그룹별 답안지 출력/학생 배포 (TSK-13 동일)
+  const [groupList, setGroupList] = useState(MOCK_GROUPS.map((g) => ({ id: g.id, label: g.name, studentCount: g.studentCount, printed: false, studentDeployed: false })));
   // [v2.55] 학생 1명당 인쇄할 답안지 수 — 기본 1, 범위 1~10 (v2.57: 호환용 유지)
   const [answerSheetCopies, setAnswerSheetCopies] = useState(1);
   // [v2.57] 문항별 답안지 수 매핑 — { [qid]: number }, 기본 1
@@ -87,51 +87,42 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   const getCopies = (qid) => copiesPerQuestion[qid] ?? 1;
   const setCopies = (qid, n) => setCopiesPerQuestion((p) => ({ ...p, [qid]: Math.max(1, Math.min(10, n)) }));
   // [v2.63] totalCopies는 questions state 정의 이후로 이동 (TDZ 회피)
-  const printableGroups = groupList.filter((g) => g.codeDeployed); // 번호표 배포된 그룹 = 출력 대상
-  // [v2.28] 번호표 인쇄 한도 = 3페이지 × 39명 = 117명. 초과 그룹은 배포 차단
-  const TAG_PRINT_LIMIT = 117;
-  const toggleGroupCode = (gid) => setGroupList((prev) => prev.map((g) => {
-    if (g.id !== gid) return g;
-    if (!g.codeDeployed) {
-      if (g.studentCount > TAG_PRINT_LIMIT) {
-        showToast && showToast(`「${g.label}」(${g.studentCount}명)은 번호표 인쇄 한도(${TAG_PRINT_LIMIT}명)를 초과하여 배포할 수 없습니다. 그룹을 분할해 주세요.`);
-        return g;
-      }
-      showToast && showToast(`「${g.label}」 번호표 배포 (과제 할당 · 채점 관리 미채점)`);
-      return { ...g, codeDeployed: true };
-    }
-    if (g.studentDeployed) { showToast && showToast('학생 배포 중인 그룹은 번호표 배포를 취소할 수 없습니다. 먼저 학생 배포를 취소하세요.'); return g; }
-    showToast && showToast(`「${g.label}」 번호표 배포 취소 (과제 할당 해제)`); return { ...g, codeDeployed: false };
+  // [v3.75] 「번호표 배포」 버튼 폐기. 채점 관리 미채점 진입 트리거 = 답안지 다운로드(인쇄) 완료(g.printed). [v3.80] 스마트펜 번호표 폐기 — 학생 식별은 답안지 기재란(학년/반/번호·이름) OCR
+  //   학생 배포는 출력이 완료된 그룹만 가능 — 답안지 없이 학생에게만 노출되어 미채점에 잡히지 않는 상태를 방지한다.
+  //   학생 배포 ⇄ 취소는 학생 노출 여부만 바꾼다 (미채점 등록은 유지).
+  // [v3.80] 舊 번호표 인쇄 한도(117명) 폐기 — 번호표를 쓰지 않는다
+  // 출력 모달에서 인쇄(다운로드)가 시작되면 해당 그룹을 출력 완료로 기록 → 미채점 등록 + 학생 배포 활성화
+  const markGroupPrinted = (label) => setGroupList((prev) => prev.map((g) => {
+    if (g.label !== label || g.printed) return g;
+    showToast && showToast(`「${g.label}」 답안지 출력 완료 — 채점 관리 미채점에 등록되었고 학생 배포가 가능해졌습니다.`);
+    return { ...g, printed: true };
   }));
+  // 학생 배포 ⇄ 취소
   const toggleGroupStudent = (gid) => setGroupList((prev) => prev.map((g) => {
     if (g.id !== gid) return g;
     if (!g.studentDeployed) {
-      if (g.studentCount > TAG_PRINT_LIMIT) {
-        showToast && showToast(`「${g.label}」(${g.studentCount}명)은 번호표 인쇄 한도(${TAG_PRINT_LIMIT}명)를 초과하여 배포할 수 없습니다. 그룹을 분할해 주세요.`);
-        return g;
-      }
-      showToast && showToast(`「${g.label}」 학생 배포`);
-      return { ...g, codeDeployed: true, studentDeployed: true };
+      if (!g.printed) { showToast && showToast('답안지 인쇄에서 다운로드를 진행한 후 배포할 수 있습니다.'); return g; }
+      showToast && showToast(`「${g.label}」 학생 배포 — 학생에게 과제가 노출됩니다.`);
+      return { ...g, studentDeployed: true };
     }
-    showToast && showToast(`「${g.label}」 학생 배포 취소`); return { ...g, studentDeployed: false };
+    showToast && showToast(`「${g.label}」 학생 배포 취소 — 학생이 과제를 확인할 수 없는 상태가 됩니다. 과제를 수정한 경우 기 출력한 문제지를 다시 인쇄하세요. (답안지는 무관)`);
+    return { ...g, studentDeployed: false };
   }));
+  // [v3.75] 과제 수정 잠금 — 학생 배포된 그룹이 하나라도 있으면 Step 1~5 수정 불가. 수정하려면 학생 배포를 먼저 취소해야 한다
+  //   (학생 답안이 제출된 과제도 수정 불가 — 등록 화면에서는 발생하지 않으므로 과제 관리/상세 쪽 정책)
+  const editLocked = groupList.some((g) => g.studentDeployed);
 
-  // ── [TSK-13 동일] 평가 방식·채점 기준 상태 ───────────────────────────
+
+  // ── [TSK-13 동일] 평가 기준 상태 ([v3.74] 자동평가 폐기 → 자율평가 루브릭 단일 체제) ───────────────
   const [questions, setQuestions] = useState([]); // 문제(question) 영역에서 파생된 문항
   // [v2.63] questions 정의 이후로 totalCopies 이동 — TDZ 에러 회피
   const totalCopies = questions.reduce((s, q) => s + getCopies(q.id), 0);
-  const [evalMode, setEvalMode] = useState('auto'); // 'auto' | 'self'
-  const [autoScale, setAutoScale] = useState(3);     // 자동평가 채점 단계(3/5)
-  const [rubricOverrides, setRubricOverrides] = useState({}); // `${qid}|${sid}|${cat}|${lv}` → text
+  const evalMode = 'self'; // [v3.74] 자동평가 폐기 — 자율평가 단일 체제 (저장 스키마 호환용 고정값)
   const [resultScale, setResultScale] = useState(3);
-  const [selfScale, setSelfScale] = useState(3); // [v3.47] 자율평가 단계 — 모든 채점기준 levels + 등급 환산 일괄 동기화
-  const [demoScore, setDemoScore] = useState('');
-  const [gradePreviewOpen, setGradePreviewOpen] = useState(false);
+  const [selfScale, setSelfScale] = useState(3); // 채점 등급(3/4/5) — Step 5 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정
+  // [v3.74] Step 5 진입 시 AI 루브릭 자동 설계 완료 여부 { [qid]: true } — 문항당 1회만 설계, 이후는 교사 수정 보존
+  const [rubricReady, setRubricReady] = useState({});
   const [stdOpen, setStdOpen] = useState({}); // 문항별 성취기준 목록 펼침 상태 { [qid]: bool }
-  // [v2.47] 자동평가 채점 기준표 영역 — 다중 standards 시 현재 보고 있는 sid 추적 { [qid]: sid }
-  const [activeRubricStdMap, setActiveRubricStdMap] = useState({});
-  // [v2.47] 자율평가 등급 환산 미리보기 — 우측 fixed 패널 펼침/숨김 (기본 펼침)
-  const [previewExpanded, setPreviewExpanded] = useState(true);
   // [v2.61] 한 배너 통합 — 활용(좌) + 주의(우) 비대칭 분할. warnExpanded=true 시 주의가 큰 영역(4/5), false 시 활용이 큰 영역(4/5)
   const [warnExpanded, setWarnExpanded] = useState(false);
   const [taskStdOpen, setTaskStdOpen] = useState(false); // [v3.46] 과제 단위 성취기준 펼침 상태
@@ -209,9 +200,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     });
   }, [areas]);
 
-  const totalPoints = evalMode === 'auto'
-    ? questions.reduce((s, q) => s + (Number(q.points) || 0), 0)
-    : questions.reduce((s, q) => s + q.criteria.reduce((cs, c) => cs + (Number(c.maxPoints) || 0), 0), 0);
+  const totalPoints = questions.reduce((s, q) => s + q.criteria.reduce((cs, c) => cs + (Number(c.maxPoints) || 0), 0), 0);
 
   const updateQuestion = (qid, patch) => setQuestions((qs) => qs.map((q) => (q.id === qid ? { ...q, ...patch } : q)));
 
@@ -375,69 +364,17 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     updateModelAnswerHtml(qid, sample);
     showToast && showToast('AI 모범답안을 생성했습니다. (성취기준 기반 — 검토·수정하세요)');
   };
-  const rubricCell = (qid, sid, catKey, lvIdx, scale) => {
-    const k = `${qid}|${sid}|${catKey}|${lvIdx}`;
-    if (k in rubricOverrides) return rubricOverrides[k];
-    return RUBRIC_TEMPLATE[catKey]?.[scale]?.[lvIdx] || '';
-  };
-  const setRubricCell = (qid, sid, catKey, lvIdx, text) => setRubricOverrides((p) => ({ ...p, [`${qid}|${sid}|${catKey}|${lvIdx}`]: text }));
-  // [정책] 채점 기준표 재생성 — 빈 칸만 템플릿으로 채우고 수동 수정 보존. 재생성하려면 ✕로 비운 뒤 호출.
-  const regenerateRubric = (qid, sid, scale) => {
-    if (!sid) { showToast && showToast('이 문항의 성취기준을 먼저 선택해 주세요.'); return; }
-    let filled = 0, skipped = 0;
-    setRubricOverrides((p) => {
-      const next = { ...p };
-      RUBRIC_CATEGORIES.forEach((cat) => {
-        for (let lvIdx = 0; lvIdx < scale; lvIdx++) {
-          const k = `${qid}|${sid}|${cat.key}|${lvIdx}`;
-          const cur = k in next ? next[k] : (RUBRIC_TEMPLATE[cat.key]?.[scale]?.[lvIdx] || '');
-          if (cur && cur.trim()) { skipped++; continue; }
-          const tpl = RUBRIC_TEMPLATE[cat.key]?.[scale]?.[lvIdx] || '';
-          if (tpl) { next[k] = tpl; filled++; }
-        }
-      });
-      return next;
-    });
-    if (filled === 0) showToast && showToast('빈 칸이 없습니다. ✕ 버튼으로 칸을 비운 뒤 다시 실행하세요.');
-    else showToast && showToast(`빈 칸 ${filled}개를 템플릿으로 채웠습니다. 수동 수정한 ${skipped}개 칸은 보존됨.`);
-  };
-  const clearRubricCell = (qid, sid, catKey, lvIdx) => setRubricOverrides((p) => ({ ...p, [`${qid}|${sid}|${catKey}|${lvIdx}`]: '' }));
-
-  // [정책] 자율평가 — q.points(총 배점) 입력 시 채점기준 추가/재분배에 사용. 미입력 시 makeCriterion 기본값.
-  const rebuildCriterionForMaxPoints = (c, mp) => {
-    const M = mp;
-    // [v3.73] 총 배점 재분배도 단계 수는 유지한다 — 배점만 바뀌고 입력 구간·평가 내용은 그대로
-    const levels = Math.max(2, c.levels || 2);
-    // 배점이 아직 2점 미만인 「입력 중」 상태에서는 간격도 건드리지 않는다 (배점을 되돌리면 원래 점수 배열로 복귀)
-    const interval = M >= 2
-      ? Math.max(1, Math.min(maxIntervalFor(M, levels), c.interval || 1))
-      : Math.max(1, c.interval || 1);
-    return { ...c, maxPoints: mp, levels, interval, rows: buildScoreRows(mp, levels, interval, c.rows) };
-  };
-  const distributeTotal = (criteria, total) => {
-    const n = criteria.length;
-    if (!total || n === 0) return criteria;
-    const base = Math.floor(total / n);
-    const rem = total - base * n;
-    return criteria.map((c, i) => rebuildCriterionForMaxPoints(c, base + (i < rem ? 1 : 0)));
-  };
+  // [v3.77] 총 배점 → 범주 배점 균등 재분배(distributeTotal·redistributeTotal) 폐기 — 총 배점은 범주 배점에 영향을 주지 않는다
   const addCriterion = (qid) => setQuestions((qs) => qs.map((q) => {
     if (q.id !== qid) return q;
     if (q.criteria.length >= 5) { showToast && showToast('채점 기준은 문항당 최대 5개까지 추가할 수 있습니다.'); return q; }
-    const nextCriteria = [...q.criteria, makeCriterion()];
-    const total = Number(q.points) || 0;
-    return { ...q, criteria: total ? distributeTotal(nextCriteria, total) : nextCriteria };
-  }));
-  const redistributeTotal = (qid) => setQuestions((qs) => qs.map((q) => {
-    if (q.id !== qid) return q;
-    const total = Number(q.points) || 0;
-    if (!total) { showToast && showToast('먼저 총 배점을 입력해 주세요.'); return q; }
-    return { ...q, criteria: distributeTotal(q.criteria, total) };
+    return { ...q, criteria: [...q.criteria, makeCriterion()] }; // [v3.74] 범주 추가 — 점수 구간 3개 고정, 배점 빈 값
   }));
   const removeCriterion = (qid, cid) => setQuestions((qs) => qs.map((q) => {
     if (q.id !== qid) return q;
     if (q.criteria.length <= 1) { showToast && showToast('채점 기준은 문항당 최소 1개가 필요합니다.'); return q; }
-    return { ...q, criteria: q.criteria.filter((c) => c.id !== cid) };
+    const criteria = q.criteria.filter((c) => c.id !== cid);
+    return { ...q, criteria, points: String(criteria.reduce((sum, c) => sum + (Number(c.maxPoints) || 0), 0)) }; // [v3.79] 총 배점 = 합계 동기화
   }));
   const updateCriterion = (qid, cid, patch) => setQuestions((qs) => qs.map((q) => {
     if (q.id !== qid) return q;
@@ -448,9 +385,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
       if ('maxPoints' in patch || 'levels' in patch || 'interval' in patch) {
         const M = Number(merged.maxPoints) || 0;
         merged.levels = Math.max(2, Number(merged.levels) || 2);
-        merged.interval = M >= 2
-          ? Math.max(1, Math.min(maxIntervalFor(M, merged.levels), Number(merged.interval) || 1))
-          : Math.max(1, Number(merged.interval) || 1);
+        // [v3.74] 배점 간격 선택 폐기 — 배점이 바뀌면 간격은 최대값(배점÷2)으로 재산출 (배점 → 0점 균등 분배)
+        merged.interval = M >= 2 ? defaultInterval(M, merged.levels) : Math.max(1, Number(merged.interval) || 1);
         merged.rows = buildScoreRows(merged.maxPoints, merged.levels, merged.interval, c.rows);
       }
       return merged;
@@ -462,22 +398,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     }
     return { ...q, criteria: nextCriteria };
   }));
-  // [v2.35] 총 배점 변경 → 채점 기준 maxPoints 자동 균등 재분배
-  const updateQuestionPoints = (qid, raw) => setQuestions((qs) => qs.map((q) => {
-    if (q.id !== qid) return q;
-    const total = Number(raw) || 0;
-    if (total <= 0 || q.criteria.length === 0) return { ...q, points: raw };
-    return { ...q, points: raw, criteria: distributeTotal(q.criteria, total) };
-  }));
-  const changeCriterionLevels = (qid, cid, delta) => {
-    const q = questions.find((x) => x.id === qid); const c = q?.criteria.find((x) => x.id === cid);
-    if (!c) return;
-    const M = Number(c.maxPoints) || 0; const next = c.levels + delta;
-    if (next < 2) { showToast && showToast('배점 단계는 최소 2단계입니다.'); return; }
-    if (next > clampLevels(M)) { showToast && showToast(`배점 ${M}점에서는 최대 ${clampLevels(M)}단계까지 가능합니다. 배점을 높이면 단계를 늘릴 수 있습니다.`); return; }
-    updateCriterion(qid, cid, { levels: next });
-  };
-  const updateRowDesc = (qid, cid, ri, desc) => setQuestions((qs) => qs.map((q) => q.id !== qid ? q : { ...q, criteria: q.criteria.map((c) => c.id !== cid ? c : { ...c, rows: c.rows.map((r, i) => i === ri ? { ...r, desc } : r) }) }));
+  // [v3.79] 총 배점 입력 폐기 — 범주 배점 합계를 표시만 한다 (q.points는 합계로 항상 동기화)
   // [v2.35] 점수 행 입력 — 위 단계보다 크거나 아래 단계보다 작은 값 입력 차단 (저장 자체를 막아 「입력 후 경고」 방식 폐기)
   const updateRowScore = (qid, cid, ri, raw) => setQuestions((qs) => qs.map((q) => {
     if (q.id !== qid) return q;
@@ -504,18 +425,20 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
       return { ...c, rows: c.rows.map((r, i) => i === ri ? { ...r, score: v } : r) };
     }) };
   }));
-  const redistribute = (qid, cid) => setQuestions((qs) => qs.map((q) => {
-    if (q.id !== qid) return q;
-    return { ...q, criteria: q.criteria.map((c) => {
-      if (c.id !== cid) return c;
-      const interval = defaultInterval(c.maxPoints, c.levels);
-      return { ...c, interval, rows: buildScoreRows(c.maxPoints, c.levels, interval, c.rows) };
-    }) };
-  }));
+  const redistribute = (qid, cid) => {
+    const c0 = questions.find((x) => x.id === qid)?.criteria.find((x) => x.id === cid);
+    if (c0 && !(Number(c0.maxPoints) > 0)) { showToast && showToast('먼저 배점을 입력해 주세요.'); return; }
+    setQuestions((qs) => qs.map((q) => {
+      if (q.id !== qid) return q;
+      return { ...q, criteria: q.criteria.map((c) => {
+        if (c.id !== cid) return c;
+        const interval = defaultInterval(c.maxPoints, c.levels);
+        return { ...c, interval, rows: buildScoreRows(c.maxPoints, c.levels, interval, c.rows) };
+      }) };
+    }));
+  };
   // [v2.46] distributeAllByGrade 함수 폐기 — 배점 단계 기능과 역할 중복. ↻ 균등 재분배(redistributeTotal) + ↻ 점수 균등 분배(redistribute)로 충분
-  // 자율평가 AI 채점 기준 생성 — 기존 배점·단계 구조 유지, 성취기준 기반 기준명·평가 내용만 채움
-  const AI_NAMES = ['내용 이해와 적용', '논리적 구성', '표현의 정확성', '근거의 타당성', '창의적 사고'];
-  const AI_QUAL = ['탁월하게', '충실히', '대체로', '부분적으로', '미흡하게'];
+  // AI 채점 기준 생성 — 기존 배점·단계 구조 유지, 성취기준 기반 기준명·평가 내용만 채움 (gradingShared.aiFillCriteria)
   // [중복 제거됨 — 위에 통합 정의 (v2.5 자동 축소 로직 포함)]
   // [v3.46 → v2.34] 과제 단위 성취기준 일괄 적용 — standards 배열도 동기화
   const setStandardForAll = (sid) =>
@@ -528,24 +451,9 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     const q0 = questions.find((x) => x.id === qid);
     const std = MOCK_STANDARDS.find((s) => s.id === q0?.standard);
     if (!std) { showToast && showToast('이 문항의 성취기준을 먼저 선택해 주세요. (Step 4)'); return; }
-    const area = std.area || '평가 영역';
-    const qualityFor = (i, n) => (n <= 1 ? AI_QUAL[0] : AI_QUAL[Math.round((i / (n - 1)) * (AI_QUAL.length - 1))]);
     // [정책] 수동 수정 보존. 빈 칸만 AI가 채움. 재생성은 ✕로 비운 뒤 호출.
-    let filled = 0, skipped = 0;
-    setQuestions((qs) => qs.map((q) => {
-      if (q.id !== qid) return q;
-      const criteria = q.criteria.map((c, ci) => {
-        const aiName = AI_NAMES[ci % AI_NAMES.length]; const n = c.rows.length;
-        const nextName = (c.name && c.name.trim()) ? (skipped++, c.name) : (filled++, aiName);
-        const rows = c.rows.map((r, ri) => {
-          if (r.desc && r.desc.trim()) { skipped++; return r; }
-          filled++;
-          return { ...r, desc: `${area} 영역에서 '${nextName || aiName}'을(를) ${qualityFor(ri, n)} 충족함. (성취기준 기준 ${r.score}점 수준)` };
-        });
-        return { ...c, name: nextName, rows };
-      });
-      return { ...q, criteria };
-    }));
+    const { criteria, filled, skipped } = aiFillCriteria(q0.criteria, std.area || '평가 영역');
+    setQuestions((qs) => qs.map((q) => (q.id !== qid ? q : { ...q, criteria })));
     if (filled === 0) showToast && showToast('빈 칸이 없습니다. ✕ 버튼으로 칸을 비운 뒤 다시 실행하세요.');
     else showToast && showToast(`빈 칸 ${filled}개를 AI가 채웠습니다. 수동 수정한 ${skipped}개 칸은 보존됨. (성취기준 기반 — 검토·수정하세요)`);
   };
@@ -1016,11 +924,33 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     }));
   }, [basicInfo.subject]);
 
-  // [v3.47] 자율평가 selfScale 변경 시 — resultScale(등급 환산 체계)만 동기화. 채점기준 c.levels(점수 행 수)는 채점기준별 자유 유지.
+  // [v3.47] selfScale 변경 시 — resultScale(등급 환산 체계)만 동기화. 채점기준 c.levels(점수 행 수)는 채점기준별 자유 유지.
+  useEffect(() => { setResultScale(selfScale); }, [selfScale]);
+
+  // [v3.74] Step 5 「평가 기준」 진입 시 — 아직 설계되지 않은 문항의 채점 루브릭을 AI가 자동 설계 (샘플 stub, TSK-13 동일)
+  //   · 성취기준(핵심평가영역)·문항 내용을 근거로 범주(채점 기준) 3개 × 평가 내용 3개(점수 구간 3개 고정)
+  //   · 채점 등급 기본값 = 학교급별 (초등 3등급 / 중·고등 5등급). 최초 1회만 적용, 이후 교사 수정 보존
+  //   · 교사가 이미 채점 기준을 입력한 문항(가져오기 데이터 등)은 건드리지 않고 설계 완료로 간주
   useEffect(() => {
-    if (evalMode !== 'self') return;
-    setResultScale(selfScale);
-  }, [selfScale, evalMode]);
+    if (step !== 5) return;
+    const pending = questions.filter((q) => !rubricReady[q.id]);
+    if (pending.length === 0) return;
+    const scale = defaultGradeScale(basicInfo.schoolLevel);
+    if (Object.keys(rubricReady).length === 0) setSelfScale(scale);
+    const designed = {};
+    pending.filter((q) => !criteriaHaveContent(q.criteria)).forEach((q) => {
+      const std = MOCK_STANDARDS.find((x) => x.id === q.standard);
+      designed[q.id] = designRubric(std?.area || '평가 영역');
+    });
+    setQuestions((qs) => qs.map((q) => {
+      const criteria = designed[q.id];
+      if (!criteria) return q;
+      return { ...q, criteria }; // [v3.77] 배점·총 배점은 비워 둔다 (교사 입력)
+    }));
+    setRubricReady((p) => { const n = { ...p }; pending.forEach((q) => { n[q.id] = true; }); return n; });
+    if (Object.keys(designed).length > 0) showToast && showToast(`성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. (${basicInfo.schoolLevel} 기본 ${scale}등급 · 범주 3개 · 범주별 평가 내용 3개) 검토 후 수정하세요.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   // [v2.19] step 변경 추적 — Step 2 이상으로 진입한 적이 있으면 파일 변경 경고 활성화
   useEffect(() => {
@@ -1028,34 +958,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // [v3.45] 브라우저 닫기 시 자율평가 합 불일치 → 균등 재분배 후 자동 저장 (sessionStorage)
-  useEffect(() => {
-    const handler = () => {
-      if (evalMode !== 'self') return;
-      const hasMismatch = questions.some((q) => {
-        const total = Number(q.points) || 0;
-        if (!total) return false;
-        const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-        return sum !== total;
-      });
-      if (!hasMismatch) return;
-      try {
-        const redistributed = questions.map((q) => {
-          const total = Number(q.points) || 0;
-          if (!total) return q;
-          const n = q.criteria.length;
-          if (!n) return q;
-          const base = Math.floor(total / n);
-          const rem = total - base * n;
-          return { ...q, criteria: q.criteria.map((c, i) => ({ ...c, maxPoints: base + (i < rem ? 1 : 0) })) };
-        });
-        sessionStorage.setItem(`autoSavedTask_${basicInfo.title || 'untitled'}`,
-          JSON.stringify({ title: basicInfo.title, evalMode, questions: redistributed, autoRedistributed: true, timestamp: Date.now() }));
-      } catch {}
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [evalMode, questions, basicInfo.title]);
+  // [v3.77] 舊 [v3.45] 브라우저 닫기 시 균등 재분배 자동 저장 폐기 — 총 배점은 범주 배점에 영향을 주지 않는다
 
   // 키보드 단축키 (Step 2 전용) — 입력 필드 포커스 시 무시
   //   Ctrl/⌘+Z : 실행 취소
@@ -1850,17 +1753,11 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     }
     if (step === 5) {
       if (questions.length === 0) return false;
-      if (evalMode === 'auto') return questions.every(q => Number(q.points) > 0);
-      // 자율평가: 채점기준 valid + 총 배점 입력 시 합 일치 필수
+      // 채점기준 valid + 총 배점 입력 시 합 일치 필수
       return questions.every(q => {
         const ok = q.criteria.every(c => Number(c.maxPoints) > 0 && c.name.trim() && c.rows.every(r => r.score !== '') && rowsDescending(c.rows));
         if (!ok) return false;
-        const total = Number(q.points) || 0;
-        if (total > 0) {
-          const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-          if (sum !== total) return false;
-        }
-        return true;
+        return true; // [v3.79] 총 배점은 범주 배점 합계로 자동 산출 — 별도 조건 없음
       });
     }
     return false; // step 6 — 마지막, 저장 버튼으로 처리
@@ -1868,24 +1765,13 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
 
   // 파일 업로드 + 과제명만 있으면 저장 가능
   const canSave = !!(uploadedFile && basicInfo.title.trim());
-  // 자율평가 — 채점기준 합 ≠ 총 배점 문항 list
-  const getMismatchQuestions = () => {
-    if (evalMode !== 'self') return [];
-    return questions.map((q, idx) => {
-      const total = Number(q.points) || 0;
-      if (!total) return null;
-      const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-      if (sum === total) return null;
-      return { idx: idx + 1, qid: q.id, total, sum, diff: sum - total };
-    }).filter(Boolean);
-  };
-  const [saveMismatchModal, setSaveMismatchModal] = useState(null);
+  // [v3.79] 총 배점 = 범주 배점 합계(표시 전용) — 불일치 검사·정합성 모달 폐기
   const performSave = () => {
     // [v3.46] 영속화 — 부모에게 task 객체 전달 (BASE_TASKS 호환 + source 메타 포함)
     if (onAdd) {
       const task = buildFileUploadTask({
         basicInfo, uploadedFile, areas, answerDetails, questions,
-        evalMode, autoScale, rubricOverrides, groupList, isShared,
+        evalMode, groupList, isShared,
       });
       onAdd(task);
     }
@@ -1894,18 +1780,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   };
   const handleSave = () => {
     if (!canSave) { showToast && showToast('파일 업로드와 과제명을 입력해야 저장할 수 있습니다.'); return; }
-    const mismatches = getMismatchQuestions();
-    if (mismatches.length > 0) { setSaveMismatchModal({ items: mismatches }); return; }
     performSave();
-  };
-  const redistributeAllAndSave = () => {
-    setQuestions((qs) => qs.map((q) => {
-      const total = Number(q.points) || 0;
-      if (!total) return q;
-      return { ...q, criteria: distributeTotal(q.criteria, total) };
-    }));
-    setSaveMismatchModal(null);
-    setTimeout(performSave, 0);
   };
   const handleExitNoSave = () => { if (window.confirm('저장하지 않고 나가시겠습니까? 작성 중인 내용은 사라집니다.')) onBack && onBack(); };
   const handleDelete = () => { if (window.confirm('이 과제를 삭제하시겠습니까? 되돌릴 수 없습니다.')) { showToast && showToast('과제를 삭제했습니다.'); onBack && onBack(); } };
@@ -1946,7 +1821,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   };
   const importInputRef = useRef(null);
   const handleExport = () => {
-    const data = { basicInfo, areas, answerDetails, questions, evalMode, autoScale, selfScale, resultScale, rubricOverrides, groupList };
+    const data = { basicInfo, areas, answerDetails, questions, evalMode, selfScale, resultScale, groupList };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1965,12 +1840,13 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
         if (data.basicInfo) setBasicInfo((p) => ({ ...p, ...data.basicInfo }));
         if (Array.isArray(data.areas)) setAreas(data.areas);
         if (data.answerDetails) setAnswerDetails(data.answerDetails);
-        if (Array.isArray(data.questions)) setQuestions(data.questions);
-        if (data.evalMode) setEvalMode(data.evalMode);
-        if (data.autoScale) setAutoScale(data.autoScale);
+        if (Array.isArray(data.questions)) {
+          setQuestions(data.questions);
+          // [v3.74] 가져온 문항은 채점 기준을 이미 갖고 있으므로 Step 5 진입 시 자동 설계를 건너뛴다
+          setRubricReady(Object.fromEntries(data.questions.map((q) => [q.id, true])));
+        }
         if (data.resultScale) setResultScale(data.resultScale);
         if (data.selfScale) setSelfScale(data.selfScale);
-        if (data.rubricOverrides) setRubricOverrides(data.rubricOverrides);
         if (Array.isArray(data.groupList)) setGroupList(data.groupList);
         showToast && showToast('과제를 가져왔습니다.');
       } catch { showToast && showToast('가져오기 실패 — 올바른 과제 파일(JSON)이 아닙니다.'); }
@@ -2048,26 +1924,22 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
             );
           })}
         </div>
-        {/* [v3.45] 자율평가 합 불일치 지속 안내 — 모달 닫혀도 항상 표시 */}
-        {evalMode === 'self' && (() => {
-          const items = getMismatchQuestions();
-          if (items.length === 0) return null;
-          return (
-            <div style={{ background: '#FEF3C7', borderTop: '1px solid #FDE68A', padding: '10px 1.5rem', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', fontWeight: 800 }}>⚠ 채점 합계 ≠ 총 배점</span>
-              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
-                {items.map((m) => `문항 ${m.idx}(${m.diff > 0 ? '+' : ''}${m.diff}점)`).join(' · ')}
-              </span>
-              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginLeft: 'auto' }}>정합성을 맞춰야 저장됩니다. 브라우저를 그냥 닫으면 자동으로 균등 재분배됩니다.</span>
-              <button onClick={() => items.forEach((m) => redistributeTotal(m.qid))}
-                style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #B45309', background: 'white', color: '#B45309', fontWeight: 800, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>↻ 모두 균등 재분배</button>
-            </div>
-          );
-        })()}
+        {/* [v3.77] 舊 [v3.45] 합 불일치 상단 영구 배너([↻ 모두 균등 재분배]) 폐기 — 총 배점 입력란 오류 표시로 일원화 */}
       </div>
 
       {/* Step 본문 */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+
+        {/* [v3.75] 과제 수정 잠금 안내 — 학생 배포 중이면 Step 1~5는 읽기 전용 */}
+        {editLocked && step < 6 && (
+          <div style={{ maxWidth: 920, margin: '0 auto 16px', display: 'flex', alignItems: 'center', gap: 10, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '10px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#991B1B', fontWeight: 700 }}>
+            <span>🔒</span>
+            <span>학생 배포 중인 과제는 수정할 수 없습니다. 수정하려면 Step 6에서 학생 배포를 취소하세요.</span>
+            <button onClick={() => setStep(6)} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontWeight: 700, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>Step 6으로 이동</button>
+          </div>
+        )}
+        {/* 잠금 시 pointer-events:none → 휠 스크롤은 바깥 스크롤 컨테이너가 받는다 */}
+        <div inert={editLocked && step < 6 ? true : undefined} style={editLocked && step < 6 ? { pointerEvents: 'none', opacity: 0.6, userSelect: 'none' } : undefined}>
 
         {/* Step 1 — 기본 정보 + 파일 업로드 (통합) */}
         {step === 1 && (
@@ -3220,8 +3092,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                           </div>
                           {!warnExpanded && (
                             <div style={{ lineHeight: 1.6 }}>
-                              <div>• <strong>자동평가</strong>: 성취기준이 <strong>채점 기준</strong>으로 그대로 사용됩니다.</div>
-                              <div>• <strong>자율평가</strong>: <strong>AI 채점 기준 생성</strong> 시 평가 내용의 참고 자료로 활용됩니다.</div>
+                              <div>• Step 5 <strong>평가 기준</strong> 진입 시 성취기준·문항 내용을 분석해 <strong>채점 루브릭을 자동 설계</strong>합니다.</div>
+                              <div>• <strong>AI 채점 기준 생성</strong> 시에도 평가 내용의 참고 자료로 활용됩니다.</div>
                             </div>
                           )}
                         </div>
@@ -3235,7 +3107,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                           {warnExpanded && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
                               {[
-                                { icon: '✨', title: '1개 권장', desc: '자동평가는 성취기준 1개가 적절' },
+                                { icon: '✨', title: '1개 권장', desc: '루브릭 설계에는 성취기준 1개가 적절' },
                                 { icon: '🎯', title: '모두 반영', desc: '선택한 성취기준이 채점 기준으로 사용' },
                                 { icon: '⚠️', title: 'AI 응답 영향', desc: '평가내용이 많으면 응답 느려지거나 실패' },
                               ].map((item, i) => (
@@ -3370,7 +3242,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
           );
         })()}
 
-        {/* Step 5 — 평가 방식·채점 기준 (TSK-13 동일) */}
+        {/* Step 5 — 평가 기준 (TSK-13 동일 · [v3.74] 자동평가 폐기 → 자율평가 루브릭 단일 체제. 진입 시 AI 자동 설계) */}
         {step === 5 && (() => {
           const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '18px 20px', marginBottom: 16 };
           const label = { fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' };
@@ -3378,23 +3250,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
           const chip = (on, color = '#2A75F3') => ({ padding: '6px 14px', borderRadius: 999, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', border: `1px solid ${on ? color : '#E2E8F0'}`, background: on ? `${color}14` : 'white', color: on ? color : '#64748B' });
           return (
             <div style={{ maxWidth: 920, margin: '0 auto' }}>
-              <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 16 }}>⚖️ Step 5. 평가 방식 · 채점 기준</h2>
-
-              {/* 평가 방식 토글 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
-                {[
-                  { id: 'auto', icon: '🤖', t: '자동평가', d: '문항별 성취기준 기반, 채점 단계(3/5)에 맞는 DB 평가지표로 채점' },
-                  { id: 'self', icon: '✍️', t: '자율평가', d: '문항별 채점 기준을 직접/AI로 작성 (배점·단계·간격)' },
-                ].map((m) => {
-                  const on = evalMode === m.id;
-                  return (
-                    <button key={m.id} onClick={() => setEvalMode(m.id)} style={{ textAlign: 'left', padding: '14px 16px', borderRadius: 14, cursor: 'pointer', border: `2px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white' }}>
-                      <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: on ? '#1D4ED8' : '#1E293B', marginBottom: 4 }}>{m.icon} {m.t}</div>
-                      <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>{m.d}</div>
-                    </button>
-                  );
-                })}
-              </div>
+              <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 16 }}>⚖️ Step 5. 평가 기준</h2>
 
               {questions.length === 0 && (
                 <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', fontSize: 'var(--neo-font-size-sm)', color: '#B45309', fontWeight: 600 }}>
@@ -3402,160 +3258,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                 </div>
               )}
 
-              {/* 자동평가 — 문항 탭 + 총 배점 요약 + 활성 문항 카드 */}
-              {evalMode === 'auto' && questions.length > 0 && (() => {
-                const effectiveActiveId = (questions.find((qq) => qq.id === activeQId)?.id) ?? questions[0]?.id;
-                const activeIdx = questions.findIndex((qq) => qq.id === effectiveActiveId);
-                const activeQ = questions[activeIdx];
-                const totalAuto = questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
-                const levels = AUTO_LEVELS[autoScale];
-                // [v2.47] 다중 standards 지원 — activeRubricStdMap에서 sid 추출, 기본 standards[0]
-                const activeStandards = activeQ ? (activeQ.standards && activeQ.standards.length > 0 ? activeQ.standards : (activeQ.standard ? [activeQ.standard] : [])) : [];
-                const currentRubricSid = activeQ ? (activeRubricStdMap[activeQ.id] && activeStandards.includes(activeRubricStdMap[activeQ.id]) ? activeRubricStdMap[activeQ.id] : activeStandards[0]) : null;
-                const std = currentRubricSid ? MOCK_STANDARDS.find((s) => s.id === currentRubricSid) : null;
-                return (
-                <div>
-                  {/* [v3.49] 자동평가 채점 등급 (3/5등급) */}
-                  <div style={{ ...card, background: '#F8FAFC' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 등급</span>
-                      {AUTO_SCALES.map((n) => (
-                        <button key={n} onClick={() => setAutoScale(n)} style={chip(autoScale === n)}>{autoScale === n ? '✓ ' : ''}{n}등급</button>
-                      ))}
-                      {/* [v2.53] 자명한 안내문 제거 */}
-                    </div>
-                  </div>
-
-                  {/* 문항 탭 — 추가된 문항만 노출 */}
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                    {questions.map((q, idx) => {
-                      const focused = q.id === effectiveActiveId;
-                      const pts = Number(q.points) || 0;
-                      return (
-                        <button key={q.id} onClick={() => setActiveQId(q.id)} title={`문항 ${idx + 1} 보기`}
-                          style={{ flex: '1 1 0', minWidth: 130, padding: '10px 12px', borderRadius: 10,
-                            border: focused ? '2px solid #2A75F3' : '1px solid #CBD5E1',
-                            background: focused ? '#EFF6FF' : 'white',
-                            color: focused ? '#1D4ED8' : '#1E293B',
-                            fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                          <span>📝</span>
-                          <span>문항 {idx + 1}</span>
-                          <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#1D4ED8', background: '#DBEAFE', padding: '2px 7px', borderRadius: 999 }}>{pts}점</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-
-                  {/* 활성 문항 카드 */}
-                  {activeQ && (
-                    <div key={activeQ.id} style={card}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>{activeQ.label}</span>
-                        {/* [v2.52] 다중 성취기준 시 코드 버튼 — 활성 sid는 강조. 클릭 시 셀렉트박스와 동시 갱신 */}
-                        {activeStandards.length === 0 ? (
-                          <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>Step 3에서 성취기준을 선택해 주세요.</span>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {activeStandards.map((sid) => {
-                              const s = MOCK_STANDARDS.find((x) => x.id === sid);
-                              if (!s) return null;
-                              const isActive = sid === currentRubricSid;
-                              return (
-                                <button key={sid} onClick={() => setActiveRubricStdMap((p) => ({ ...p, [activeQ.id]: sid }))}
-                                  title={s.text}
-                                  style={{
-                                    padding: '3px 10px', borderRadius: 999, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
-                                    border: isActive ? '1px solid #047857' : '1px solid #E2E8F0',
-                                    background: isActive ? '#D1FAE5' : 'white',
-                                    color: isActive ? '#047857' : '#64748B',
-                                    cursor: 'pointer',
-                                  }}>
-                                  [{stdCode(s.text)}]
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점</span>
-                          <input type="number" min={0} style={{ ...input, width: 90 }} value={activeQ.points} placeholder="배점" onChange={(e) => updateQuestion(activeQ.id, { points: e.target.value })} />
-                          <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
-                        </div>
-                      </div>
-                      {std && (
-                        <div>
-                          {/* [v2.51] 1행: 성취기준 셀렉트 + 원본 템플릿 복원 버튼 */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                            {activeStandards.length >= 2 && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 240 }}>
-                                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700, flexShrink: 0 }}>성취기준</span>
-                                <select value={currentRubricSid || ''} onChange={(e) => setActiveRubricStdMap((p) => ({ ...p, [activeQ.id]: e.target.value }))}
-                                  style={{ ...input, padding: '6px 8px', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1D4ED8', flex: 1, minWidth: 0 }}>
-                                  {activeStandards.map((sid) => {
-                                    const s = MOCK_STANDARDS.find((x) => x.id === sid);
-                                    if (!s) return null;
-                                    return <option key={sid} value={sid}>{s.text}</option>;
-                                  })}
-                                </select>
-                              </div>
-                            )}
-                            <button onClick={() => regenerateRubric(activeQ.id, currentRubricSid, autoScale)}
-                              title="수정한 셀을 원본 템플릿(DB의 2022 개정 교육과정 내용체계)으로 되돌립니다. 빈 칸만 채워지며, 수정한 칸은 ✕로 비운 뒤 호출하세요."
-                              style={{ marginLeft: activeStandards.length >= 2 ? 0 : 'auto', padding: '6px 12px', borderRadius: 8, border: '1px solid #2A75F3', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>↺ 원본 템플릿 복원</button>
-                          </div>
-                          {/* [v2.54] 2행: 안내 텍스트 단독 — 박스 보더·배경 제거, 텍스트만 */}
-                          <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', padding: '4px 0 8px', marginBottom: 10 }}>
-                            📌 2022 개정 교육과정을 기준으로 한 평가지표입니다. 필요에 따라 수정하세요.
-                          </div>
-                          <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: 10 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)', minWidth: 200 + levels.length * 180 }}>
-                              <thead>
-                                <tr style={{ borderBottom: '2px solid #E2E8F0' }}>
-                                  <th style={{ textAlign: 'left', padding: '10px 12px', color: '#475569', fontWeight: 800, width: 180, background: '#F8FAFC' }}>범주</th>
-                                  {levels.map((lv) => {
-                                    const meta = LEVEL_META[lv.name] || { color: '#475569' };
-                                    return <th key={lv.letter} style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 800, color: meta.color, background: '#F8FAFC' }}>{lv.name} ({lv.letter})</th>;
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {RUBRIC_CATEGORIES.map((cat) => (
-                                  <tr key={cat.key} style={{ borderTop: '1px solid #F1F5F9', verticalAlign: 'top' }}>
-                                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1E293B' }}>{cat.key}. {cat.name}</td>
-                                    {levels.map((lv, lvIdx) => {
-                                      const cellVal = rubricCell(activeQ.id, currentRubricSid, cat.key, lvIdx, autoScale);
-                                      const hasVal = !!(cellVal && cellVal.trim());
-                                      return (
-                                      <td key={lv.letter} style={{ padding: '6px 8px' }}>
-                                        <div style={{ position: 'relative' }}>
-                                          <textarea value={cellVal} onChange={(e) => setRubricCell(activeQ.id, currentRubricSid, cat.key, lvIdx, e.target.value)}
-                                            style={{ width: '100%', minHeight: 72, border: '1px solid #E2E8F0', borderRadius: 6, padding: '6px 8px', paddingRight: hasVal ? 24 : 8, fontSize: 'var(--neo-font-size-xs)', lineHeight: 1.5, color: '#334155', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
-                                          {hasVal && (
-                                            <button onClick={() => clearRubricCell(activeQ.id, currentRubricSid, cat.key, lvIdx)}
-                                              title="비우기 (재생성 시 템플릿으로 다시 채움)"
-                                              style={{ position: 'absolute', right: 4, top: 4, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#E2E8F0', color: '#475569', cursor: 'pointer', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>✕</button>
-                                          )}
-                                        </div>
-                                      </td>
-                                      );
-                                    })}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                );
-              })()}
-
-              {/* 자율평가 — 문항 탭 + 총 배점 요약 + 활성 문항 카드 */}
-              {evalMode === 'self' && questions.length > 0 && (() => {
+              {/* ── 문항 탭 + 총 배점 요약 + 활성 문항 카드 ── */}
+              {questions.length > 0 && (() => {
                 const effectiveActiveId = (questions.find((qq) => qq.id === activeQId)?.id) ?? questions[0]?.id;
                 const activeIdx = questions.findIndex((qq) => qq.id === effectiveActiveId);
                 const activeQ = questions[activeIdx];
@@ -3564,7 +3268,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                 const qStd = activeQ ? MOCK_STANDARDS.find((s) => s.id === activeQ.standard) : null;
                 return (
                 <div>
-                  {/* [v3.49] 자율평가 채점 등급 — 자동평가와 명칭 통일. 합산 점수의 등급명만 결정 (채점기준 「배점 단계」와 별개) */}
+                  {/* [v3.49] 채점 등급 — 합산 점수의 등급명만 결정 (채점기준 「배점 단계」와 별개). [v3.74] 기본값 학교급별 (초등 3등급 / 중·고등 5등급). 점수 구간은 3개 고정 */}
                   <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 등급</span>
                     {[3, 4, 5].map((n) => (
@@ -3583,7 +3287,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                     </span>
                   </div>
                   <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '10px 12px', borderRadius: 8, marginBottom: 14, lineHeight: 1.6 }}>
-                    문항마다 채점 기준을 1~5개까지 만들 수 있습니다.
+                    🤖 성취기준과 문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. 범주(채점 기준)는 문항마다 기본 3개이며 1~5개로 추가·삭제할 수 있습니다. 범주별 평가 내용은 점수 구간 3개(예: 6 / 3 / 0)에 하나씩 3개이고, 채점 등급(3/4/5등급)과 무관합니다.
                   </div>
 
                   {/* 문항 탭 */}
@@ -3625,32 +3329,15 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                         <button onClick={() => aiGenerateCriteria(q.id)} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #2A75F3', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>🤖 AI 채점 기준 생성</button>
                       </div>
 
-                      {/* [v2.66] 총 배점 입력 행 — [↻ 균등 재분배] 버튼 폐기. 합 불일치 정합화는 상단 영구 경고 배너 [↻ 모두 균등 재분배] / 저장 정합성 모달로 일원화 */}
+                      {/* [v3.79] 총 배점 — 입력 없음. 범주 배점 합계를 표시만 한다 */}
                       {(() => {
-                        const total = Number(q.points) || 0;
                         const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                        const diff = sum - total;
-                        const ok = total > 0 && diff === 0;
                         return (
                           <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 12px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569' }}>총 배점</span>
-                            <input type="number" min={0} style={{ ...input, width: 90 }} value={q.points} placeholder="예: 100"
-                              onChange={(e) => updateQuestionPoints(q.id, e.target.value)} />
+                            <strong style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: sum > 0 ? '#1D4ED8' : '#94A3B8' }}>{sum}</strong>
                             <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
-                            {total > 0 ? (
-                              <>
-                                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>
-                                  · 채점기준 합계 <strong style={{ color: ok ? '#10B981' : '#B45309' }}>{sum}점</strong>
-                                </span>
-                                {!ok && (
-                                  <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', fontWeight: 700 }}>
-                                    ⚠ 총 배점 대비 {diff > 0 ? '+' : ''}{diff}점 차이
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>· 입력 시 채점기준 추가/재분배 기준이 됩니다. 미입력 시 채점기준별 개별 배점.</span>
-                            )}
+                            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>· 각 범주의 배점 합계로 자동 산출됩니다.</span>
                           </div>
                         );
                       })()}
@@ -3672,26 +3359,14 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 4, flexWrap: 'wrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점</span>
-                              <input type="number" min={2} style={{ ...input, width: 80 }} value={c.maxPoints} onChange={(e) => updateCriterion(q.id, c.id, { maxPoints: e.target.value })} />
+                              <input type="number" min={2} placeholder="배점" style={{ ...input, width: 80 }} value={c.maxPoints} onChange={(e) => updateCriterion(q.id, c.id, { maxPoints: e.target.value })} />
                               <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점 단계</span>
-                              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #CBD5E1', borderRadius: 8, overflow: 'hidden' }}>
-                                <button onClick={() => changeCriterionLevels(q.id, c.id, -1)} disabled={c.levels <= 2} style={{ width: 30, height: 32, border: 'none', background: c.levels <= 2 ? '#F1F5F9' : 'white', color: c.levels <= 2 ? '#CBD5E1' : '#475569', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, cursor: c.levels <= 2 ? 'not-allowed' : 'pointer' }}>−</button>
-                                <span style={{ minWidth: 48, textAlign: 'center', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{c.levels}단계</span>
-                                <button onClick={() => changeCriterionLevels(q.id, c.id, 1)} disabled={c.levels >= clampLevels(c.maxPoints)} style={{ width: 30, height: 32, border: 'none', background: c.levels >= clampLevels(c.maxPoints) ? '#F1F5F9' : 'white', color: c.levels >= clampLevels(c.maxPoints) ? '#CBD5E1' : '#475569', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, cursor: c.levels >= clampLevels(c.maxPoints) ? 'not-allowed' : 'pointer' }}>+</button>
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>배점 간격</span>
-                              <select style={{ ...input, width: 84 }} value={c.interval} onChange={(e) => updateCriterion(q.id, c.id, { interval: Number(e.target.value) })}>
-                                {Array.from({ length: maxIntervalFor(c.maxPoints, c.levels) }, (_, k) => k + 1).map((v) => <option key={v} value={v}>{v}점</option>)}
-                              </select>
-                            </div>
-                            <button onClick={() => redistribute(q.id, c.id)} title="배점부터 0점까지 간격만큼 균등하게 점수를 분배합니다." style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>↻ 점수 균등 분배</button>
+                            {/* [v3.74] 배점 단계 스텝퍼 폐기 — 점수 구간 3개 고정 */}
+                            {/* [v3.74] 배점 간격 드롭다운 폐기 — 간격은 항상 최대값(배점÷2)으로 자동 산출, [↻ 점수 균등 분배]만 유지 */}
+                            <button onClick={() => redistribute(q.id, c.id)} title="입력한 배점을 3개 구간(배점 → 0점)에 균등하게 다시 분배합니다." style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>↻ 점수 균등 분배</button>
                           </div>
-                          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>간격으로 자동 분배된 점수를 기본으로 채워두며, 아래 표에서 각 단계 점수를 직접 수정할 수 있습니다. (0~배점, 정수)</div>
+                          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>배점을 입력하면 3개 구간(배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)</div>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
                             <thead>
                               <tr style={{ background: '#F8FAFC' }}>
@@ -3714,7 +3389,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                                     {/* [v2.17] 평가내용 — input처럼 보이는 에디터. [∑+ 수식]/chip 클릭 시 평가내용 전체를 편집기에 로드 */}
                                     <EvalContentEditor
                                       desc={r.desc}
-                                      placeholder={`${r.score}점 수준의 평가 내용`}
+                                      placeholder={`${r.score !== '' ? `${r.score}점` : ['상', '중', '하'][ri] || ''} 수준의 평가 내용`}
                                       onChange={(v) => updateRowDesc(q.id, c.id, ri, v)}
                                       onOpenEditor={() => setFormulaModal({ qid: q.id, cid: c.id, ri, initialContent: r.desc || '' })}
                                     />
@@ -3728,59 +3403,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                       ))}
                       <button onClick={() => addCriterion(q.id)} style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>+ 채점 기준 추가 ({q.criteria.length}/5)</button>
 
-                      {/* [v2.47] 등급 환산 미리보기 — 우측 fixed 패널 + 토글 (펼침/접힘) */}
-                      {(() => {
-                        const qMax = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                        if (previewExpanded) {
-                          return (
-                            <div style={{ position: 'fixed', right: 16, top: 120, width: 320, background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '12px 14px', zIndex: 100, boxShadow: '0 4px 16px rgba(15,23,42,0.12)' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#0C4A6E' }}>📊 등급 환산 미리보기</span>
-                                <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#0369A1', background: 'white', padding: '2px 8px', borderRadius: 999, border: '1px solid #BAE6FD' }}>{selfScale}등급</span>
-                                <button onClick={() => setPreviewExpanded(false)} title="접기" style={{ marginLeft: 'auto', padding: '3px 8px', borderRadius: 6, border: '1px solid #BAE6FD', background: 'white', color: '#0369A1', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>접기 ⮟</button>
-                              </div>
-                              {qMax <= 0 ? (
-                                <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 10px', lineHeight: 1.55 }}>
-                                  채점기준에 배점이 입력되면 자동 표시됩니다.
-                                </div>
-                              ) : (
-                                <>
-                                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569', marginBottom: 8 }}>활성 문항 만점 <strong style={{ color: '#0369A1' }}>{qMax}점</strong></div>
-                                  {/* [v2.48] 등급별 1행씩 세로 배치 — 좌측 등급명 + 우측 점수 범위 */}
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                    {GRADE_CUTOFFS[selfScale].map((b, bi, arr) => {
-                                      const meta = LEVEL_META[b.name] || { color: '#475569', bg: '#F1F5F9' };
-                                      const upper = bi === 0 ? 100 : arr[bi - 1].min;
-                                      const minExact = (b.min / 100) * qMax;
-                                      const maxExact = bi === 0 ? qMax : (upper / 100) * qMax;
-                                      const lo = Math.ceil(minExact);
-                                      const hi = bi === 0 ? qMax : (Number.isInteger(maxExact) ? maxExact - 1 : Math.floor(maxExact));
-                                      const empty = lo > hi;
-                                      const label = empty ? '(없음)' : lo === hi ? `${lo}점` : `${lo}~${hi}점`;
-                                      return (
-                                        <div key={b.name} style={{ background: empty ? '#F8FAFC' : meta.bg, border: `1px solid ${empty ? '#E2E8F0' : meta.bg}`, borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                          <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: empty ? '#94A3B8' : meta.color }}>{b.name}</div>
-                                          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: empty ? '#94A3B8' : '#1E293B', fontWeight: 700, fontStyle: empty ? 'italic' : 'normal' }}>{label}</div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#0369A1', marginTop: 8, lineHeight: 1.5 }}>
-                                    ※ 채점 결과는 위 등급으로 환산. 점수는 내부 산출용이며 사용자에게는 등급만 노출됩니다.
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        }
-                        // 접힘 상태 — 우측 화면 끝 작은 탭
-                        return (
-                          <div onClick={() => setPreviewExpanded(true)} title="펼치기"
-                            style={{ position: 'fixed', right: 0, top: 140, background: '#0369A1', color: 'white', padding: '10px 8px', borderRadius: '8px 0 0 8px', cursor: 'pointer', zIndex: 100, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, boxShadow: '-2px 0 8px rgba(15,23,42,0.12)', writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.05em' }}>
-                            📊 등급 환산 미리보기 ⮜
-                          </div>
-                        );
-                      })()}
+                      {/* [v3.76] 등급 환산 미리보기 패널 폐기 — 채점 등급 카드의 환산 안내 문구로 갈음 */}
                     </div>
                     );
                   })()}
@@ -3791,18 +3414,19 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
           );
         })()}
 
+        </div>{/* /잠금 래퍼 */}
+
         {/* Step 6 — 그룹 배포 · 문답지 출력 (별도 탭) */}
         {step === 6 && (() => {
-          const printableCount = printableGroups.length;
-          const codeBtn = (on) => ({ padding: '7px 14px', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #EF4444' : 'none', background: on ? 'white' : '#F59E0B', color: on ? '#EF4444' : 'white' });
           const studentBtn = (on) => ({ padding: '7px 14px', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #EF4444' : 'none', background: on ? 'white' : '#2A75F3', color: on ? '#EF4444' : 'white' });
           const badge = (bg, color) => ({ background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 10 });
           return (
             <div style={{ maxWidth: '920px', margin: '0 auto' }}>
               <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: '8px' }}>🚀 Step 6. 그룹 배포 · 문답지 출력</h2>
               <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: '16px' }}>
-                응시 설정 → 그룹 배포 → 문답지 출력 순으로 진행합니다.
-                <strong> 번호표 배포</strong> = 과제 할당(채점 관리 미채점 진입, 학생 화면 미노출), <strong>학생 배포</strong> = 학생에게 노출(번호표도 함께 배포).
+                응시 설정 → 문답지 출력 → 학생 배포 순으로 진행합니다.
+                <strong> 답안지 다운로드(인쇄)</strong> = 채점 관리 미채점 진입(학생 화면 미노출),
+                <strong> 학생 배포</strong> = 학생에게 노출. 학생 배포는 답안지 출력이 완료된 그룹만 가능하며, 학생 배포 중에는 과제를 수정할 수 없습니다. 스마트펜 번호표는 사용하지 않습니다 — 학생이 답안지 기재란에 쓴 학년/반/번호·이름을 OCR로 읽어 식별합니다.
               </p>
 
               {/* [v2.32] 응시·출력 설정 카드 — 배포 전에 학생 응시 정책 + 답안지 출력 매수를 함께 결정 (v2.11 응시 설정 + v2.24 출력 매수 통합) */}
@@ -3894,39 +3518,19 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                 </div>
               </div>
 
-              <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '18px' }}>
-                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', marginBottom: '10px' }}>배포 그룹</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {groupList.map((g) => (
-                    <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 10 }}>
-                      <span style={{ fontWeight: 700, color: '#1E293B', fontSize: 'var(--neo-font-size-base)' }}>{g.label}</span>
-                      <span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>{g.studentCount}명</span>
-                      {g.codeDeployed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>📋 번호표 배포</span>}
-                      {g.studentDeployed && <span style={badge('#DBEAFE', '#1D4ED8')}>🚀 학생 배포</span>}
-                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                        {/* [v2.13] 학생 배포 상태일 때 번호표 버튼 숨김 — 학생 배포가 번호표 배포를 포함하므로 학생 배포 먼저 취소해야 번호표 취소 가능 */}
-                        {!g.studentDeployed && (
-                          <button onClick={() => toggleGroupCode(g.id)} title={g.codeDeployed ? '과제 할당을 해제합니다 (채점 관리 미채점에서 제거).' : 'ncode를 할당해 번호표를 인쇄할 수 있게 합니다. 학생 화면에는 아직 노출되지 않습니다.'} style={codeBtn(g.codeDeployed)}>{g.codeDeployed ? '↩ 번호표 배포 취소' : '📋 번호표 배포'}</button>
-                        )}
-                        <button onClick={() => toggleGroupStudent(g.id)} title={g.studentDeployed ? '학생 화면에서 과제를 숨깁니다.' : '학생에게 과제를 노출합니다(번호표 미배포 시 함께 배포).'} style={studentBtn(g.studentDeployed)}>{g.studentDeployed ? '↩ 학생 배포 취소' : '🚀 학생 배포'}</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 문답지 출력 [v2.12] 그룹 배포 무관 항상 활성. 「번호표 배포 필요」 차단 안내 폐기 */}
-              <div style={{ borderTop: '2px dashed #E2E8F0', marginTop: '24px', paddingTop: '20px' }}>
+              {/* [v3.78] 문답지 출력 — 배포 그룹 카드 위로 이동 (출력 → 학생 배포 순서와 화면 순서 일치)
+                  [v2.12] 그룹 배포 무관 항상 활성. 「번호표 배포 필요」 차단 안내 폐기
+                  [v3.75] 답안지 미리보기 모달의 [🖨 인쇄]가 그룹별 출력 완료(printed)를 기록 → 미채점 등록 + 학생 배포 활성화 */}
+              <div style={{ marginBottom: '16px' }}>
                 <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: '6px' }}>🖨️ 문답지 출력</h3>
                 <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: '14px' }}>
-                  스마트펜 번호표·문제지·답안지를 출력합니다. 문제지·답안지에는 업로드한 파일과 영역 정보가 반영됩니다.
+                  문제지·답안지를 출력합니다. 답안지의 기재란(학년/반/번호·이름)에 학생이 직접 쓰고, 스캔 채점 시 OCR로 학생을 식별합니다. 문제지·답안지에는 업로드한 파일과 영역 정보가 반영됩니다.
                 </p>
                 {/* [v2.24] 답안지 카드만 학생당 N장 spinner 인라인 — 3 카드 모두 div + [PDF 출력] 버튼 분리로 일관성 유지 */}
-                <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '18px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   {[
-                    { icon: '✎', label: '스마트펜 번호표', desc: '3페이지로 제한(최대 117명)까지 인쇄 가능', key: 'tag' },
                     { icon: '📄', label: '문제지 출력', desc: '업로드 문제지 출력', key: 'question' },
-                    { icon: '📝', label: '답안지 출력', desc: '스마트펜 인식용 답안지', key: 'answer' },
+                    { icon: '📝', label: '답안지 출력', desc: '학년/반/번호·이름 기재란 포함 (OCR 학생 식별)', key: 'answer' },
                   ].map((btn) => (
                     <div key={btn.label}
                       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '18px 10px', borderRadius: '12px', border: '1px solid #CBD5E1', background: 'white', color: '#1E293B' }}>
@@ -3935,29 +3539,49 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                       <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', textAlign: 'center' }}>{btn.desc}</span>
                       {/* [v2.33] 답안지 카드 「학생당 N장 인쇄」 안내 제거 — 매수는 응시·출력 설정 카드에서 결정·표시 (중복 노출 방지)
                           [TSK-05 v2.30] answer 카드는 미리보기 모달로 이관
-                          [TSK-05 v3.4] tag 카드도 미리보기 모달로 이관, question은 기존 toast 유지 */}
+                          [v3.80] 번호표 카드 폐기, question은 기존 toast 유지 */}
                       <button onClick={() => {
                         if (btn.key === 'answer') {
                           setWorksheetPreviewOpen(true);
-                        } else if (btn.key === 'tag') {
-                          setNumberTagPreviewOpen(true);
                         } else if (showToast) {
                           showToast(`${btn.label} PDF 생성 중... (샘플)`);
                         }
                       }}
                         style={{ marginTop: 8, padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        {(btn.key === 'answer' || btn.key === 'tag') ? '👁 미리보기' : '📥 PDF 출력'}
+                        {btn.key === 'answer' ? '👁 미리보기' : '📥 PDF 출력'}
                       </button>
                     </div>
                   ))}
                 </div>
                 {/* [v2.14] 「번호표 배포된 그룹」 칩 영역 폐기 — 출력 카드만 노출 */}
               </div>
+
+              <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '18px' }}>
+                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', marginBottom: '10px' }}>배포 그룹</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {groupList.map((g) => (
+                    <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 10 }}>
+                      <span style={{ fontWeight: 700, color: '#1E293B', fontSize: 'var(--neo-font-size-base)' }}>{g.label}</span>
+                      <span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>{g.studentCount}명</span>
+                      {/* [v3.75] 번호표 배포 배지·버튼 폐기 → 출력 완료 배지 + 학생 배포(출력 완료 그룹만 활성) */}
+                      {g.printed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>🖨 답안지 출력 완료 · 미채점 등록</span>}
+                      {!g.printed && <span style={badge('#F1F5F9', '#64748B')}>출력 전</span>}
+                      {g.studentDeployed && <span style={badge('#DBEAFE', '#1D4ED8')}>🚀 학생 배포</span>}
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                        <button onClick={() => toggleGroupStudent(g.id)}
+                          aria-disabled={!g.printed && !g.studentDeployed}
+                          title={g.studentDeployed ? '학생이 과제를 확인할 수 없는 상태가 됩니다.' : (g.printed ? '학생에게 과제가 노출됩니다.' : '답안지 인쇄에서 다운로드를 진행한 후 배포할 수 있습니다.')}
+                          style={{ ...studentBtn(g.studentDeployed), ...(!g.printed && !g.studentDeployed ? { background: '#E2E8F0', color: '#94A3B8', cursor: 'not-allowed' } : {}) }}>{g.studentDeployed ? '↩ 학생 배포 취소' : '🚀 학생 배포'}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
           );
         })()}
 
-        {/* [v3.49] 등급 환산 미리보기 모달 폐기 — 활성 문항 카드 하단 인라인 박스로 일원화 */}
 
       </div>
 
@@ -3985,20 +3609,9 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
             })()}
             {step === 3 && '⚠ 모든 문항의 내용을 입력해야 합니다'}
             {step === 4 && '⚠ 각 문항마다 핵심평가영역(1개 이상)·성취기준(각 1개)·모범답안(상·중·하)을 입력해야 합니다'}
-            {step === 5 && (evalMode === 'auto' ? '⚠ 문항별 배점을 입력해야 합니다' : (() => {
-              const mismatch = questions.find((q) => {
-                const total = Number(q.points) || 0;
-                if (!total) return false;
-                const sum = q.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                return sum !== total;
-              });
-              if (mismatch) {
-                const total = Number(mismatch.points) || 0;
-                const sum = mismatch.criteria.reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
-                return `⚠ 문항 ${questions.indexOf(mismatch) + 1} — 채점기준 합 ${sum}점 ≠ 총 배점 ${total}점. [↻ 균등 재분배] 또는 직접 수정 후 진행하세요.`;
-              }
+            {step === 5 && (() => {
               return '⚠ 채점 기준의 이름·배점과 각 단계 점수(내림차순)를 입력해야 합니다';
-            })())}
+            })()}
           </span>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
@@ -4045,34 +3658,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
       </div>
 
       {/* 원본 이미지 플로팅 창 — 이동·크기조절 가능, 본문 입력 중에도 유지. 닫기 버튼으로만 종료 (오버레이 없음) */}
-      {/* 저장 시 정합성 확인 모달 — 자율평가 채점기준 합 ≠ 총 배점 */}
-      {saveMismatchModal && (
-        <div onClick={() => setSaveMismatchModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: 520, maxWidth: '92vw', maxHeight: '86vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            <div style={{ padding: '18px 22px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
-              <h2 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, margin: 0, color: '#1E293B' }}>채점 합계가 총 배점과 다릅니다</h2>
-            </div>
-            <div style={{ padding: '4px 22px 12px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.5 }}>
-              <p style={{ margin: '0 0 10px' }}>다음 문항에서 채점기준 합계와 총 배점이 일치하지 않습니다. 의도된 가중치라면 그대로 저장하고, 실수였다면 균등 재분배 후 저장하세요.</p>
-              <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 12px', maxHeight: 240, overflowY: 'auto' }}>
-                {saveMismatchModal.items.map((m) => (
-                  <div key={m.qid} style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', marginBottom: 4 }}>
-                    · <strong>문항 {m.idx}</strong> — 채점기준 합 <strong>{m.sum}점</strong> / 총 배점 <strong>{m.total}점</strong> <span style={{ color: '#B45309' }}>({m.diff > 0 ? '+' : ''}{m.diff}점)</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ padding: '0 22px 12px', fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>
-              💡 정합성을 맞춰야 저장할 수 있습니다. 브라우저를 그냥 닫으면 균등 재분배 후 자동 저장됩니다.
-            </div>
-            <div style={{ display: 'flex', gap: 8, padding: '12px 22px 18px', justifyContent: 'flex-end', borderTop: '1px solid #F1F5F9', flexWrap: 'wrap' }}>
-              <button onClick={() => setSaveMismatchModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>돌아가서 수정</button>
-              <button onClick={redistributeAllAndSave} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#10B981', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>↻ 모든 문항 균등 재분배 후 저장</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* [v3.79] 저장 정합성 모달 폐기 — 총 배점은 범주 배점 합계 표시 전용 */}
 
       {imgWin && (
         <div style={{
@@ -4186,7 +3772,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                   <li>문항·지문 영역 (캔버스 박스)</li>
                   <li>모든 문항 본문</li>
                   <li>핵심평가영역·성취기준·모범답안</li>
-                  <li>자율평가 채점 기준·배점</li>
+                  <li>채점 기준(루브릭)·배점</li>
                   <li>OCR 인식 결과</li>
                 </ul>
               </div>
@@ -4231,7 +3817,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                   <li>문항·지문 영역 (캔버스 박스)</li>
                   <li>모든 문항 본문</li>
                   <li>핵심평가영역·성취기준·모범답안</li>
-                  <li>자율평가 채점 기준·배점</li>
+                  <li>채점 기준(루브릭)·배점</li>
                   <li>OCR 인식 결과</li>
                 </ul>
               </div>
@@ -4289,14 +3875,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
         onClose={() => setWorksheetPreviewOpen(false)}
         subject={basicInfo?.subject || '국어'}
         taskTitle={basicInfo?.title || '과제명'}
-      />
-
-      {/* [TSK-05 v3.4] 스마트펜 번호표 미리보기 모달 */}
-      <NumberTagPreviewModal
-        open={numberTagPreviewOpen}
-        onClose={() => setNumberTagPreviewOpen(false)}
-        subject={basicInfo?.subject || '수학'}
-        taskTitle={basicInfo?.title || '과제명'}
+        groups={groupList.map((g) => g.label)}
+        onPrint={markGroupPrinted}
       />
     </div>
   );

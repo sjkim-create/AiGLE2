@@ -1,7 +1,8 @@
 /**
  * gradingShared.js
- * 자동/자율 채점 기준 공유 모델 — TSK-13(직접 입력 2)·TSK-12(파일 업로드)에서 공통 사용.
+ * 채점 기준(자율평가 단일 체제) 공유 모델 — TSK-13(직접 입력 2)·TSK-12(파일 업로드)에서 공통 사용.
  * 화면 렌더는 각 화면이 담당하고, 본 모듈은 상수·순수 헬퍼만 제공한다.
+ * [v3.74] 자동평가 폐기 — AUTO_*·RUBRIC_CATEGORIES·RUBRIC_TEMPLATE 제거. 평가 기준은 자율평가 루브릭 하나로 운영한다.
  */
 
 // 평가 단계(등급 체계)별 루브릭 레벨 — DSH-02 등급명·색상과 정합
@@ -11,39 +12,6 @@ export const LEVEL_META = {
   '보통':     { color: '#94A3B8', bg: '#F1F5F9', desc: '성취기준의 주요 요소를 충족하나, 일부 논리 비약 또는 근거 부족이 관찰된다.' },
   '노력':     { color: '#F59E0B', bg: '#FEF3C7', desc: '성취기준 일부만 충족하며, 핵심 개념의 이해 또는 표현에 어려움이 있다.' },
   '매우 노력': { color: '#EF4444', bg: '#FEE2E2', desc: '문항 요구와 답안 내용이 부합하지 않거나 이해가 매우 미흡하다.' },
-};
-
-// 자동평가 채점 단계 — DB 평가지표 템플릿은 3단계/5단계로 제공 (2022 개정 교육과정 내용체계 기반)
-export const AUTO_SCALES = [3, 5];
-export const AUTO_LEVELS = {
-  3: [{ name: '우수', letter: 'A' }, { name: '보통', letter: 'B' }, { name: '노력', letter: 'C' }],
-  5: [{ name: '매우 우수', letter: 'A' }, { name: '우수', letter: 'B' }, { name: '보통', letter: 'C' }, { name: '노력', letter: 'D' }, { name: '매우 노력', letter: 'E' }],
-};
-// 채점 기준표 행(범주) — 2022 개정 교육과정 내용체계 4범주
-export const RUBRIC_CATEGORIES = [
-  { key: 'A', name: '지식 이해 및 통합 적용' },
-  { key: 'B', name: '과정·기능 및 탐구 수행' },
-  { key: 'C', name: '논리적 구성 및 표현력' },
-  { key: 'D', name: '가치·태도 및 성찰' },
-];
-// 범주 × 단계별 템플릿 서술 — [categoryKey][scale] = [등급 순서대로]
-export const RUBRIC_TEMPLATE = {
-  A: {
-    3: ['대화의 원리와 공동체의 담화 관습을 정확히 이해하여 실제 소통 상황에 능숙하게 적용함.', '대화의 원리를 대체로 이해하고 있으나 실제 상황 적용이 다소 전형적임.', '대화의 원리나 담화 관습에 대한 기초적인 이해가 부족함.'],
-    5: ['대화의 원리와 공동체의 담화 관습을 깊이 있게 이해하여 다양한 소통 상황에 창의적으로 적용함.', '대화의 원리와 담화 관습을 정확히 이해하여 실제 소통 상황에 능숙하게 적용함.', '대화의 원리를 대체로 이해하고 있으나 실제 상황 적용이 다소 전형적임.', '대화의 원리나 담화 관습에 대한 이해가 부분적임.', '대화의 원리나 담화 관습에 대한 기초적인 이해가 부족함.'],
-  },
-  B: {
-    3: ['자신의 소통 과정을 정교하게 점검하며 상황에 맞는 유연한 소통 전략을 수행함.', '소통 과정에 대한 기본적인 점검을 수행하나 전략 활용이 단편적임.', '자신의 듣기·말하기 과정을 점검하거나 조정하는 기능이 미흡함.'],
-    5: ['자신의 소통 과정을 비판적으로 점검하고 다양한 전략을 통합적으로 운용함.', '자신의 소통 과정을 정교하게 점검하며 상황에 맞는 유연한 소통 전략을 수행함.', '소통 과정에 대한 기본적인 점검을 수행하나 전략 활용이 단편적임.', '소통 과정 점검이 단순하며 전략 수행에 어려움이 있음.', '자신의 듣기·말하기 과정을 점검하거나 조정하는 기능이 미흡함.'],
-  },
-  C: {
-    3: ['상대의 의도를 고려하여 자신의 생각을 논리적이고 정중하게 조직하여 표현함.', '자신의 생각을 전달 가능한 수준으로 조직하나 표현의 정교함이 부족함.', '표현이 모호하며 대화의 논리적 연결이 부자연스러움.'],
-    5: ['상대와 맥락을 깊이 고려하여 생각을 설득력 있고 정교하게 조직·표현함.', '상대의 의도를 고려하여 자신의 생각을 논리적이고 정중하게 조직하여 표현함.', '자신의 생각을 전달 가능한 수준으로 조직하나 표현의 정교함이 부족함.', '생각의 조직이 느슨하며 표현이 다소 모호함.', '표현이 모호하며 대화의 논리적 연결이 부자연스러움.'],
-  },
-  D: {
-    3: ['상대를 존중하고 공감하는 태도가 탁월하며 자신의 언어 습관을 깊이 있게 성찰함.', '소통 예절을 준수하며 일반적인 수준의 자기 성찰을 수행함.', '소통 태도가 소극적이며 공동체의 담화 예절 준수가 미흡함.'],
-    5: ['상대를 깊이 존중·공감하며 자신의 언어 습관을 지속적으로 성찰·개선함.', '상대를 존중하고 공감하는 태도가 탁월하며 자신의 언어 습관을 깊이 있게 성찰함.', '소통 예절을 준수하며 일반적인 수준의 자기 성찰을 수행함.', '소통 예절 준수가 부분적이며 자기 성찰이 피상적임.', '소통 태도가 소극적이며 공동체의 담화 예절 준수가 미흡함.'],
-  },
 };
 
 // 교과 → 과목(세부 과목) 옵션 (2022 개정 교육과정 예시)
@@ -121,11 +89,13 @@ export const GRADE_CUTOFFS = {
 
 // ── 자율평가 점수 모델: 배점(M)·단계(n)·간격(d) ──────────────────────────
 // 점수 행 = 배점에서 간격만큼 차감: [M, M-d, M-2d, …] (최저 등급 0점 이상)
-export const clampLevels = (maxPoints) => {
-  const M = Number(maxPoints) || 0;
-  if (M < 2) return 2;
-  return Math.max(2, M + 1); // 간격 1이면 배점부터 0점까지 모든 정수가 단계 → 최대 = 배점+1
-};
+// [v3.74] 점수 구간(배점 단계)은 채점 등급(3/4/5등급)과 무관하게 항상 3개 고정 — 배점 M → [M, M−d, M−2d]
+//   채점 등급 기본값만 학교급별 (초등 3등급 / 중·고등 5등급). 舊 배점 단계 스텝퍼(2~배점+1 / 3~5)는 폐기
+export const RUBRIC_LEVELS = 3;
+export const defaultGradeScale = (schoolLevel) => (schoolLevel === '초등학교' ? 3 : 5);
+// [v3.77] 기본 배점 없음 — 범주 배점·총 배점은 교사가 직접 입력한다. 배점을 입력하면 점수 구간 3개에 균등 분배
+export const DEFAULT_MAX_POINTS = '';
+export const LEVEL_WORDS = ['상', '중', '하']; // 점수 구간 3개의 수준 표기 (배점 미입력 상태에서도 평가 내용 서술에 사용)
 export const maxIntervalFor = (maxPoints, levels) => {
   const M = Number(maxPoints) || 0;
   const n = Math.max(2, Number(levels) || 2);
@@ -142,7 +112,8 @@ export const buildScoreRows = (maxPoints, levels, interval, prevRows = []) => {
   const n = Math.max(2, Number(levels) || 2);
   const d = Math.max(1, Math.min(maxIntervalFor(M, n), Number(interval) || 1));
   return Array.from({ length: n }, (_, i) => ({
-    score: Math.max(0, M - i * d),
+    // [v3.77] 배점 미입력(빈 값·0)이면 점수 구간도 비워 둔다 — 교사가 배점을 입력하는 순간 균등 분배
+    score: M > 0 ? Math.max(0, M - i * d) : '',
     desc: prevRows[i]?.desc || '',
   }));
 };
@@ -150,11 +121,42 @@ export const rowsDescending = (rows) => rows.every((r, i) => i === 0 || (Number(
 
 let _uid = 1;
 export const uid = (p) => `${p}-${_uid++}`;
+// [v3.74] 점수 구간 3개 고정 · [v3.77] 배점 기본 빈 값 (점수 구간도 빈 값)
 export const makeCriterion = () => {
-  // [v3.73] 기본 점수 입력 구간 = 3단계 유지. 배점 입력 시 2단계로 줄어들던 현상은 buildScoreRows의 단계 clamp 제거로 해소했다
-  const maxPoints = 6, levels = 3, interval = defaultInterval(maxPoints, levels); // 6·3단계 → 간격3 → [6,3,0]
+  const levels = RUBRIC_LEVELS, maxPoints = DEFAULT_MAX_POINTS, interval = 1;
   return { id: uid('c'), name: '', maxPoints, levels, interval, rows: buildScoreRows(maxPoints, levels, interval) };
 };
+
+// ── [v3.74] AI 루브릭 자동 설계 (샘플 stub — 실연동 시 LLM 호출) ──────────────
+// 성취기준(area)·문항 내용을 근거로 채점 기준명과 점수 구간(3개)별 평가 내용을 채운다 → 범주(채점 기준)당 평가 내용 3개.
+// 교사가 이미 입력한 칸(비어있지 않은 name·desc)은 보존하고 빈 칸만 채운다.
+export const AI_CRITERIA_NAMES = ['내용 이해와 적용', '논리적 구성', '표현의 정확성', '근거의 타당성', '창의적 사고'];
+export const AI_QUALITIES = ['탁월하게', '충실히', '대체로', '부분적으로', '미흡하게'];
+export const aiFillCriteria = (criteria, area = '평가 영역') => {
+  const qualityFor = (i, n) => (n <= 1 ? AI_QUALITIES[0] : AI_QUALITIES[Math.round((i / (n - 1)) * (AI_QUALITIES.length - 1))]);
+  let filled = 0, skipped = 0;
+  const next = criteria.map((c, ci) => {
+    const aiName = AI_CRITERIA_NAMES[ci % AI_CRITERIA_NAMES.length];
+    const name = (c.name && c.name.trim()) ? (skipped++, c.name) : (filled++, aiName);
+    const n = c.rows.length;
+    const rows = c.rows.map((r, ri) => {
+      if (r.desc && r.desc.trim()) { skipped++; return r; }
+      filled++;
+      return { ...r, desc: `${area} 영역에서 '${name}'을(를) ${qualityFor(ri, n)} 충족함. (${LEVEL_WORDS[ri] || ''} 수준)` };
+    });
+    return { ...c, name, rows };
+  });
+  return { criteria: next, filled, skipped };
+};
+// 평가 기준 단계 최초 진입 시 — 문항당 범주(채점 기준) 3개 × 평가 내용 3개(점수 구간)를 설계하고 빈 칸을 모두 채운다
+export const DEFAULT_CRITERIA_COUNT = 3;
+export const designRubric = (area) => {
+  const base = Array.from({ length: DEFAULT_CRITERIA_COUNT }, () => makeCriterion());
+  return aiFillCriteria(base, area).criteria;
+};
+// 채점 기준에 교사·AI가 입력한 내용이 하나라도 있는지 (자동 설계 대상 판별용)
+export const criteriaHaveContent = (criteria) =>
+  Array.isArray(criteria) && criteria.some((c) => (c.name && c.name.trim()) || (c.rows || []).some((r) => r.desc && r.desc.trim()));
 
 // [v3.51] 점수 → 등급 환산 — % 기반 cutoff 복귀 (학교 평가 관례 정합)
 export const scoreToGrade = (score, max, scale) => {

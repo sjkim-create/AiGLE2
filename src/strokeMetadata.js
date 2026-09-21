@@ -58,11 +58,47 @@ export function analyzeDelays(strokes, thresholdMs = 500) {
   return delays;
 }
 
+import { analyzeHandwriting } from './handwritingAnalysis.js';
+
 const CANVAS_W = 800;
 const COLOR_BAR_H = 30;
 const COLOR_BAR_LABEL_H = 28;
 const SUMMARY_H = 44;
 const GAP = 14;
+const INDICATOR_H = 90; // 3축 지표 패널 높이
+
+export function renderOriginalImage(strokes) {
+  const canvas = document.createElement('canvas');
+  if (strokes.length === 0) {
+    canvas.width = CANVAS_W; canvas.height = 200; return canvas;
+  }
+  const tr = computeTransform(strokes, CANVAS_W);
+  canvas.width = CANVAS_W;
+  canvas.height = tr.canvasH;
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  strokes.forEach((stroke) => {
+    const lw = Math.max(1.2, 2.0 * (tr.scale / 15));
+    ctx.beginPath();
+    ctx.strokeStyle = '#222222';
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (let pi = 1; pi < stroke.points.length; pi++) {
+      const prev = stroke.points[pi - 1];
+      const pt = stroke.points[pi];
+      if (pi === 1) ctx.moveTo(tx(prev.x, tr), ty(prev.y, tr));
+      ctx.lineTo(tx(pt.x, tr), ty(pt.y, tr));
+    }
+    ctx.stroke();
+  });
+
+  return canvas;
+}
 
 export function renderMetadataImage(strokes) {
   const canvas = document.createElement('canvas');
@@ -72,7 +108,7 @@ export function renderMetadataImage(strokes) {
 
   const tr = computeTransform(strokes, CANVAS_W);
   canvas.width = CANVAS_W;
-  canvas.height = tr.canvasH + GAP + COLOR_BAR_H + COLOR_BAR_LABEL_H + GAP + SUMMARY_H + 10;
+  canvas.height = tr.canvasH + GAP + COLOR_BAR_H + COLOR_BAR_LABEL_H + GAP + SUMMARY_H + GAP + INDICATOR_H + 10;
 
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
@@ -175,5 +211,84 @@ export function renderMetadataImage(strokes) {
   ctx.textAlign = 'left'; ctx.fillText('#1 첫 획', legendX, legendY + 12);
   ctx.textAlign = 'right'; ctx.fillText(`#${total} 마지막`, legendX + legendW, legendY + 12);
 
+  // 6. 3축 지표 패널 (필압 대체 지표 시각화)
+  const analysis = analyzeHandwriting(strokes);
+  const indY = legendY + 28;
+  drawIndicatorPanel(ctx, 20, indY, CANVAS_W - 40, INDICATOR_H, analysis);
+
   return canvas;
+}
+
+// ─── 3축 지표 패널 렌더 ───────────────────────────────────────────
+function drawIndicatorPanel(ctx, x, y, w, h, analysis) {
+  // 배경
+  ctx.fillStyle = '#F8FAFC';
+  ctx.strokeStyle = '#CBD5E1';
+  ctx.lineWidth = 1;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeRect(x, y, w, h);
+
+  // 제목
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#334155';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(
+    `필기 지표 (Time · Coord · Hesitation 3축) — 패턴 코드: ${analysis.pattern_code.toUpperCase()}`,
+    x + 10, y + 8
+  );
+
+  // 3개 컬럼 분할
+  const colW = (w - 30) / 3;
+  const col1X = x + 10;
+  const col2X = x + 10 + colW + 5;
+  const col3X = x + 10 + (colW + 5) * 2;
+  const axisY = y + 28;
+
+  const gradeColor = (g) => g === 'a' ? '#10B981' : g === 'b' ? '#F59E0B' : '#EF4444';
+  const gradeLabel = (g) => g === 'a' ? '상' : g === 'b' ? '중' : '하';
+
+  const drawAxis = (cx, label, grade, value, unit, hint) => {
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = '#64748B';
+    ctx.fillText(label, cx, axisY);
+
+    // 등급 뱃지
+    const badgeW = 34, badgeH = 18;
+    ctx.fillStyle = gradeColor(grade);
+    ctx.fillRect(cx, axisY + 14, badgeW, badgeH);
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${grade.toUpperCase()} ${gradeLabel(grade)}`, cx + badgeW / 2, axisY + 18);
+
+    // 수치
+    ctx.textAlign = 'left';
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#334155';
+    ctx.fillText(`${value}${unit}`, cx + badgeW + 8, axisY + 18);
+
+    // 힌트
+    ctx.font = '9px sans-serif';
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(hint, cx, axisY + 38);
+  };
+
+  const { raw_metrics: rm, normalized_scores: ns, grades: g } = analysis;
+
+  drawAxis(
+    col1X, 'Time (속도/실행력)', g.time,
+    rm.writing_speed ? (rm.writing_speed * 1000).toFixed(2) : '-',
+    ' px/s', '획 거리/시간'
+  );
+  drawAxis(
+    col2X, 'Coord (공간/전략)', g.coord,
+    rm.sequentiality_score != null ? (rm.sequentiality_score * 100).toFixed(0) : '-',
+    '% 순차', `역행 ${(rm.backtrack_ratio ? (rm.backtrack_ratio * 100).toFixed(0) : 0)}%`
+  );
+  drawAxis(
+    col3X, 'Hesitation (머뭇거림)', g.hesitation,
+    ns.hesitation_score != null ? ns.hesitation_score.toFixed(2) : '-',
+    '', `멈칫 ${(rm.micro_pause_ratio * 100).toFixed(0)}% · 덧쓰기 ${(rm.revisit_density * 100).toFixed(0)}%`
+  );
 }
