@@ -89,11 +89,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const [exportStatus, setExportStatus] = useState('ready'); // ready | processing | done
   const [exportProgress, setExportProgress] = useState(0);
   const [previewStudent, setPreviewStudent] = useState(null);
-  // 내보내기 포함 항목 — 교사 피드백은 필수(고정), 문항/답안은 선택
+  // 내보내기 포함 항목 — 교사 피드백은 필수(고정), 문항/답안/과정 분석은 선택
+  //   과정 분석은 기본 켬 — 분석이 끝난 학생에게만 실리고, 미실행 학생은 항목 자체가 빠진다
   const [exportContentOptions, setExportContentOptions] = useState({
     question: false,
     answer: false,
-    feedback: true
+    feedback: true,
+    process: true
   });
   // [POP-19 v2.2] 출력 형식 — 'pdf'(기본, 학생별 PDF ZIP 묶음) | 'excel'(전체 명단 단일 xlsx)
   const [exportFormat, setExportFormat] = useState('pdf');
@@ -1302,7 +1304,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         const includedSectionLabels = [
           exportContentOptions.question && '문항',
           exportContentOptions.answer && '답안',
-          exportContentOptions.feedback && '교사 피드백'
+          exportContentOptions.feedback && '교사 피드백',
+          exportContentOptions.process && '과정 분석'
         ].filter(Boolean);
         const startExport = () => {
           if (exportSelectedIds.length === 0) return;
@@ -1356,7 +1359,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
               {exportStatus !== 'processing' && <button className="btn-modal-close" onClick={closeModal}>×</button>}
               <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', marginBottom: '0.5rem' }}>📤 채점 결과 내보내기</h2>
               <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: '1rem' }}>
-                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 과정 분석 완료 학생은 PDF에 과정 분석 내용이 포함됩니다.
+                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 과정 분석은 포함 항목에서 선택하며, 완료된 학생의 PDF에만 실립니다.
               </p>
 
               {/* [v2.2] 출력 형식 라디오 — 형식 선택에 따라 옵션 영역 동적 분기 */}
@@ -1389,6 +1392,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'not-allowed', color: '#64748B' }} title="교사 피드백은 항상 포함됩니다.">
                     <input type="checkbox" checked disabled />
                     교사 피드백 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(고정)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 과정 분석이 완료된 학생에게만 실립니다 (캐릭터 · 총평 · 학습 행동 밀착 가이드).">
+                    <input type="checkbox" checked={exportContentOptions.process} onChange={() => toggleContentOption('process')} />
+                    과정 분석 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(완료 학생만)</span>
                   </label>
                 </div>
               )}
@@ -1596,8 +1603,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <div>정삼각형, 정육각형, 정십이각형의 한 내각의 크기 / 270°를 구성할 수 있는 조합 찾기: <strong>매우 우수(A)</strong> — 학생은 정삼각형, 정육각형, 정십이각형의 한 내각의 크기를 정확히 명시하였으며, 이를 조합하여 270°를 만드는 두 가지 방법(150°+ 60°+ 60°, 150°+ 120°)을 모두 정확하게 찾아내고 그 이유를 논리적으로 설명하였습니다.</div>
                       </div>
 
-                      {/* 4. 과정 분석 [조건부, 과정 분석 완료 학생만] */}
-                      {previewStudent.handwritingEvaluation && (
+                      {/* 4. 과정 분석 [조건부 — 포함 항목 체크 + 과정 분석 완료 학생만] */}
+                      {exportContentOptions.process && previewStudent.handwritingEvaluation && (
                         <>
                           <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 과정 분석</h3>
                           <div style={{ background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
