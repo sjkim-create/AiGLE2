@@ -85,14 +85,19 @@ export const PROCESS_RESULT_SAMPLE = {
 const gradeColorMap = { '매우우수': '#10B981', '매우 우수': '#10B981', '우수': '#2A75F3', '보통': '#F59E0B', '노력': '#EF4444', '매우 노력': '#EF4444' };
 
 /* ── 공통 스타일 ── */
-const card = { background: 'white', borderRadius: 16, border: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column', minHeight: 0 };
-const secTitle = { fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225', marginBottom: 8 };
-const hint = { fontSize: 'var(--neo-font-size-sm)', color: '#6B7280', lineHeight: 1.6 };
-const fbTitle = (color) => ({ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color, margin: '18px 0 8px' });
-const fbBox = { width: '100%', boxSizing: 'border-box', border: '1px solid #CBD5E1', borderRadius: 8, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', lineHeight: 1.7, background: 'white', fontFamily: 'inherit', resize: 'vertical', minHeight: 64, fieldSizing: 'content' };
+const T = {
+    text: 'var(--neo-text-default, #111111)', sub: 'var(--neo-grey-dark, #64748b)', muted: 'var(--neo-grey-base, #94a3b8)',
+    line: 'var(--neo-grey-light, #cbd5e1)', lineSoft: 'var(--neo-grey-lighter, #e2e8f0)', surface: 'var(--neo-grey-lightest, #f1f5f9)',
+    rLg: 'var(--neo-radius-lg, 8px)', rXl: 'var(--neo-radius-xl, 12px)', r2xl: 'var(--neo-radius-2xl, 16px)', rFull: 'var(--neo-radius-full, 9999px)',
+};
+const card = { background: 'white', borderRadius: T.rXl, border: `1px solid ${T.lineSoft}`, display: 'flex', flexDirection: 'column', minHeight: 0 };
+const secTitle = { fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text, marginBottom: 8 };
+const hint = { fontSize: 'var(--neo-font-size-sm)', color: T.sub, lineHeight: 1.6 };
+const fbTitle = (color) => ({ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color, margin: '18px 0 8px' });
+const fbBox = { width: '100%', boxSizing: 'border-box', border: `1px solid ${T.line}`, borderRadius: T.rLg, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7, background: 'white', fontFamily: 'inherit', resize: 'vertical', minHeight: 64, fieldSizing: 'content', outline: 'none' };
 /* field-sizing 미지원 브라우저용 — 글자 수·줄 수로 rows 추정 */
 const rowsFor = (t) => Math.max(2, t.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 60)), 0));
-const pill = (bg, color) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, background: bg, color });
+const pill = (bg, color) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: T.rFull, fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, background: bg, color });
 
 const GradingReviewModal = ({
     isOpen,
@@ -241,7 +246,7 @@ const GradingReviewModal = ({
 
     /* ── 좌측: AI 과정 분석 카드 ── */
     const renderProcessCard = () => {
-        const badge = !isProcessEvalSupported ? pill('#F1F5F9', '#64748B')
+        const badge = !isProcessEvalSupported ? pill('#F1F5F9', T.sub)
             : processEvalState === 'completed' ? pill('#ECFDF5', '#059669')
             : processEvalState === 'processing' ? pill('#EEF2FF', '#4F46E5') : null;
         const badgeText = !isProcessEvalSupported ? '수학 교과만' : processEvalState === 'completed' ? '완료' : processEvalState === 'processing' ? '진행 중' : '';
@@ -249,13 +254,13 @@ const GradingReviewModal = ({
             <div>
                 <div style={{ ...secTitle, display: 'flex', alignItems: 'center', gap: 8 }}>AI 과정 분석 {badge && <span style={badge}>{badgeText}</span>}</div>
                 <div style={{ ...hint, marginBottom: 10 }}>학생의 풀이과정을 분석하여 학습 행동 패턴을 진단합니다.</div>
-                <div style={{ border: '1px solid #CBD5E1', borderRadius: 10, minHeight: 96, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, textAlign: 'center' }}>
+                <div style={{ border: '1px solid #CBD5E1', borderRadius: T.rLg, minHeight: 96, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, textAlign: 'center' }}>
                     {!isProcessEvalSupported && (
-                        <div style={hint}>수학 교과 과제에서만 실행할 수 있습니다. <span style={{ color: '#94A3B8' }}>(본 과제: {taskSubject || '-'})</span></div>
+                        <div style={hint}>수학 교과 과제에서만 실행할 수 있습니다. <span style={{ color: T.muted }}>(본 과제: {taskSubject || '-'})</span></div>
                     )}
                     {isProcessEvalSupported && processEvalState === 'idle' && (<>
-                        <button onClick={handleStartProcessEval} style={{ background: '#EEF2FF', color: '#4338CA', border: 'none', padding: '8px 16px', borderRadius: 8, fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>✎ AI 과정 분석 시작</button>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>1회만 실행할 수 있으며 결과는 수정할 수 없습니다.</div>
+                        <button onClick={handleStartProcessEval} style={{ background: '#EEF2FF', color: '#4338CA', border: 'none', padding: '8px 16px', borderRadius: T.rLg, fontWeight: 600, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>✎ AI 과정 분석 시작</button>
+                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted }}>1회만 실행할 수 있으며 결과는 수정할 수 없습니다.</div>
                     </>)}
                     {isProcessEvalSupported && processEvalState === 'processing' && (<>
                         <style>{`@keyframes pulse-ind { 0%,100%{opacity:1} 50%{opacity:.35} }`}</style>
@@ -263,7 +268,7 @@ const GradingReviewModal = ({
                         <div style={hint}>필기 데이터를 분석하고 학습 행동 패턴을 진단하는 중입니다.</div>
                     </>)}
                     {isProcessEvalSupported && processEvalState === 'completed' && (
-                        <div style={{ ...hint, color: '#1E2225' }}>결과는 오른쪽에서 확인해보세요.</div>
+                        <div style={{ ...hint, color: T.text }}>결과는 오른쪽에서 확인해보세요.</div>
                     )}
                 </div>
             </div>
@@ -275,10 +280,10 @@ const GradingReviewModal = ({
         <div style={{ padding: '4px 20px 20px' }}>
             {/* 등급 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 6px' }}>
-                <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, color: gradeColorMap[gradeFb.label] || '#2A75F3' }}>{gradeFb.letter}</span>
+                <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: gradeColorMap[gradeFb.label] || '#2A75F3' }}>{gradeFb.letter}</span>
                 <span style={pill(gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#FEE2E2' : '#DCFCE7', gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#B91C1C' : '#15803D')}>{gradeFb.label}</span>
-                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#6B7280' }}>{gradeFb.scale}</span>
-                {isSaved && <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#059669', fontWeight: 700 }}>✓ 저장됨</span>}
+                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>{gradeFb.scale}</span>
+                {isSaved && <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#059669', fontWeight: 600 }}>✓ 저장됨</span>}
             </div>
 
             <div style={fbTitle('#65A30D')}>이런 점이 좋아요</div>
@@ -293,7 +298,7 @@ const GradingReviewModal = ({
             <div style={{ borderLeft: '2px solid #CBD5E1', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {gradeFb.analysis.map(a => (
                     <div key={a.k}>
-                        <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E2225', marginBottom: 6 }}>{a.k}. {a.title}</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 6 }}>{a.k}. {a.title}</div>
                         <div style={{ ...fbBox, resize: 'none', minHeight: 0 }}>{a.body}</div>
                     </div>
                 ))}
@@ -306,49 +311,49 @@ const GradingReviewModal = ({
                     {hw && <span style={pill(hwInsufficient ? '#FEF3C7' : '#ECFDF5', hwInsufficient ? '#92400E' : '#059669')}>{hwInsufficient ? '필기 부족' : '완료'}</span>}
                 </div>
                 {!isProcessEvalSupported && (
-                    <div style={{ ...hint, padding: '14px 16px', background: '#F8FAFC', borderRadius: 10 }}>수학 교과 과제에서만 과정 분석 결과가 제공됩니다.</div>
+                    <div style={{ ...hint, padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>수학 교과 과제에서만 과정 분석 결과가 제공됩니다.</div>
                 )}
                 {isProcessEvalSupported && processEvalState === 'idle' && (
-                    <div style={{ ...hint, padding: '14px 16px', background: '#F8FAFC', borderRadius: 10 }}>왼쪽의 [AI 과정 분석 시작]을 누르면 풀이 과정 진단 결과가 여기에 표시됩니다.</div>
+                    <div style={{ ...hint, padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>왼쪽의 [AI 과정 분석 시작]을 누르면 풀이 과정 진단 결과가 여기에 표시됩니다.</div>
                 )}
                 {isProcessEvalSupported && processEvalState === 'processing' && (
-                    <div style={{ ...hint, padding: '14px 16px', background: '#F8FAFC', borderRadius: 10 }}>필기 데이터를 분석하는 중입니다…</div>
+                    <div style={{ ...hint, padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>필기 데이터를 분석하는 중입니다…</div>
                 )}
                 {isProcessEvalSupported && processEvalState === 'completed' && hw && hwInsufficient && (
-                    <div style={{ padding: '14px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10 }}>
-                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', lineHeight: 1.7, marginBottom: 10 }}>{hw.message || PROCESS_INSUFFICIENT_MESSAGE}</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#6B7280' }}>진단된 학습 행동 패턴 :</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>분석불가-필기부족</div>
+                    <div style={{ padding: '14px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: T.rLg }}>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7, marginBottom: 10 }}>{hw.message || PROCESS_INSUFFICIENT_MESSAGE}</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub }}>진단된 학습 행동 패턴 :</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text }}>분석불가-필기부족</div>
                         {hw.penStats && (
-                            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 4 }}>
+                            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted, marginTop: 4 }}>
                                 획수 {hw.penStats.strokes}획 · 필기 {hw.penStats.durationSec}초 — 분석 기준 {PROCESS_MIN_STROKES}획 · {PROCESS_MIN_DURATION_SEC}초 이상
                             </div>
                         )}
                     </div>
                 )}
                 {isProcessEvalSupported && processEvalState === 'completed' && hw && !hwInsufficient && (
-                    <div style={{ padding: '14px 16px', background: '#F8FAFC', borderRadius: 10 }}>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#6B7280' }}>진단된 학습 행동 패턴 :</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225', marginBottom: 14 }}>
-                            {hw.evaluationSummary?.diagnosedPattern || hw.systemDataLog?.processPattern} <span style={{ fontWeight: 600, color: '#475569' }}>(Metrics: {hw.systemDataLog?.metricsCode})</span>
+                    <div style={{ padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>
+                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub }}>진단된 학습 행동 패턴 :</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text, marginBottom: 14 }}>
+                            {hw.evaluationSummary?.diagnosedPattern || hw.systemDataLog?.processPattern} <span style={{ fontWeight: 600, color: T.sub }}>(Metrics: {hw.systemDataLog?.metricsCode})</span>
                         </div>
-                        <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E2225', marginBottom: 6 }}>총평</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', lineHeight: 1.75, marginBottom: 16 }}>{hw.evaluationSummary?.totalEvaluation}</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 6 }}>총평</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.75, marginBottom: 16 }}>{hw.evaluationSummary?.totalEvaluation}</div>
                         {hw.finalFeedback?.contentBottleneckAnalysis && (<>
-                            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E2225', marginBottom: 6 }}>병목 구간 진단</div>
-                            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', lineHeight: 1.75, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{hw.finalFeedback.contentBottleneckAnalysis}</div>
+                            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 6 }}>병목 구간 진단</div>
+                            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.75, marginBottom: 16, whiteSpace: 'pre-wrap' }}>{hw.finalFeedback.contentBottleneckAnalysis}</div>
                         </>)}
                         {(() => { const g = hw.guide || PROCESS_GUIDE_SAMPLE; return (
                             <div>
-                                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E2225', marginBottom: 8 }}>풀이 과정 밀착 가이드</div>
-                                <div style={{ borderLeft: '2px solid #CBD5E1', paddingLeft: 12, fontSize: 'var(--neo-font-size-sm)', color: '#1E2225', lineHeight: 1.7 }}>
-                                    <div style={{ fontWeight: 800, marginBottom: 2 }}>문제 해석</div>
+                                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 8 }}>풀이 과정 밀착 가이드</div>
+                                <div style={{ borderLeft: '2px solid #CBD5E1', paddingLeft: 12, fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>
+                                    <div style={{ fontWeight: 600, marginBottom: 2 }}>문제 해석</div>
                                     <div style={{ marginBottom: 10 }}>{g.interpretation}</div>
-                                    <div style={{ fontWeight: 800, marginBottom: 2 }}>문제 접근 방법</div>
+                                    <div style={{ fontWeight: 600, marginBottom: 2 }}>문제 접근 방법</div>
                                     <div style={{ marginBottom: 10 }}>{g.approach}</div>
                                     {g.steps.map((s, i) => (
                                         <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 4 }}>
-                                            <span style={{ flex: 'none', width: 18, height: 18, borderRadius: 4, background: '#DBEAFE', color: '#1D4ED8', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 3 }}>{i + 1}</span>
+                                            <span style={{ flex: 'none', width: 18, height: 18, borderRadius: 4, background: '#DBEAFE', color: '#1D4ED8', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 3 }}>{i + 1}</span>
                                             <span>{s}</span>
                                         </div>
                                     ))}
@@ -359,7 +364,7 @@ const GradingReviewModal = ({
                 )}
             </div>
 
-            <div style={{ textAlign: 'right', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: charCount > 1000 ? '#DC2626' : '#475569', marginTop: 16 }}>{charCount}/1000</div>
+            <div style={{ textAlign: 'right', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, color: charCount > 1000 ? '#DC2626' : T.sub, marginTop: 16 }}>{charCount}/1000</div>
         </div>
     );
 
@@ -377,7 +382,7 @@ const GradingReviewModal = ({
                         {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
                     </button>
                 </div>
-                {!isFullscreen && <div className="page-indicator" style={{ background: '#1E2225' }}>{currentPage}/{totalPages}</div>}
+                {!isFullscreen && <div className="page-indicator" style={{ background: T.text }}>{currentPage}/{totalPages}</div>}
                 <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isFullscreen ? '3rem 2rem 8rem' : '3.5rem 2rem 4rem' }}>
                     <div style={{ position: 'relative', width: '100%', maxWidth: isFullscreen ? 900 : 640 }}>
                         <img src={ANSWER_SHEET_IMG} alt="학생 답안 원본" style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }} />
@@ -393,7 +398,7 @@ const GradingReviewModal = ({
                 </div>
 
                 {(isFullscreen || isPlaybackMode) && (
-                    <div style={{ position: isFullscreen ? 'fixed' : 'absolute', bottom: isFullscreen ? 24 : 12, left: '50%', transform: 'translateX(-50%)', width: isFullscreen ? 'min(760px, 92vw)' : 'calc(100% - 40px)', maxWidth: 760, background: isFullscreen ? 'rgba(15,23,42,0.88)' : 'white', color: isFullscreen ? 'white' : '#1E2225', border: isFullscreen ? '1px solid rgba(255,255,255,0.1)' : '1px solid #BFDBFE', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: isFullscreen ? '0 8px 24px rgba(0,0,0,0.5)' : '0 2px 8px rgba(42,117,243,0.15)', zIndex: 10001 }}>
+                    <div style={{ position: isFullscreen ? 'fixed' : 'absolute', bottom: isFullscreen ? 24 : 12, left: '50%', transform: 'translateX(-50%)', width: isFullscreen ? 'min(760px, 92vw)' : 'calc(100% - 40px)', maxWidth: 760, background: isFullscreen ? 'rgba(15,23,42,0.88)' : 'white', color: isFullscreen ? 'white' : T.text, border: isFullscreen ? '1px solid rgba(255,255,255,0.1)' : '1px solid #BFDBFE', borderRadius: T.rLg, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: isFullscreen ? '0 8px 24px rgba(0,0,0,0.5)' : '0 2px 8px rgba(42,117,243,0.15)', zIndex: 10001 }}>
                         {isPlaybackMode && (<>
                             <button onClick={() => { if (isPlaying) setIsPlaying(false); else { if (playbackProgress >= 100) setPlaybackProgress(0); setIsPlaying(true); } }}
                                 style={{ width: 32, height: 32, borderRadius: '50%', background: '#2A75F3', color: 'white', border: 'none', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{isPlaying ? '⏸' : '▶'}</button>
@@ -401,21 +406,21 @@ const GradingReviewModal = ({
                                 style={{ flex: 1, height: 6, background: isFullscreen ? 'rgba(255,255,255,0.2)' : '#DBEAFE', borderRadius: 3, cursor: 'pointer' }}>
                                 <div style={{ width: `${playbackProgress}%`, height: '100%', background: '#2A75F3', borderRadius: 3 }} />
                             </div>
-                            <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, minWidth: 75, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
+                            <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, minWidth: 75, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
                                 {(() => { const t = Math.round(3 / playbackSpeed); const c = Math.round((playbackProgress / 100) * t); const f = (s) => `00:${String(s).padStart(2, '0')}`; return `${f(c)} / ${f(t)}`; })()}
                             </span>
                             <div style={{ display: 'flex', gap: 2 }}>
                                 {[0.5, 1, 2].map(sp => (
-                                    <button key={sp} onClick={() => setPlaybackSpeed(sp)} style={{ padding: '3px 8px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, borderRadius: 4, border: '1px solid', borderColor: playbackSpeed === sp ? '#2A75F3' : (isFullscreen ? 'rgba(255,255,255,0.25)' : '#E5E7EB'), background: playbackSpeed === sp ? '#2A75F3' : 'transparent', color: playbackSpeed === sp ? 'white' : (isFullscreen ? 'white' : '#64748B'), cursor: 'pointer' }}>{sp}x</button>
+                                    <button key={sp} onClick={() => setPlaybackSpeed(sp)} style={{ padding: '3px 8px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, borderRadius: 4, border: '1px solid', borderColor: playbackSpeed === sp ? '#2A75F3' : (isFullscreen ? 'rgba(255,255,255,0.25)' : T.lineSoft), background: playbackSpeed === sp ? '#2A75F3' : 'transparent', color: playbackSpeed === sp ? 'white' : (isFullscreen ? 'white' : T.sub), cursor: 'pointer' }}>{sp}x</button>
                                 ))}
                             </div>
                         </>)}
                         {!isPlaybackMode && isFullscreen && (
-                            <button onClick={() => { setIsPlaybackMode(true); setIsPlaying(false); setPlaybackProgress(0); }} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(42,117,243,0.85)', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>▶ 필기 재생</button>
+                            <button onClick={() => { setIsPlaybackMode(true); setIsPlaying(false); setPlaybackProgress(0); }} style={{ padding: '6px 12px', borderRadius: 'var(--neo-radius-md, 6px)', border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(42,117,243,0.85)', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, cursor: 'pointer' }}>▶ 필기 재생</button>
                         )}
-                        <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{currentPage} / {totalPages}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{currentPage} / {totalPages}</span>
                         <button onClick={() => setIsFullscreen(v => !v)} title={isFullscreen ? '전체화면 해제 (ESC)' : '전체화면'}
-                            style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid', borderColor: isFullscreen ? 'rgba(255,255,255,0.25)' : '#E5E7EB', background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⛶</button>
+                            style={{ width: 32, height: 32, borderRadius: 'var(--neo-radius-md, 6px)', border: '1px solid', borderColor: isFullscreen ? 'rgba(255,255,255,0.25)' : T.lineSoft, background: 'transparent', color: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⛶</button>
                     </div>
                 )}
             </div>
@@ -425,7 +430,7 @@ const GradingReviewModal = ({
     const tabBtn = (id, label, icon) => {
         const active = rightTab === id;
         return (
-            <button key={id} onClick={() => setRightTab(id)} style={{ padding: '7px 14px', border: '1px solid', borderColor: active ? '#BFDBFE' : '#E5E7EB', background: active ? '#EFF6FF' : 'white', color: active ? '#2563EB' : '#475569', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 0 }}>
+            <button key={id} onClick={() => setRightTab(id)} style={{ padding: '7px 14px', border: '1px solid', borderColor: active ? '#BFDBFE' : T.lineSoft, background: active ? '#EFF6FF' : 'white', color: active ? '#2563EB' : T.sub, fontWeight: 600, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 0 }}>
                 {icon} {label}
             </button>
         );
@@ -433,14 +438,14 @@ const GradingReviewModal = ({
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-container grading-detail-modal" onClick={e => e.stopPropagation()} style={{ background: '#F4F6F9' }}>
+            <div className="modal-container grading-detail-modal" onClick={e => e.stopPropagation()} style={{ background: T.surface }}>
                 {/* 헤더 — 상용과 동일: ‹ 학생 (학년 반 번호)  안내 문구 */}
                 <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 24px', background: 'white', borderBottom: '1px solid #E5E7EB', flexShrink: 0 }}>
-                    <button onClick={onClose} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer', color: '#1E2225', padding: 0 }}>‹</button>
-                    <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225' }}>
-                        {selectedStudent?.name} <span style={{ fontWeight: 800 }}>({selectedStudent?.grade})</span>
+                    <button onClick={onClose} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer', color: T.text, padding: 0 }}>‹</button>
+                    <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text }}>
+                        {selectedStudent?.name} <span style={{ fontWeight: 600 }}>({selectedStudent?.grade})</span>
                     </span>
-                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>{headerNote}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>{headerNote}</span>
                     {isStep3 && <span style={{ marginLeft: 'auto', ...pill(isSent ? '#DCFCE7' : '#FEF3C7', isSent ? '#15803D' : '#92400E') }}>{selectedStudent?.status}</span>}
                 </header>
 
@@ -459,19 +464,19 @@ const GradingReviewModal = ({
                             {/* 채점 결과 */}
                             <div>
                                 <div style={secTitle}>채점 결과</div>
-                                <div style={{ border: '1px solid #CBD5E1', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 18, fontSize: 'var(--neo-font-size-sm)' }}>
-                                    <span><span style={{ color: '#6B7280' }}>AI채점 : </span><strong>{aiGradeDisplay}</strong></span>
-                                    <span style={{ width: 1, height: 18, background: '#E5E7EB' }} />
-                                    <span style={{ color: '#6B7280' }}>교사채점 :</span>
+                                <div style={{ border: '1px solid #CBD5E1', borderRadius: T.rLg, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 18, fontSize: 'var(--neo-font-size-sm)' }}>
+                                    <span><span style={{ color: T.sub }}>AI채점 : </span><strong>{aiGradeDisplay}</strong></span>
+                                    <span style={{ width: 1, height: 18, background: T.lineSoft }} />
+                                    <span style={{ color: T.sub }}>교사채점 :</span>
                                     {isStep3 ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 800 }}>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
                                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: gradeColorMap[selectedStudent?.teacherGrade] || '#8A94A1', display: 'inline-block' }} />
                                             {selectedStudent?.teacherGrade || '-'}
                                         </span>
                                     ) : (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #CBD5E1', borderRadius: 6, padding: '2px 8px' }}>
-                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: gradeColorMap[teacherGrade] || '#CBD5E1', display: 'inline-block' }} />
-                                            <select value={teacherGrade} onChange={(e) => setTeacherGrade(e.target.value)} style={{ border: 'none', background: 'transparent', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', outline: 'none', minWidth: 120 }}>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #CBD5E1', borderRadius: 'var(--neo-radius-md, 6px)', padding: '2px 8px' }}>
+                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: gradeColorMap[teacherGrade] || T.line, display: 'inline-block' }} />
+                                            <select value={teacherGrade} onChange={(e) => setTeacherGrade(e.target.value)} style={{ border: 'none', background: 'transparent', fontWeight: 600, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', outline: 'none', minWidth: 120 }}>
                                                 <option>선택 안함</option><option>매우우수</option><option>우수</option><option>보통</option><option>노력</option>
                                             </select>
                                         </span>
@@ -496,14 +501,14 @@ const GradingReviewModal = ({
                                     <div style={secTitle}>채점 히스토리</div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 380 }}>
                                         {gradingHistory.map(h => (
-                                            <div key={h.id} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#93C5FD' : '#CBD5E1'}`, borderRadius: 10, padding: '10px 14px' }}>
+                                            <div key={h.id} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#93C5FD' : T.line}`, borderRadius: T.rLg, padding: '10px 14px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                                    <span style={{ fontSize: 'var(--neo-font-size-sm)' }}><strong>{h.label}</strong> <span style={{ color: '#6B7280', marginLeft: 6 }}>{h.timestamp || '2026. 09. 16. 오후 06:03'}</span></span>
-                                                    <button onClick={() => setReflectedHistoryId(h.id)} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#2A75F3' : '#CBD5E1'}`, background: 'white', color: reflectedHistoryId === h.id ? '#2A75F3' : '#64748B', borderRadius: 6, padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                                    <span style={{ fontSize: 'var(--neo-font-size-sm)' }}><strong>{h.label}</strong> <span style={{ color: T.sub, marginLeft: 6 }}>{h.timestamp || '2026. 09. 16. 오후 06:03'}</span></span>
+                                                    <button onClick={() => setReflectedHistoryId(h.id)} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#2A75F3' : T.line}`, background: 'white', color: reflectedHistoryId === h.id ? '#2A75F3' : T.sub, borderRadius: 'var(--neo-radius-md, 6px)', padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                                                         {reflectedHistoryId === h.id ? '✓ 반영' : '반영'}
                                                     </button>
                                                 </div>
-                                                <div style={{ fontSize: 'var(--neo-font-size-sm)' }}><span style={{ color: '#6B7280' }}>채점 등급</span> <strong style={{ marginLeft: 6 }}>{h.level}</strong></div>
+                                                <div style={{ fontSize: 'var(--neo-font-size-sm)' }}><span style={{ color: T.sub }}>채점 등급</span> <strong style={{ marginLeft: 6 }}>{h.level}</strong></div>
                                             </div>
                                         ))}
                                     </div>
@@ -517,10 +522,10 @@ const GradingReviewModal = ({
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, flexShrink: 0 }}>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 {isStep3 && !isSent && (
-                                    <button onClick={() => { if (onRevertToStep2) onRevertToStep2(selectedStudent); }} style={{ padding: '0.55rem 1.1rem', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#EF4444', background: 'white', border: '1px solid #EF4444', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>AI 재검토 (Step2로 이동)</button>
+                                    <button onClick={() => { if (onRevertToStep2) onRevertToStep2(selectedStudent); }} style={{ padding: '0.55rem 1.1rem', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: '#EF4444', background: 'white', border: '1px solid #EF4444', borderRadius: T.rLg, cursor: 'pointer', fontFamily: 'inherit' }}>AI 재검토 (Step2로 이동)</button>
                                 )}
                                 <button type="button" onClick={() => setShowRevertModal(true)} title="미채점 단계로 되돌려 스캔 업로드로 다시 채점하기"
-                                    style={{ padding: '0.55rem 1rem', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#DC2626', background: 'white', border: '1px solid #DC2626', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>↺ 미채점 처리</button>
+                                    style={{ padding: '0.55rem 1rem', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: '#DC2626', background: 'white', border: '1px solid #DC2626', borderRadius: 'var(--neo-radius-md, 6px)', cursor: 'pointer', fontFamily: 'inherit' }}>↺ 미채점 처리</button>
                             </div>
                             <div className="footer-btn-group">
                                 <button className="btn-nav" onClick={handlePrev} disabled={currentIndex <= 0}>‹ 이전 학생</button>
@@ -550,8 +555,8 @@ const GradingReviewModal = ({
                     {/* ── 우측 ── */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                            <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225' }}>{qLabel} {rightTab === 'feedback' ? '피드백 보기' : '원본 보기'}</div>
-                            <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden' }}>
+                            <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text }}>{qLabel} {rightTab === 'feedback' ? '피드백 보기' : '원본 보기'}</div>
+                            <div style={{ display: 'inline-flex', borderRadius: T.rLg, overflow: 'hidden' }}>
                                 {tabBtn('feedback', '피드백 보기', '🗨')}
                                 {tabBtn('original', '원본 보기', '▤')}
                             </div>
@@ -569,20 +574,20 @@ const GradingReviewModal = ({
                 {showRevisionModal && (
                     <div onClick={() => setShowRevisionModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '1.5rem 1.75rem', width: 500, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
-                            <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225', margin: '0 0 0.75rem' }}>{selectedStudent?.name} 학생에게 퇴고를 요청하시겠습니까?</h2>
-                            <ul style={{ margin: '0 0 1rem', padding: '0.75rem 1rem 0.75rem 1.5rem', background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.75 }}>
+                            <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text, margin: '0 0 0.75rem' }}>{selectedStudent?.name} 학생에게 퇴고를 요청하시겠습니까?</h2>
+                            <ul style={{ margin: '0 0 1rem', padding: '0.75rem 1rem 0.75rem 1.5rem', background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: T.rLg, fontSize: 'var(--neo-font-size-sm)', color: T.sub, lineHeight: 1.75 }}>
                                 <li>지금 보고 계신 <strong style={{ color: '#7C3AED' }}>1차 펜 데이터와 채점 결과는 그대로 보존</strong>됩니다.</li>
-                                <li><strong style={{ color: '#1E2225' }}>2차 답안지(새 번호표)</strong>가 발급됩니다. 출력해 배부해 주세요.</li>
-                                <li>이 학생은 <strong style={{ color: '#1E2225' }}>미채점</strong> 단계로 돌아가며, 1차와 <strong style={{ color: '#1E2225' }}>동일하게</strong> 일괄 채점 · 스캔 채점 · 개별 펜 동기화로 채점합니다.</li>
-                                <li>AI 채점 횟수는 <strong style={{ color: '#1E2225' }}>2차에서 새로 {aiGradingLimitPerRound}회</strong> 주어집니다 (1차 카운터와 독립).</li>
+                                <li><strong style={{ color: T.text }}>2차 답안지(새 번호표)</strong>가 발급됩니다. 출력해 배부해 주세요.</li>
+                                <li>이 학생은 <strong style={{ color: T.text }}>미채점</strong> 단계로 돌아가며, 1차와 <strong style={{ color: T.text }}>동일하게</strong> 일괄 채점 · 스캔 채점 · 개별 펜 동기화로 채점합니다.</li>
+                                <li>AI 채점 횟수는 <strong style={{ color: T.text }}>2차에서 새로 {aiGradingLimitPerRound}회</strong> 주어집니다 (1차 카운터와 독립).</li>
                             </ul>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', marginBottom: '1.25rem', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)' }}>
-                                <span style={{ color: '#64748B', fontWeight: 700 }}>발급될 2차 번호표</span>
-                                <span style={{ color: '#7C3AED', fontWeight: 800 }}>{selectedStudent?.sheetNo || '-'} → {nextSheetNo}</span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', marginBottom: '1.25rem', background: T.surface, border: '1px solid #E2E8F0', borderRadius: T.rLg, fontSize: 'var(--neo-font-size-sm)' }}>
+                                <span style={{ color: T.sub, fontWeight: 600 }}>발급될 2차 번호표</span>
+                                <span style={{ color: '#7C3AED', fontWeight: 600 }}>{selectedStudent?.sheetNo || '-'} → {nextSheetNo}</span>
                             </div>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                <button onClick={() => setShowRevisionModal(false)} style={{ padding: '9px 18px', background: 'white', border: '1px solid #E2E8F0', borderRadius: 8, fontWeight: 700, color: '#475569', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>취소</button>
-                                <button onClick={handleConfirmRevision} style={{ padding: '9px 18px', background: '#7C3AED', border: 'none', borderRadius: 8, fontWeight: 800, color: 'white', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✍ 퇴고 요청</button>
+                                <button onClick={() => setShowRevisionModal(false)} style={{ padding: '9px 18px', background: 'white', border: '1px solid #E2E8F0', borderRadius: T.rLg, fontWeight: 600, color: T.sub, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>취소</button>
+                                <button onClick={handleConfirmRevision} style={{ padding: '9px 18px', background: '#7C3AED', border: 'none', borderRadius: T.rLg, fontWeight: 600, color: 'white', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✍ 퇴고 요청</button>
                             </div>
                         </div>
                     </div>
@@ -592,15 +597,15 @@ const GradingReviewModal = ({
                 {showRevertModal && (
                     <div onClick={() => setShowRevertModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '1.5rem 1.75rem', width: 480, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
-                            <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225', margin: '0 0 0.75rem' }}>미채점 처리하시겠습니까?</h2>
-                            <ul style={{ margin: '0 0 1.25rem', padding: '0.75rem 1rem 0.75rem 1.5rem', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.75 }}>
+                            <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text, margin: '0 0 0.75rem' }}>미채점 처리하시겠습니까?</h2>
+                            <ul style={{ margin: '0 0 1.25rem', padding: '0.75rem 1rem 0.75rem 1.5rem', background: T.surface, border: '1px solid #E2E8F0', borderRadius: T.rLg, fontSize: 'var(--neo-font-size-sm)', color: T.sub, lineHeight: 1.75 }}>
                                 <li>이미 채점된 <strong style={{ color: '#DC2626' }}>펜데이터는 삭제</strong>되어, 복구할 수 없습니다.</li>
-                                <li><strong style={{ color: '#1E2225' }}>스캔 업로드</strong>를 통해 AI 채점을 시작할 수 있습니다.</li>
-                                <li>AI 채점은 펜데이터 사용 시와 동일하게 <strong style={{ color: '#1E2225' }}>최대 2회</strong>까지 가능합니다.</li>
+                                <li><strong style={{ color: T.text }}>스캔 업로드</strong>를 통해 AI 채점을 시작할 수 있습니다.</li>
+                                <li>AI 채점은 펜데이터 사용 시와 동일하게 <strong style={{ color: T.text }}>최대 2회</strong>까지 가능합니다.</li>
                             </ul>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                <button onClick={() => setShowRevertModal(false)} style={{ padding: '9px 18px', background: 'white', border: '1px solid #E2E8F0', borderRadius: 8, fontWeight: 700, color: '#475569', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>취소</button>
-                                <button onClick={handleConfirmRevert} style={{ padding: '9px 18px', background: '#DC2626', border: 'none', borderRadius: 8, fontWeight: 800, color: 'white', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>↺ 미채점 처리</button>
+                                <button onClick={() => setShowRevertModal(false)} style={{ padding: '9px 18px', background: 'white', border: '1px solid #E2E8F0', borderRadius: T.rLg, fontWeight: 600, color: T.sub, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>취소</button>
+                                <button onClick={handleConfirmRevert} style={{ padding: '9px 18px', background: '#DC2626', border: 'none', borderRadius: T.rLg, fontWeight: 600, color: 'white', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>↺ 미채점 처리</button>
                             </div>
                         </div>
                     </div>
