@@ -1,9 +1,9 @@
 /**
  * GradingManagement.jsx
- * 과제 및 채점관리 화면입니다.
+ * 채점 관리 화면입니다.
  * 과제 선택, 학생별 채점 상태 관리(미채점 / 채점 확인 / 결과 발송),
  * 크래들 일괄 채점 워크플로우(AiGLE Connect 연동), 채점 상세 모달 기능을 포함합니다.
- * Setting.jsx에서 activeMenu === '과제 및 채점관리'일 때 렌더링됩니다.
+ * Setting.jsx에서 activeMenu === '채점 관리'일 때 렌더링됩니다. ([v4.7] 과제 관리 메뉴와 분리)
  *
  * [SCR-06] variant='v2' — 「채점 관리 2」(퇴고 지원판)
  *   기존 v1 기능을 그대로 포함하고, 학생 답안을 「차수(round)」 축으로 관리하는 퇴고 기능을 추가한다.
@@ -142,13 +142,14 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   //   aiCount    : 차수별 AI 채점 실행 횟수 { 1: n, 2: n } — 차수별 독립 카운터(최대 2회)
   //   sheetNo    : 현재 차수 답안지 번호표 (2차는 재배부된 새 번호표)
   const [students, setStudents] = useState([
-    { id: 11, name: '정지훈', grade: '5학년 2반 3번', submitType: 'pen', aiGrade: '노력', teacherGrade: '보통', status: '채점 확인', round: 1, history: [], aiCount: { 1: 1, 2: 0 }, sheetNo: 'A-0011' },
+    // [SCR-03 v5.0] penStats — 과정 분석 최소 조건(80획·30초) 판정용. 정지훈은 충분, 일반테스트는 부족(분석불가-필기부족)
+    { id: 11, name: '정지훈', grade: '5학년 2반 3번', submitType: 'pen', aiGrade: '우수', teacherGrade: '보통', status: '채점 확인', round: 1, history: [], aiCount: { 1: 1, 2: 0 }, sheetNo: 'A-0011', penStats: { strokes: 312, durationSec: 252 } },
     { id: 1, name: '김순정', grade: '1학년 1반 1번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: 'A-0001' },
     { id: 2, name: '이순정', grade: '1학년 1반 2번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: 'A-0002' },
     { id: 3, name: '박순정', grade: '1학년 1반 3번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: 'A-0003' },
     { id: 4, name: '홍길동', grade: '1학년 1반 5번', submitType: 'ocr', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: 'A-0005' },
     { id: 5, name: '김민지', grade: '1학년 1반 12번', submitType: 'ocr', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: 'A-0012' },
-    { id: 9, name: '일반테스트', grade: '6학년 1반 1번', submitType: 'pen', aiGrade: '노력', teacherGrade: '노력', status: '결과 발송 완료', round: 1, history: [], aiCount: { 1: 1, 2: 0 }, sheetNo: 'A-0009' },
+    { id: 9, name: '일반테스트', grade: '6학년 1반 1번', submitType: 'pen', aiGrade: '노력', teacherGrade: '노력', status: '결과 발송 완료', round: 1, history: [], aiCount: { 1: 1, 2: 0 }, sheetNo: 'A-0009', penStats: { strokes: 41, durationSec: 18 } },
     { id: 10, name: '이하늘', grade: '4학년 1반 1번', submitType: 'ocr', aiGrade: '노력', teacherGrade: '노력', status: '결과 발송 완료', round: 1, history: [], aiCount: { 1: 2, 2: 0 }, sheetNo: 'A-0010' },
     // [SCR-06] v2 데모용 — 이미 퇴고 사이클을 한 바퀴 돈 학생 (1차 노력 → 2차 보통, 향상)
     { id: 12, name: '최다연', grade: '1학년 1반 7번', submitType: 'pen', aiGrade: '보통', teacherGrade: '보통', status: '결과 발송 완료', round: 2, sheetNo: 'B-0007', aiCount: { 1: 1, 2: 1 }, v2Only: true,
