@@ -924,6 +924,40 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     }));
   }, [basicInfo.subject]);
 
+
+  /* [v3.80] 평가 내용 행 추가·삭제 — 舊 배점 단계 스텝퍼 대신 표 안에서 직접 다룬다.
+   *   · 추가: 구간을 1개 늘리고 배점 → 0점으로 다시 균등 분배 (평가 내용은 보존). 상한 = 배점+1 (배점 없으면 5)
+   *   · 삭제: 그 행만 지운다 (나머지 점수는 그대로). 최소 2개 */
+  const rowLimit = (c) => (Number(c.maxPoints) > 0 ? Math.min(Number(c.maxPoints) + 1, 9) : 5);
+  const addRow = (qid, cid) =>
+    setQuestions((qs) => qs.map((q) => {
+      if (q.id !== qid) return q;
+      return {
+        ...q,
+        criteria: q.criteria.map((c) => {
+          if (c.id !== cid) return c;
+          const limit = rowLimit(c);
+          if (c.rows.length >= limit) { showToast && showToast(`평가 내용은 최대 ${limit}개까지 둘 수 있습니다. (배점 ${c.maxPoints || '미입력'}점 기준)`); return c; }
+          const levels = c.rows.length + 1;
+          const interval = defaultInterval(c.maxPoints, levels);
+          return { ...c, levels, interval, rows: buildScoreRows(c.maxPoints, levels, interval, c.rows) };
+        }),
+      };
+    }));
+  const removeRow = (qid, cid, rowIdx) =>
+    setQuestions((qs) => qs.map((q) => {
+      if (q.id !== qid) return q;
+      return {
+        ...q,
+        criteria: q.criteria.map((c) => {
+          if (c.id !== cid) return c;
+          if (c.rows.length <= 2) { showToast && showToast('평가 내용은 최소 2개가 필요합니다.'); return c; }
+          const rows = c.rows.filter((_, i) => i !== rowIdx);
+          return { ...c, levels: rows.length, rows };
+        }),
+      };
+    }));
+
   // [v3.47] selfScale 변경 시 — resultScale(등급 환산 체계)만 동기화. 채점기준 c.levels(점수 행 수)는 채점기준별 자유 유지.
   useEffect(() => { setResultScale(selfScale); }, [selfScale]);
 
@@ -3366,7 +3400,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                             {/* [v3.74] 배점 간격 드롭다운 폐기 — 간격은 항상 최대값(배점÷2)으로 자동 산출, [↻ 점수 균등 분배]만 유지 */}
                             <button onClick={() => redistribute(q.id, c.id)} title="입력한 배점을 3개 구간(배점 → 0점)에 균등하게 다시 분배합니다." style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>↻ 점수 균등 분배</button>
                           </div>
-                          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>배점을 입력하면 3개 구간(배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)</div>
+                          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>배점을 입력하면 구간(기본 3개, 배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, [+ 평가 내용 추가]·[✕ 삭제]로 구간 수를 바꿀 수 있으며, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)</div>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
                             <thead>
                               <tr style={{ background: '#F8FAFC' }}>
@@ -3392,12 +3426,15 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                                       placeholder={`${r.score !== '' ? `${r.score}점` : ['상', '중', '하'][ri] || ''} 수준의 평가 내용`}
                                       onChange={(v) => updateRowDesc(q.id, c.id, ri, v)}
                                       onOpenEditor={() => setFormulaModal({ qid: q.id, cid: c.id, ri, initialContent: r.desc || '' })}
+                                      onDelete={() => removeRow(q.id, c.id, ri)}
                                     />
                                   </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
+                            <button onClick={() => addRow(q.id, c.id)} title="평가 내용 구간을 하나 추가하고 점수를 배점 → 0점으로 균등 분배합니다. 점수는 직접 수정할 수 있습니다."
+                            style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-xs)' }}>+ 평가 내용 추가 ({c.rows.length}/{rowLimit(c)})</button>
                           {/* [v2.35] 단조 감소 경고 박스 폐기 — 입력 시점에 차단(updateRowScore + input dynMin/dynMax)으로 정책 강제 */}
                         </div>
                       ))}
@@ -3886,7 +3923,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
 // [v2.17] 자율평가 평가내용 에디터 (TSK-13 v2.16과 동일 구현)
 //   [∑+ 수식] / chip 클릭 모두 onOpenEditor(평가내용 전체) 호출
 // ============================================================
-const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor }) => {
+const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor, onDelete }) => {
   const parsed = React.useMemo(() => {
     if (!desc) return [];
     const parts = [];
@@ -3951,13 +3988,13 @@ const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor }) => {
           </span>
         );
       })}
-      {/* [v2.65] 평가 내용 비우기 — 모범답안 [✕ 비우기] 패턴과 동일. 내용이 있을 때만 노출 */}
-      {hasContent && (
-        <button type="button" onClick={() => onChange('')} title="평가 내용을 비웁니다."
-          style={{ marginLeft: 'auto', padding: '2px 6px', border: '1px solid #E2E8F0', background: 'white', color: '#94A3B8', borderRadius: 4, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>✕ 비우기</button>
+      {/* [v3.80] ✕ 삭제 — 이 평가 내용 행을 지운다 (舊 v2.65 「✕ 비우기」 대체). onDelete 가 없으면 옛 비우기 동작 */}
+      {(onDelete || hasContent) && (
+        <button type="button" onClick={() => (onDelete ? onDelete() : onChange(''))} title={onDelete ? '이 평가 내용을 삭제합니다.' : '평가 내용을 비웁니다.'}
+          style={{ marginLeft: 'auto', padding: '2px 6px', border: '1px solid #E2E8F0', background: 'white', color: '#94A3B8', borderRadius: 4, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{onDelete ? '✕ 삭제' : '✕ 비우기'}</button>
       )}
       <button type="button" onClick={onOpenEditor} title="평가내용 전체를 LaTeX 편집기로 열어 수식·텍스트를 함께 편집합니다"
-        style={{ marginLeft: hasContent ? 0 : 'auto', padding: '2px 8px', border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>∑ 수식</button>
+        style={{ marginLeft: (onDelete || hasContent) ? 0 : 'auto', padding: '2px 8px', border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>∑ 수식</button>
     </div>
   );
 };
