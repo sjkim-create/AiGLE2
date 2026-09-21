@@ -1397,7 +1397,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>↻ 점수 균등 분배</button>
                         </div>
                         <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>
-                          배점을 입력하면 구간(기본 3개, 배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, 각 행의 ⁝ 메뉴(아래에 추가 · 삭제 · 수식)로 구간 수를 바꿀 수 있으며, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)
+                          배점을 입력하면 구간(기본 3개, 배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, 각 행의 ⁝ 메뉴(수식 편집 · 아래에 추가 · 삭제)로 구간 수를 바꿀 수 있으며, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)
                         </div>
                         {/* 점수 표 — 점수 직접 편집 가능 */}
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
@@ -1918,7 +1918,7 @@ const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor, onDelete
           </span>
         );
       })}
-      {/* [v3.83] ⁝ 더보기 — 아래에 추가 · 삭제 · 수식. 舊 인라인 [✕ 삭제]·[∑ 수식] 버튼 대체 */}
+      {/* [v3.83] ⁝ 더보기 — 수식 편집 · 아래에 추가 · 삭제. 舊 인라인 [✕ 삭제]·[∑ 수식] 버튼 대체 */}
       <RowMenu onAddBelow={onAddBelow} onDelete={onDelete} onOpenEditor={onOpenEditor} addLabel={addLabel} />
     </div>
   );
@@ -1943,12 +1943,12 @@ const RowMenu = ({ onAddBelow, onDelete, onOpenEditor, addLabel }) => {
   );
   return (
     <span ref={ref} style={{ position: 'relative', display: 'inline-flex', marginLeft: 'auto', flexShrink: 0 }}>
-      <button type="button" aria-label="평가 내용 더보기" title="추가 · 삭제 · 수식" onClick={() => setOpen((v) => !v)}
+      <button type="button" aria-label="평가 내용 더보기" title="수식 편집 · 아래에 추가 · 삭제" onClick={() => setOpen((v) => !v)}
         style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${open ? '#2A75F3' : '#E2E8F0'}`, background: open ? '#EFF6FF' : 'white', color: '#475569', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit' }}>⁝</button>
       {open && (
         <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 30, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.15)', padding: 6, minWidth: 168 }}>
-          {item(`＋ 아래에 추가${addLabel ? ` (${addLabel})` : ''}`, onAddBelow, { disabled: !onAddBelow })}
           {item('∑ 수식 편집', onOpenEditor)}
+          {item(`＋ 아래에 추가${addLabel ? ` (${addLabel})` : ''}`, onAddBelow, { disabled: !onAddBelow })}
           <div style={{ height: 1, background: '#F1F5F9', margin: '4px 0' }} />
           {item('✕ 삭제', onDelete, { danger: true, disabled: !onDelete })}
         </div>
