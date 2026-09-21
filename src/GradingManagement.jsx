@@ -14,7 +14,8 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf } from './GradingReviewModal';
+import { lookupPattern } from './handwritingPatternMatrix';
 import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
@@ -1600,8 +1601,37 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <>
                           <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 과정평가</h3>
                           <div style={{ background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
-                            <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>진단된 학습 행동 패턴</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.systemDataLog?.processPattern || '신중한 재구조화형'}</div>
+                            {/* 유형 캐릭터 — 학생에게 가는 리포트에 상세 화면과 같은 캐릭터를 싣는다 */}
+                            {(() => {
+                              const hw = previewStudent.handwritingEvaluation;
+                              if (hw.insufficient) {
+                                /* 필기 부족 — 캐릭터 대신 안내 문구만 (상세 화면과 동일) */
+                                return (
+                                  <div style={{ padding: '12px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', marginBottom: '0.9rem' }}>
+                                    <div style={{ marginBottom: '6px' }}>{hw.message}</div>
+                                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#86198F', fontWeight: 700 }}>진단된 학습 행동 패턴</div>
+                                    <div style={{ fontWeight: 800, color: '#1E293B' }}>분석불가-필기부족</div>
+                                  </div>
+                                );
+                              }
+                              const code = hw.patternCode || patternCodeOf(hw.systemDataLog?.metricsCode);
+                              const img = code && PATTERN_CHARACTERS[code];
+                              const name = hw.evaluationSummary?.diagnosedPattern || hw.systemDataLog?.processPattern || (code ? lookupPattern(code).name : '-');
+                              const brief = code ? lookupPattern(code).brief : '';
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', background: 'white', border: '1px solid #E9D5FF', borderRadius: '10px', marginBottom: '0.9rem' }}>
+                                  {img
+                                    ? <img src={img} alt={name} style={{ width: 96, height: 96, objectFit: 'contain', flex: 'none' }} />
+                                    : <div style={{ width: 96, height: 96, flex: 'none', borderRadius: '10px', background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#A78BFA' }}>{(code || '?').toUpperCase()}</div>}
+                                  <div>
+                                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#86198F', fontWeight: 700 }}>진단된 학습 행동 패턴</div>
+                                    <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>{name}</div>
+                                    {brief && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: '2px' }}>{brief}</div>}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                            {!previewStudent.handwritingEvaluation.insufficient && (<>
                             <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>등급 매핑 총평</div>
                             <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.evaluationSummary?.totalEvaluation || '-'}</div>
                             <div style={{ fontWeight: 700, color: '#10B981', marginBottom: '0.25rem' }}>학생의 강점</div>
@@ -1612,6 +1642,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             <div style={{ marginBottom: '0.75rem' }}>{previewStudent.handwritingEvaluation.finalFeedback?.letsGrowTogether || '-'}</div>
                             <div style={{ fontWeight: 700, color: '#8B5CF6', marginBottom: '0.25rem' }}>행동 지표 분석 및 병목 구간</div>
                             <div>{previewStudent.handwritingEvaluation.finalFeedback?.contentBottleneckAnalysis || '-'}</div>
+                            </>)}
                           </div>
                         </>
                       )}
