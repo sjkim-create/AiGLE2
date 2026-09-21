@@ -533,7 +533,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
    *   · 추가: 구간을 1개 늘리고 배점 → 0점으로 다시 균등 분배 (평가 내용은 보존). 상한 = 배점+1 (배점 없으면 5)
    *   · 삭제: 그 행만 지운다 (나머지 점수는 그대로). 최소 2개 */
   const rowLimit = (c) => (Number(c.maxPoints) > 0 ? Math.min(Number(c.maxPoints) + 1, 9) : 5);
-  const addRow = (qid, cid) =>
+  /* [v3.83] 아래에 추가 — 선택한 행 바로 아래에 새 구간을 끼워 넣고 점수는 배점 → 0점으로 균등 재분배 (평가 내용 위치 보존) */
+  const addRowBelow = (qid, cid, rowIdx) =>
     setQuestions((qs) => qs.map((q) => {
       if (q.id !== qid) return q;
       return {
@@ -542,9 +543,10 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
           if (c.id !== cid) return c;
           const limit = rowLimit(c);
           if (c.rows.length >= limit) { toast(`평가 내용은 최대 ${limit}개까지 둘 수 있습니다. (배점 ${c.maxPoints || '미입력'}점 기준)`); return c; }
-          const levels = c.rows.length + 1;
+          const inserted = [...c.rows.slice(0, rowIdx + 1), { score: '', desc: '' }, ...c.rows.slice(rowIdx + 1)];
+          const levels = inserted.length;
           const interval = defaultInterval(c.maxPoints, levels);
-          return { ...c, levels, interval, rows: buildScoreRows(c.maxPoints, levels, interval, c.rows) };
+          return { ...c, levels, interval, rows: buildScoreRows(c.maxPoints, levels, interval, inserted) };
         }),
       };
     }));
@@ -1395,7 +1397,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>↻ 점수 균등 분배</button>
                         </div>
                         <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600, marginBottom: 10 }}>
-                          배점을 입력하면 구간(기본 3개, 배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, [+ 평가 내용 추가]·[✕ 삭제]로 구간 수를 바꿀 수 있으며, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)
+                          배점을 입력하면 구간(기본 3개, 배점 → 0점)에 균등 분배됩니다. 아래 표에서 각 구간 점수를 직접 수정할 수 있고, 각 행의 ⁝ 메뉴(아래에 추가 · 삭제 · 수식)로 구간 수를 바꿀 수 있으며, [↻ 점수 균등 분배]로 되돌릴 수 있습니다. (0~배점, 정수)
                         </div>
                         {/* 점수 표 — 점수 직접 편집 가능 */}
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
@@ -1425,14 +1427,14 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                                     onChange={(v) => updateRowDesc(q.id, c.id, ri, v)}
                                     onOpenEditor={() => setFormulaModal({ qid: q.id, cid: c.id, ri, initialContent: r.desc || '' })}
                                     onDelete={() => removeRow(q.id, c.id, ri)}
+                                    onAddBelow={() => addRowBelow(q.id, c.id, ri)}
+                                    addLabel={`${c.rows.length}/${rowLimit(c)}`}
                                   />
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                          <button onClick={() => addRow(q.id, c.id)} title="평가 내용 구간을 하나 추가하고 점수를 배점 → 0점으로 균등 분배합니다. 점수는 직접 수정할 수 있습니다."
-                            style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-xs)' }}>+ 평가 내용 추가 ({c.rows.length}/{rowLimit(c)})</button>
                         {/* [v2.32] 단조 감소 경고 박스 폐기 — 입력 시점에 차단(updateRowScore + input dynMin/dynMax)으로 정책 강제 */}
                       </div>
                     ))}
@@ -1791,7 +1793,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
 //   - [∑+ 수식] 버튼 / chip 클릭 모두 onOpenEditor(전체 내용) 호출
 //   - 모달에서 평가내용 전체(텍스트+수식 마커)를 LaTeX 형식으로 통째 편집
 // ============================================================
-const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor, onDelete }) => {
+const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor, onDelete, onAddBelow, addLabel }) => {
   // 평가내용 문자열을 [{type:'text'|'formula', value/latex}] 배열로 파싱
   const parsed = React.useMemo(() => {
     if (!desc) return [];
@@ -1916,44 +1918,42 @@ const EvalContentEditor = ({ desc, placeholder, onChange, onOpenEditor, onDelete
           </span>
         );
       })}
-      {/* [v3.80] ✕ 삭제 — 이 평가 내용 행을 지운다 (舊 v2.61 「✕ 비우기」 대체). onDelete 가 없으면 옛 비우기 동작 */}
-      {(onDelete || hasContent) && (
-        <button
-          type="button"
-          onClick={() => (onDelete ? onDelete() : onChange(''))}
-          title={onDelete ? '이 평가 내용을 삭제합니다.' : '평가 내용을 비웁니다.'}
-          style={{
-            marginLeft: 'auto',
-            padding: '2px 6px',
-            border: '1px solid #E2E8F0',
-            background: 'white',
-            color: '#94A3B8',
-            borderRadius: 4,
-            fontSize: 'var(--neo-font-size-xs)',
-            fontWeight: 700,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >{onDelete ? '✕ 삭제' : '✕ 비우기'}</button>
-      )}
-      <button
-        type="button"
-        onClick={onOpenEditor}
-        title="평가내용 전체를 LaTeX 편집기로 열어 수식·텍스트를 함께 편집합니다"
-        style={{
-          marginLeft: (onDelete || hasContent) ? 0 : 'auto',
-          padding: '2px 8px',
-          border: '1px solid #BFDBFE',
-          background: '#EFF6FF',
-          color: '#1D4ED8',
-          borderRadius: 4,
-          fontSize: 'var(--neo-font-size-sm)',
-          fontWeight: 700,
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-        }}
-      >∑ 수식</button>
+      {/* [v3.83] ⁝ 더보기 — 아래에 추가 · 삭제 · 수식. 舊 인라인 [✕ 삭제]·[∑ 수식] 버튼 대체 */}
+      <RowMenu onAddBelow={onAddBelow} onDelete={onDelete} onOpenEditor={onOpenEditor} addLabel={addLabel} />
     </div>
+  );
+};
+
+/* [v3.83] 평가 내용 행 ⁝ 메뉴 — 바깥 클릭·ESC로 닫힘 */
+const RowMenu = ({ onAddBelow, onDelete, onOpenEditor, addLabel }) => {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!ref.current || !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const item = (label, fn, opts = {}) => (
+    <button type="button" disabled={opts.disabled} onClick={() => { setOpen(false); fn && fn(); }}
+      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', border: 'none', background: 'transparent', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: opts.danger ? '#DC2626' : (opts.disabled ? '#CBD5E1' : '#1E293B'), fontWeight: opts.danger ? 800 : 600, cursor: opts.disabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+      {label}
+    </button>
+  );
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', marginLeft: 'auto', flexShrink: 0 }}>
+      <button type="button" aria-label="평가 내용 더보기" title="추가 · 삭제 · 수식" onClick={() => setOpen((v) => !v)}
+        style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${open ? '#2A75F3' : '#E2E8F0'}`, background: open ? '#EFF6FF' : 'white', color: '#475569', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit' }}>⁝</button>
+      {open && (
+        <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 30, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.15)', padding: 6, minWidth: 168 }}>
+          {item(`＋ 아래에 추가${addLabel ? ` (${addLabel})` : ''}`, onAddBelow, { disabled: !onAddBelow })}
+          {item('∑ 수식 편집', onOpenEditor)}
+          <div style={{ height: 1, background: '#F1F5F9', margin: '4px 0' }} />
+          {item('✕ 삭제', onDelete, { danger: true, disabled: !onDelete })}
+        </div>
+      )}
+    </span>
   );
 };
 
