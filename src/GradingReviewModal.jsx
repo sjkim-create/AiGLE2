@@ -12,8 +12,27 @@
  *         — 펜 데이터가 부족하면(80획 미만 또는 필기 30초 미만) 진단 대신 안내 문구만 보인다
  */
 import React, { useState, useEffect, useMemo } from 'react';
+import { lookupPattern } from './handwritingPatternMatrix';
 
 const ANSWER_SHEET_IMG = `${import.meta.env.BASE_URL}images/answer-sheet-sample.png`;
+
+/* ── 학습 행동 패턴(3축 코드) 캐릭터 ──
+ *   27개 유형마다 캐릭터가 한 장씩 붙는다. 학생 리포트(결과 발송·내보내기)에 같은 캐릭터가 실리므로
+ *   교사 화면에서도 리포트에 보일 모습 그대로 보여 준다. 아직 그림이 없는 유형은 코드 배지로 대신한다. */
+export const PATTERN_CHARACTERS = {
+    cba: `${import.meta.env.BASE_URL}images/patterns/cba.png`,
+};
+/* "Time-c, Coord-b, Hesit-a" → "cba" */
+export const patternCodeOf = (metricsCode = '') => {
+    const m = /Time-([abc]).*Coord-([abc]).*Hesit-([abc])/i.exec(metricsCode);
+    return m ? (m[1] + m[2] + m[3]).toLowerCase() : null;
+};
+const AXIS_LABEL = {
+    time: { a: '빠른 속도', b: '보통 속도', c: '신중한 속도' },
+    coord: { a: '순차 진행', b: '되돌아가며 보완', c: '자주 고쳐 씀' },
+    hesit: { a: '머뭇거림 없음', b: '가끔 머뭇거림', c: '잦은 머뭇거림' },
+};
+const axisChips = (code) => code ? [AXIS_LABEL.time[code[0]], AXIS_LABEL.coord[code[1]], AXIS_LABEL.hesit[code[2]]].filter(Boolean) : [];
 
 /* 펜 데이터로 과정을 평가하기 위한 최소 조건 — 둘 중 하나라도 못 미치면 「분석불가-필기부족」 */
 export const PROCESS_MIN_STROKES = 80;
@@ -67,10 +86,11 @@ export const PROCESS_GUIDE_SAMPLE = {
     ],
 };
 export const PROCESS_RESULT_SAMPLE = {
-    systemDataLog: { processPattern: '신중한 재구조화형', metricsCode: 'Time-c, Coord-b, Hesit-a', gradeLevel: 'B' },
+    patternCode: 'cba',
+    systemDataLog: { processPattern: '심사숙고 확신형', metricsCode: 'Time-c, Coord-b, Hesit-a', gradeLevel: 'B' },
     evaluationSummary: {
-        diagnosedPattern: '신중한 재구조화형',
-        totalEvaluation: "확정 등급 B를 받은 이번 답안은 문항이 요구한 '일차방정식'의 형태를 갖추는 데 있어 핵심적인 수치 하나를 놓친 아쉬움이 있습니다. '신중한 재구조화형' 패턴답게 풀이 과정에서 불필요한 되돌아감 없이 논리적인 문장으로 식을 세워나갔으나, 지문에 명시된 현재 잔액(4240원)을 등식의 결과로 연결하지 못하고 단순한 식의 표현에 그쳤습니다. 풀이 중간에 발생한 장시간의 정지는 전체적인 식의 구조를 잡는 과정에서의 고민으로 보이며, 논리적 흐름은 우수하나 문제의 최종 목표인 '방정식' 완성에는 도달하지 못한 상태입니다.",
+        diagnosedPattern: '심사숙고 확신형',
+        totalEvaluation: "확정 등급 B를 받은 이번 답안은 문항이 요구한 '일차방정식'의 형태를 갖추는 데 있어 핵심적인 수치 하나를 놓친 아쉬움이 있습니다. '심사숙고 확신형' 패턴답게 충분히 생각한 뒤 식을 세우고, 한 번 되돌아가 보완한 뒤에는 머뭇거림 없이 단단하게 마무리했으나, 지문에 명시된 현재 잔액(4240원)을 등식의 결과로 연결하지 못하고 단순한 식의 표현에 그쳤습니다. 풀이 중간에 발생한 장시간의 정지는 전체적인 식의 구조를 잡는 과정에서의 고민으로 보이며, 논리적 흐름은 우수하나 문제의 최종 목표인 '방정식' 완성에는 도달하지 못한 상태입니다.",
     },
     finalFeedback: {
         whatsGood: '풀이 과정에서 단 한 번의 수정이나 되돌아감 없이 순차적으로 사고를 전개하였으며, 각 단계마다 언어적 설명을 덧붙여 논리적 근거를 명확히 밝히며 풀이하는 신중함이 돋보입니다.',
@@ -267,9 +287,20 @@ const GradingReviewModal = ({
                         <div style={{ fontSize: '1.6rem', animation: 'pulse-ind 1.4s ease-in-out infinite' }}>✎</div>
                         <div style={hint}>필기 데이터를 분석하고 학습 행동 패턴을 진단하는 중입니다.</div>
                     </>)}
-                    {isProcessEvalSupported && processEvalState === 'completed' && (
-                        <div style={{ ...hint, color: T.text }}>결과는 오른쪽에서 확인해보세요.</div>
-                    )}
+                    {isProcessEvalSupported && processEvalState === 'completed' && (() => {
+                        const code = hw?.patternCode || patternCodeOf(hw?.systemDataLog?.metricsCode);
+                        const img = !hwInsufficient && code && PATTERN_CHARACTERS[code];
+                        const name = hw?.evaluationSummary?.diagnosedPattern || hw?.systemDataLog?.processPattern;
+                        return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                {img && <img src={img} alt={name} style={{ width: 56, height: 56, objectFit: 'contain' }} />}
+                                <div style={{ textAlign: 'left' }}>
+                                    {name && <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text }}>{name}</div>}
+                                    <div style={hint}>결과는 오른쪽에서 확인해보세요.</div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
         );
@@ -333,10 +364,36 @@ const GradingReviewModal = ({
                 )}
                 {isProcessEvalSupported && processEvalState === 'completed' && hw && !hwInsufficient && (
                     <div style={{ padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub }}>진단된 학습 행동 패턴 :</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text, marginBottom: 14 }}>
-                            {hw.evaluationSummary?.diagnosedPattern || hw.systemDataLog?.processPattern} <span style={{ fontWeight: 600, color: T.sub }}>(Metrics: {hw.systemDataLog?.metricsCode})</span>
-                        </div>
+                        {(() => {
+                            const code = hw.patternCode || patternCodeOf(hw.systemDataLog?.metricsCode);
+                            const name = hw.evaluationSummary?.diagnosedPattern || hw.systemDataLog?.processPattern || lookupPattern(code).name;
+                            const img = code && PATTERN_CHARACTERS[code];
+                            const brief = code ? lookupPattern(code).brief : '';
+                            return (
+                                /* 유형 캐릭터 카드 — 학생 리포트에 실리는 모습 그대로 */
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '14px 18px', background: 'white', border: `1px solid ${T.lineSoft}`, borderRadius: T.rXl, marginBottom: 16 }}>
+                                    {img ? (
+                                        <img src={img} alt={name} style={{ width: 112, height: 112, objectFit: 'contain', flex: 'none' }} />
+                                    ) : (
+                                        <div style={{ width: 112, height: 112, flex: 'none', borderRadius: T.rXl, background: T.surface, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: T.muted }}>{(code || '?').toUpperCase()}</div>
+                                    )}
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub, marginBottom: 2 }}>진단된 학습 행동 패턴</div>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                                            <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: T.text }}>{name}</span>
+                                            {code && <span style={pill(T.surface, T.sub)}>{code.toUpperCase()} · {hw.systemDataLog?.metricsCode}</span>}
+                                        </div>
+                                        {brief && <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub, marginBottom: 8 }}>{brief}</div>}
+                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                            {axisChips(code).map((c) => (
+                                                <span key={c} style={{ ...pill('#EFF6FF', '#1D4ED8'), padding: '3px 10px' }}>{c}</span>
+                                            ))}
+                                        </div>
+                                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted, marginTop: 8 }}>이 캐릭터와 유형 이름은 학생에게 발송되는 리포트에 함께 표시됩니다.</div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                         <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text, marginBottom: 6 }}>총평</div>
                         <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.75, marginBottom: 16 }}>{hw.evaluationSummary?.totalEvaluation}</div>
                         {hw.finalFeedback?.contentBottleneckAnalysis && (<>
