@@ -18,10 +18,12 @@ const ANSWER_SHEET_IMG = `${import.meta.env.BASE_URL}images/answer-sheet-sample.
 
 /* ── 학습 행동 패턴(3축 코드) 캐릭터 ──
  *   27개 유형마다 캐릭터가 한 장씩 붙는다. 학생 리포트(결과 발송·내보내기)에 같은 캐릭터가 실리므로
- *   교사 화면에서도 리포트에 보일 모습 그대로 보여 준다. 아직 그림이 없는 유형은 코드 배지로 대신한다. */
-export const PATTERN_CHARACTERS = {
-    cba: `${import.meta.env.BASE_URL}images/patterns/cba.png`,
-};
+ *   교사 화면에서도 리포트에 보일 모습 그대로 보여 준다. 그림이 없는 코드는 코드 배지로 폴백한다. */
+/* 27개 전부 — 「아이글 27가지 학습 행동 유형별 캐릭터」(2026-08-26) pptx 에서 추출. 파일명 = 3축 코드 */
+export const PATTERN_CHARACTERS = Object.fromEntries(
+    ['aaa', 'aab', 'aac', 'aba', 'abb', 'abc', 'aca', 'acb', 'acc', 'baa', 'bab', 'bac', 'bba', 'bbb', 'bbc', 'bca', 'bcb', 'bcc', 'caa', 'cab', 'cac', 'cba', 'cbb', 'cbc', 'cca', 'ccb', 'ccc']
+        .map((code) => [code, `${import.meta.env.BASE_URL}images/patterns/${code}.png`])
+);
 /* "Time-c, Coord-b, Hesit-a" → "cba" */
 export const patternCodeOf = (metricsCode = '') => {
     const m = /Time-([abc]).*Coord-([abc]).*Hesit-([abc])/i.exec(metricsCode);

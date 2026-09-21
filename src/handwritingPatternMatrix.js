@@ -12,6 +12,7 @@
  * null 값은 매트릭스 미정의 상태로, UI에서 fallback 규칙 템플릿으로 대체.
  *
  * 참조: handwriting_analysis_spec.md §6.2, 과정평가_prompt.md §5.2
+ * 유형명·캐릭터: 「아이글 27가지 학습 행동 유형별 캐릭터」(서비스기획팀, 2026-08-26) 기준. 캐릭터는 public/images/patterns/{code}.png
  */
 
 export const PATTERN_MATRIX = {
@@ -65,7 +66,7 @@ export const PATTERN_MATRIX = {
     feedback: { High: null, Med: null, Low: null },
   },
   abc: {
-    name: '빠른 흔들림형',
+    name: '불안한 급행 보완형',
     brief: '빠르나 약간의 수정과 잦은 머뭇거림',
     strengths: ['fast_execution'],
     feedback: { High: null, Med: null, Low: null },
@@ -75,19 +76,19 @@ export const PATTERN_MATRIX = {
   // 빠름(a) × 역행(c) — ac*
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   aca: {
-    name: '빠른 재구성 확신형',
+    name: '산만한 확신형',
     brief: '빠르게 풀며 크게 되돌아가지만 확신 있음',
     strengths: ['fast_execution', 'self_correction'],
     feedback: { High: null, Med: null, Low: null },
   },
   acb: {
-    name: '민첩 대폭수정형',
+    name: '흩어진 속도형',
     brief: '빠르게 풀며 대폭 수정, 자연스러운 흐름',
     strengths: ['fast_execution', 'self_correction'],
     feedback: { High: null, Med: null, Low: null },
   },
   acc: {
-    name: '빠른 혼란형',
+    name: '성급한 직관/찍기형',
     brief: '빠르지만 방향성이 흐트러지고 머뭇거림',
     strengths: ['fast_execution'],
     feedback: { High: null, Med: null, Low: null },
@@ -107,13 +108,13 @@ export const PATTERN_MATRIX = {
     },
   },
   bab: {
-    name: '일관 진행형',
+    name: '표준 정석형',
     brief: '평균적 속도로 순차적이며 자연스러운 흐름',
     strengths: ['sequential_order'],
     feedback: { High: null, Med: null, Low: null },
   },
   bac: {
-    name: '신중 불안형',
+    name: '정석 속 불안형',
     brief: '안정적이나 순차적 진행 중 머뭇거림',
     strengths: ['sequential_order'],
     feedback: { High: null, Med: null, Low: null },
@@ -123,13 +124,13 @@ export const PATTERN_MATRIX = {
   // 보통(b) × 보통(b) — bb*
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   bba: {
-    name: '차분한 보완형',
+    name: '점검형 확신 풀이',
     brief: '차분한 속도로 필요한 부분 확실히 수정',
     strengths: ['self_correction', 'consistent_flow'],
     feedback: { High: null, Med: null, Low: null },
   },
   bbb: {
-    name: '표준 흐름형',
+    name: '일반 재정비형',
     brief: '평균적 속도·순서·확신도, 무난한 흐름',
     strengths: ['consistent_flow'],
     feedback: { High: null, Med: null, Low: null },
@@ -149,7 +150,7 @@ export const PATTERN_MATRIX = {
   // 보통(b) × 역행(c) — bc*
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   bca: {
-    name: '능동적 탐색 확신형',
+    name: '능동적 탐색 확신형', // pptx 표기는 「능동적 탐색 확신」— 접미 '형' 누락으로 보고 보정
     brief: '여러 방향을 탐색하며 단호한 흐름으로 해답 도달',
     strengths: ['self_correction'],
     feedback: {
@@ -169,7 +170,7 @@ export const PATTERN_MATRIX = {
     },
   },
   bcc: {
-    name: '혼돈 탐색형',
+    name: '불안한 시행착오형',
     brief: '방향이 흐트러지고 머뭇거림이 잦음',
     strengths: [],
     feedback: { High: null, Med: null, Low: null },
@@ -185,13 +186,13 @@ export const PATTERN_MATRIX = {
     feedback: { High: null, Med: null, Low: null },
   },
   cab: {
-    name: '신중한 재구조화형',
+    name: '신중한 재구조화형', // pptx 표기는 「신중한 재구조화」— 접미 '형' 누락으로 보고 보정
     brief: '천천히 진행하지만 순차적이며 약간의 머뭇거림',
     strengths: ['sequential_order'],
     feedback: { High: null, Med: null, Low: null },
   },
   cac: {
-    name: '조심스러운 탐색형',
+    name: '숙고 정돈 불안형',
     brief: '느리고 순차적이나 잦은 머뭇거림',
     strengths: ['sequential_order'],
     feedback: { High: null, Med: null, Low: null },
@@ -201,20 +202,19 @@ export const PATTERN_MATRIX = {
   // 느림(c) × 보통(b) — cb*
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   cba: {
-    // [2026-09-21] 기획 확정명 「심사숙고 확신형」 (舊 신중한 보완 확신형). 유형 캐릭터 public/images/patterns/cba.png
     name: '심사숙고 확신형',
     brief: '느리게 진행하며 되돌아가지만 단단히 마무리',
     strengths: ['self_correction'],
     feedback: { High: null, Med: null, Low: null },
   },
   cbb: {
-    name: '느린 자기교정형',
+    name: '신중한 계획형',
     brief: '느리게 진행하며 자연스럽게 수정',
     strengths: ['self_correction'],
     feedback: { High: null, Med: null, Low: null },
   },
   cbc: {
-    name: '깊은 숙고 불안형',
+    name: '불안한 재구조화형',
     brief: '느리고 머뭇거리지만 신중히 진행',
     strengths: [],
     feedback: { High: null, Med: null, Low: null },

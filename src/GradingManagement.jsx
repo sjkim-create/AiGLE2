@@ -363,7 +363,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         const patterns = [
           {
             processPattern: '신중한 재구조화형',
-            metricsCode: 'Time-c, Coord-a, Press-a',
+            patternCode: 'cab',
+            metricsCode: 'Time-c, Coord-a, Hesit-b',
             gradeLevel: 'Excellent (A)',
             diagnosedPattern: '신중한 재구조화형',
             totalEvaluation: "학생의 풀이 과정을 데이터로 분석한 결과, 이 패턴은 '신중한 재구조화형'으로 진단됩니다. 조합의 공식 유도 과정을 논리적으로 전개하는 과정에서 특정 구간에 깊은 고민의 흔적이 보이나, 결국 이전 수식을 보완하고 논리적 오류를 스스로 바로잡아 완벽한 증명을 완성해냈습니다.",
@@ -373,8 +374,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             contentBottleneckAnalysis: '행동 지표 분석: 전반적으로 필압(Press-a)이 일정하고 강하게 유지되어 개념에 대한 확신이 있음을 보여줍니다.\n\n병목 구간 진단: 풀이 중간, 두 분수식을 통분하여 하나의 식으로 합치는 과정 전후로 약 2.5초 이상의 긴 멈춤이 감지되었습니다.'
           },
           {
-            processPattern: 'c-c-b 시행착오 탐색형',
-            metricsCode: 'Time-c, Coord-c, Press-b',
+            processPattern: '시행착오 탐색형',
+            patternCode: 'bcb',
+            metricsCode: 'Time-b, Coord-c, Hesit-b',
             gradeLevel: 'Good (B)',
             diagnosedPattern: '시행착오 탐색형',
             totalEvaluation: '여러 번 식을 다시 세우고 오류를 수정하려는 끈기 있는 태도를 보였으나, 개념 적용 단계에서 인지적 과부하가 발생한 패턴입니다.',
@@ -391,6 +393,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             return {
               ...s,
               handwritingEvaluation: {
+                patternCode: p.patternCode,
                 systemDataLog: {
                   processPattern: p.processPattern,
                   metricsCode: p.metricsCode,
