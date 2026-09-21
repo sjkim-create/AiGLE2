@@ -119,12 +119,11 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   const totalCopies = questions.reduce((s, q) => s + getCopies(q.id), 0);
   const evalMode = 'self'; // [v3.74] 자동평가 폐기 — 자율평가 단일 체제 (저장 스키마 호환용 고정값)
   const [resultScale, setResultScale] = useState(3);
+  const [resultMode, setResultMode] = useState('grade'); // [v3.82] 채점 결과 표시 — grade(등급) | score(점수)
   const [selfScale, setSelfScale] = useState(3); // 채점 등급(3/4/5) — Step 5 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정
   // [v3.74] Step 5 진입 시 AI 루브릭 자동 설계 완료 여부 { [qid]: true } — 문항당 1회만 설계, 이후는 교사 수정 보존
   const [rubricReady, setRubricReady] = useState({});
   const [stdOpen, setStdOpen] = useState({}); // 문항별 성취기준 목록 펼침 상태 { [qid]: bool }
-  // [v2.61] 한 배너 통합 — 활용(좌) + 주의(우) 비대칭 분할. warnExpanded=true 시 주의가 큰 영역(4/5), false 시 활용이 큰 영역(4/5)
-  const [warnExpanded, setWarnExpanded] = useState(false);
   const [taskStdOpen, setTaskStdOpen] = useState(false); // [v3.46] 과제 단위 성취기준 펼침 상태
   const [modelAnsOpen, setModelAnsOpen] = useState({}); // 문항별 모범답안 펼침 { [qid]: bool } — 미지정 시 펼침
   const toggleModelAns = (qid) => setModelAnsOpen((p) => ({ ...p, [qid]: !(p[qid] ?? true) }));
@@ -982,7 +981,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
       return { ...q, criteria }; // [v3.77] 배점·총 배점은 비워 둔다 (교사 입력)
     }));
     setRubricReady((p) => { const n = { ...p }; pending.forEach((q) => { n[q.id] = true; }); return n; });
-    if (Object.keys(designed).length > 0) showToast && showToast(`성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. (${basicInfo.schoolLevel} 기본 ${scale}등급 · 범주 3개 · 범주별 평가 내용 3개) 검토 후 수정하세요.`);
+    if (Object.keys(designed).length > 0) showToast && showToast(`성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. (${basicInfo.schoolLevel} 기본 ${scale}등급 · 채점 기준 1개 · 평가 내용 3개) 검토 후 수정하세요.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
@@ -1855,7 +1854,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
   };
   const importInputRef = useRef(null);
   const handleExport = () => {
-    const data = { basicInfo, areas, answerDetails, questions, evalMode, selfScale, resultScale, groupList };
+    const data = { basicInfo, areas, answerDetails, questions, evalMode, selfScale, resultScale, resultMode, groupList };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1881,6 +1880,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
         }
         if (data.resultScale) setResultScale(data.resultScale);
         if (data.selfScale) setSelfScale(data.selfScale);
+        if (data.resultMode) setResultMode(data.resultMode);
         if (Array.isArray(data.groupList)) setGroupList(data.groupList);
         showToast && showToast('과제를 가져왔습니다.');
       } catch { showToast && showToast('가져오기 실패 — 올바른 과제 파일(JSON)이 아닙니다.'); }
@@ -3114,46 +3114,18 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
 
                     {/* 성취기준 섹션 — v2.34 다중 선택 가능 (1개 권장) */}
                     <div>
-                      <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', marginBottom: 6 }}>성취기준 <span style={{ color: '#EF4444' }}>*</span> <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>(이 문항에 적용 · 다중 선택 가능, 1개 권장)</span></div>
-                      {/* [v2.61] 통합 배너 — 활용(좌) + 주의(우). warnExpanded에 따라 4:1 ↔ 1:4 비율 전환 */}
-                      <div style={{ display: 'flex', gap: 0, marginBottom: 8, border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
-                        {/* 좌측: 성취기준의 활용 */}
-                        <div onClick={() => warnExpanded && setWarnExpanded(false)}
-                          style={{ flex: warnExpanded ? 1 : 4, background: '#EFF6FF', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', color: '#1E40AF', cursor: warnExpanded ? 'pointer' : 'default', transition: 'flex 0.25s' }}>
-                          <div style={{ fontWeight: 800, marginBottom: warnExpanded ? 0 : 4, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                            <span>{warnExpanded ? '▶' : '▼'}</span>
-                            <span>ℹ️ {warnExpanded ? '활용' : '성취기준의 활용'}</span>
-                          </div>
-                          {!warnExpanded && (
-                            <div style={{ lineHeight: 1.6 }}>
-                              <div>• Step 5 <strong>평가 기준</strong> 진입 시 성취기준·문항 내용을 분석해 <strong>채점 루브릭을 자동 설계</strong>합니다.</div>
-                              <div>• <strong>AI 채점 기준 생성</strong> 시에도 평가 내용의 참고 자료로 활용됩니다.</div>
-                            </div>
-                          )}
-                        </div>
-                        {/* 우측: 성취기준 2개 선택 주의 */}
-                        <div onClick={() => !warnExpanded && setWarnExpanded(true)}
-                          style={{ flex: warnExpanded ? 4 : 1, background: '#FFFBEB', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', color: '#B45309', cursor: warnExpanded ? 'default' : 'pointer', transition: 'flex 0.25s', borderLeft: '1px solid #E2E8F0' }}>
-                          <div style={{ fontWeight: 800, marginBottom: warnExpanded ? 8 : 0, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                            <span>{warnExpanded ? '▼' : '◀'}</span>
-                            <span>⚠️ {warnExpanded ? '성취기준 2개 이상 선택 — 확인이 필요합니다' : '주의'}</span>
-                          </div>
-                          {warnExpanded && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                              {[
-                                { icon: '✨', title: '1개 권장', desc: '루브릭 설계에는 성취기준 1개가 적절' },
-                                { icon: '🎯', title: '모두 반영', desc: '선택한 성취기준이 채점 기준으로 사용' },
-                                { icon: '⚠️', title: 'AI 응답 영향', desc: '평가내용이 많으면 응답 느려지거나 실패' },
-                              ].map((item, i) => (
-                                <div key={i} style={{ background: 'white', border: '1px solid #FDE68A', borderRadius: 6, padding: '8px 6px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 'var(--neo-font-size-xl)', lineHeight: 1, marginBottom: 4 }}>{item.icon}</div>
-                                  <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#B45309', marginBottom: 3 }}>{item.title}</div>
-                                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#92400E', lineHeight: 1.4 }}>{item.desc}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+{/* [v3.82] 舊 통합 배너(활용/주의) 폐기 — 활용 안내는 ⓘ 호버 툴팁(히든)으로, 성취기준 목록은 핵심평가영역 선택 즉시 바로 아래에 체크 가능 */}
+                      <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', marginBottom: 6 }}>성취기준 <span style={{ color: '#EF4444' }}>*</span> <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>(이 문항에 적용 · 다중 선택 가능, 1개 권장)</span>
+                  <span className="std-tip" style={{ position: 'relative', display: 'inline-flex', marginLeft: 6, verticalAlign: 'middle' }}>
+                    <span tabIndex={0} aria-label="성취기준의 활용 안내" style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #94A3B8', color: '#64748B', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help', lineHeight: 1 }}>i</span>
+                    <span className="std-tip-body" style={{ position: 'absolute', left: 0, top: 22, zIndex: 20, width: 380, padding: '10px 12px', background: '#1E293B', color: 'white', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', lineHeight: 1.6, boxShadow: '0 8px 20px rgba(15,23,42,0.25)', display: 'none' }}>
+                      <div style={{ fontWeight: 800, marginBottom: 4 }}>ℹ️ 성취기준의 활용</div>
+                      <div>• 평가 기준 단계 진입 시 성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계합니다.</div>
+                      <div>• AI 채점 기준 생성 시에도 평가 내용의 참고 자료로 활용됩니다.</div>
+                      <div style={{ marginTop: 6, color: '#FDE68A' }}>⚠️ 1개 권장 — 여러 개를 고르면 모두 채점 기준에 반영되며, 평가 내용이 많아져 AI 응답이 느려지거나 실패할 수 있습니다.</div>
+                    </span>
+                    <style>{`.std-tip:hover .std-tip-body, .std-tip:focus-within .std-tip-body { display: block !important; }`}</style>
+                  </span>
                       </div>
                       {q.evaluationAreas.length === 0 ? (
                         <div style={{ padding: '14px', textAlign: 'center', color: '#B45309', fontSize: 'var(--neo-font-size-sm)', background: '#FEF3C7', borderRadius: '8px' }}>
@@ -3169,7 +3141,11 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                         const multiWarn = selectedStandards.length >= 2;
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {/* [v2.61] 기존 인라인 「주의」 박스 폐기 — 통합 배너로 일원화 */}
+                            {multiWarn && (
+                          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '6px 10px' }}>
+                            ⚠️ 성취기준 {selectedStandards.length}개 선택 — 모두 채점 기준에 반영됩니다. 평가 내용이 많아져 AI 응답이 느려질 수 있으니 1개를 권장합니다.
+                          </div>
+                        )}
                             {filteredStandardsFor(q.evaluationAreas).map((s) => {
                               const on = selectedStandards.includes(s.id);
                               return (
@@ -3302,26 +3278,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                 const qStd = activeQ ? MOCK_STANDARDS.find((s) => s.id === activeQ.standard) : null;
                 return (
                 <div>
-                  {/* [v3.49] 채점 등급 — 합산 점수의 등급명만 결정 (채점기준 「배점 단계」와 별개). [v3.74] 기본값 학교급별 (초등 3등급 / 중·고등 5등급). 점수 구간은 3개 고정 */}
-                  <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 등급</span>
-                    {[3, 4, 5].map((n) => (
-                      <button key={n} onClick={() => setSelfScale(n)}
-                        style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${selfScale === n ? '#2A75F3' : '#E2E8F0'}`, background: selfScale === n ? '#EFF6FF' : 'white', color: selfScale === n ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
-                        {selfScale === n ? '✓ ' : ''}{n}등급
-                      </button>
-                    ))}
-                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginLeft: 'auto' }}>
-                      {(() => {
-                        // [v2.45] selfScale별 등급 라벨 동적 표시 — 3등급(우수~노력) / 4등급(매우우수~노력) / 5등급(매우우수~매우노력)
-                        const names = GRADE_NAMES[selfScale] || [];
-                        const range = names.length >= 2 ? `${names[0]}~${names[names.length - 1]}` : '';
-                        return <>채점기준 점수의 <strong>합산 → {selfScale}등급({range})</strong>으로 환산.</>;
-                      })()}
-                    </span>
-                  </div>
                   <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '10px 12px', borderRadius: 8, marginBottom: 14, lineHeight: 1.6 }}>
-                    🤖 성취기준과 문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. 범주(채점 기준)는 문항마다 기본 3개이며 1~5개로 추가·삭제할 수 있습니다. 범주별 평가 내용은 점수 구간 3개(예: 6 / 3 / 0)에 하나씩 3개이고, 채점 등급(3/4/5등급)과 무관합니다.
+                    🤖 성취기준과 문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. 문항마다 채점 기준 1개 · 평가 내용 3개를 기본으로 제공하며, 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다. 채점 결과(등급/점수)는 맨 아래에서 정합니다.
                   </div>
 
                   {/* 문항 탭 */}
@@ -3439,6 +3397,32 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
                         </div>
                       ))}
                       <button onClick={() => addCriterion(q.id)} style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>+ 채점 기준 추가 ({q.criteria.length}/5)</button>
+                      {/* [v3.82] 채점 결과 — 맨 아래로 이동. 결과를 「등급」으로 낼지 「점수」로 낼지 고르고, 등급이면 3/4/5등급 선택 */}
+                      <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginTop: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 결과</span>
+                        {[['grade', '등급'], ['score', '점수']].map(([k, lbl]) => (
+                          <button key={k} onClick={() => setResultMode(k)}
+                            style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${resultMode === k ? '#2A75F3' : '#E2E8F0'}`, background: resultMode === k ? '#EFF6FF' : 'white', color: resultMode === k ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
+                            {resultMode === k ? '✓ ' : ''}{lbl}
+                          </button>
+                        ))}
+                        {resultMode === 'grade' && (<>
+                          <span style={{ width: 1, height: 22, background: '#E2E8F0' }} />
+                          {[3, 4, 5].map((n) => (
+                            <button key={n} onClick={() => setSelfScale(n)}
+                              style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${selfScale === n ? '#2A75F3' : '#E2E8F0'}`, background: selfScale === n ? '#EFF6FF' : 'white', color: selfScale === n ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
+                              {selfScale === n ? '✓ ' : ''}{n}등급
+                            </button>
+                          ))}
+                        </>)}
+                        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginLeft: 'auto' }}>
+                          {resultMode === 'grade' ? (() => {
+                            const names = GRADE_NAMES[selfScale] || [];
+                            const range = names.length >= 2 ? `${names[0]}~${names[names.length - 1]}` : '';
+                            return <>채점기준 점수의 <strong>합산 → {selfScale}등급({range})</strong>으로 환산.</>;
+                          })() : <>채점기준 점수의 <strong>합산(총 배점 {totalSelf}점 만점)</strong>을 점수 그대로 결과로 표시.</>}
+                        </span>
+                      </div>
 
                       {/* [v3.76] 등급 환산 미리보기 패널 폐기 — 채점 등급 카드의 환산 안내 문구로 갈음 */}
                     </div>

@@ -149,7 +149,7 @@ export const aiFillCriteria = (criteria, area = '평가 영역') => {
   return { criteria: next, filled, skipped };
 };
 // 평가 기준 단계 최초 진입 시 — 문항당 범주(채점 기준) 3개 × 평가 내용 3개(점수 구간)를 설계하고 빈 칸을 모두 채운다
-export const DEFAULT_CRITERIA_COUNT = 3;
+export const DEFAULT_CRITERIA_COUNT = 1; // [v3.82] 문항당 채점 기준 1개 · 평가 내용 3개 기본 (舊 3개)
 export const designRubric = (area) => {
   const base = Array.from({ length: DEFAULT_CRITERIA_COUNT }, () => makeCriterion());
   return aiFillCriteria(base, area).criteria;
