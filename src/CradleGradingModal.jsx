@@ -393,7 +393,7 @@ const CradleGradingModal = ({
    *   자동 툴팁은 ✕로 닫거나 다시 읽기를 누르면 사라지며, 다음 구성 변경 때 다시 뜬다. */
   const [rereadHover, setRereadHover] = useState(false);
   const [rereadHintClosed, setRereadHintClosed] = useState(false);
-  const handleIncidentSubmitted = (report) => { setToast(`장애 신고가 접수되었습니다 — ${report.id} (Jira ${report.jira?.key})`); };
+  const handleIncidentSubmitted = (report) => { setToast(`오류 접수가 완료되었습니다 — ${report.id} (Jira ${report.jira?.key})`); };
 
   // 과제 문항 — 비어 있으면 1문항으로 가정
   const questionList = useMemo(
@@ -949,9 +949,9 @@ const CradleGradingModal = ({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
             {/* [SCR-07 v4.18 · BRD-16] [🚨 장애 신고] — ⋯ 메뉴 대신 헤더에 바로 노출 */}
-            <button type="button" onClick={() => setIncidentOpen(true)} title="학교·교사·과제·그룹 정보와 진단 로그·펜 원본 진단 파일(최근 5회 채점분 zip)을 함께 시스템 관리자에게 신고합니다."
+            <button type="button" onClick={() => setIncidentOpen(true)} title="학교·교사·과제·그룹 정보와 진단 로그·펜 원본 진단 파일(최근 5회 채점분 zip)을 함께 시스템 관리자에게 접수합니다."
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-              🚨 장애신고
+              🚨 오류 접수
             </button>
             <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
           </div>

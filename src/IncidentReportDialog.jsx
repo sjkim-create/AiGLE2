@@ -46,12 +46,12 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="장애신고" style={{ background: 'white', borderRadius: 14, width: 560, maxWidth: '94vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="오류 접수" style={{ background: 'white', borderRadius: 14, width: 560, maxWidth: '94vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
         <div style={{ padding: '18px 22px 10px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #F1F5F9' }}>
           <span style={{ fontSize: '1.4rem' }}>🚨</span>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>장애신고</h2>
-            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>신고 내용은 운영팀이 확인한 후 메일로 보내드립니다.</div>
+            <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>오류 접수</h2>
+            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>접수 내용은 운영팀이 확인한 후 메일로 보내드립니다.</div>
           </div>
           <button onClick={onClose} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748B' }}>✕</button>
         </div>
@@ -59,7 +59,7 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
         <div style={{ padding: '14px 22px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* 자동 수집 정보 */}
           <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B', marginBottom: 2 }}>신고 정보</div>
+            <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B', marginBottom: 2 }}>접수 정보</div>
             {row('학교', school)}
             {row('교사', `${teacher} (${teacherEmail})`)}
             {task && row('과제', task)}
@@ -113,7 +113,7 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
                     ))}
                   </div>
                 )}
-                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 4 }}>채점 때마다 펜 MAC → 답안지(s.o.b) 단위로 저장되며 최근 {PEN_RAW_KEEP}회만 보관합니다. 신고하면 이 폴더를 zip으로 전송하고 로컬 파일은 삭제됩니다. 펜 안의 필기는 지워지지 않습니다.</div>
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 4 }}>채점 때마다 펜 MAC → 답안지(s.o.b) 단위로 저장되며 최근 {PEN_RAW_KEEP}회만 보관합니다. 접수하면 이 폴더를 zip으로 전송하고 로컬 파일은 삭제됩니다. 펜 안의 필기는 지워지지 않습니다.</div>
               </div>
             </div>
           </div>
@@ -121,7 +121,7 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
 
         <div style={{ display: 'flex', gap: 8, padding: '12px 22px 18px', justifyContent: 'flex-end', borderTop: '1px solid #F1F5F9' }}>
           <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
-          <button onClick={submit} disabled={submitting} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>🚨 신고하기</button>
+          <button onClick={submit} disabled={submitting} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>🚨 접수하기</button>
         </div>
       </div>
     </div>
