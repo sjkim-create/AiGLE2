@@ -5,9 +5,11 @@
  *   · 진단 로그(전체 기간)와 연결된 펜 데이터를 자동 첨부한다 — 舊 [로그 다운로드]·[펜 데이터 다운로드]를 대체
  *   · [신고하기] → 시스템 관리자 > 게시판 > 장애신고에 등록 + Jira 자동 등록(MCP 연동 예정 — 시뮬레이션)
  */
+/* [v1.7] 펜 원본 진단 파일 = 채점 때마다 로컬에 쌓인 펜 원본 폴더(최근 5회). 신고하면 zip 으로 전송하고 로컬 파일은 지운다 — 舊 「펜 데이터」 첨부 대체 */
 import React, { useState, useEffect } from 'react';
 import { addIncident, SYMPTOMS } from './lib/incidentStore';
 import { availableDates } from './appLogger';
+import { listSessions, buildZipManifest, clearAll as clearPenRaw, formatBytes, PEN_RAW_ROOT, PEN_RAW_KEEP } from './lib/penRawStore';
 
 const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
   const [symptom, setSymptom] = useState(SYMPTOMS[0].label);
@@ -18,13 +20,19 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
   useEffect(() => { if (open) { setSymptom(SYMPTOMS[0].label); setDetail(''); setLogDate(availableDates()[0] || ''); setSubmitting(false); } }, [open]);
   if (!open) return null;
 
-  const { source = '환경설정', school = '공주 고등학교', teacher = '김 b', teacherId = 'tch20261zim', teacherEmail = 'tch20261zim@gjhs.kr', task = null, group = null, studentCount = null, penFiles = [] } = context || {};
+  const { source = '환경설정', school = '공주 고등학교', teacher = '김 b', teacherId = 'tch20261zim', teacherEmail = 'tch20261zim@gjhs.kr', task = null, group = null, studentCount = null } = context || {};
   const dates = availableDates();
+  const penSessions = listSessions();
+  const manifest = buildZipManifest(teacherId);
+  const fmtAt = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
   const submit = () => {
     if (submitting) return;
     setSubmitting(true);
-    const report = addIncident({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles, logDate: logDate || 'all' });
+    /* 펜 원본 폴더(최근 5회)를 zip 으로 묶어 첨부 → 전송이 끝나면 로컬 파일 삭제 */
+    const penRaw = manifest.files.length ? { zipName: manifest.zipName, sessions: manifest.sessions, pens: manifest.pens, bytes: manifest.bytes } : null;
+    const report = addIncident({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles: manifest.files, penRaw, logDate: logDate || 'all' });
+    if (penRaw) clearPenRaw();
     onSubmitted && onSubmitted(report);
     onClose && onClose();
   };
@@ -38,11 +46,11 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="장애 신고" style={{ background: 'white', borderRadius: 14, width: 560, maxWidth: '94vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="장애신고" style={{ background: 'white', borderRadius: 14, width: 560, maxWidth: '94vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
         <div style={{ padding: '18px 22px 10px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #F1F5F9' }}>
           <span style={{ fontSize: '1.4rem' }}>🚨</span>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>장애 신고</h2>
+            <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>장애신고</h2>
             <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>신고 내용은 운영팀이 확인한 후 메일로 보내드립니다.</div>
           </div>
           <button onClick={onClose} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748B' }}>✕</button>
@@ -91,8 +99,21 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
                 ) : <span style={{ color: '#94A3B8' }}>기록된 로그 없음</span>}
               </div>
               <div>
-                <strong>펜 데이터</strong>
-                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 2 }}>펜의 필기는 복사만 하며 지워지지 않습니다.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <strong>펜 원본 진단 파일</strong>
+                  {penSessions.length
+                    ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', padding: '2px 8px', borderRadius: 999 }}>최근 {penSessions.length}/{PEN_RAW_KEEP}회 · 펜 {manifest.pens}자루 · 파일 {manifest.files.length}개 · {formatBytes(manifest.bytes)}</span>
+                    : <span style={{ color: '#94A3B8' }}>저장된 파일 없음 — 채점할 때 자동으로 쌓입니다</span>}
+                </div>
+                {penSessions.length > 0 && (
+                  <div style={{ marginTop: 6, padding: '8px 10px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, fontFamily: 'monospace', fontSize: 'var(--neo-font-size-xs)', color: '#475569', lineHeight: 1.7 }}>
+                    {PEN_RAW_ROOT}<br />
+                    {penSessions.map((s) => (
+                      <div key={s.id}>└ {s.id}\ <span style={{ color: '#94A3B8' }}>({fmtAt(s.at)} · {s.task} · {s.group} · 펜 {s.pens.length}자루)</span></div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 4 }}>채점 때마다 펜 MAC → 답안지(s.o.b) 단위로 저장되며 최근 {PEN_RAW_KEEP}회만 보관합니다. 신고하면 이 폴더를 zip으로 전송하고 로컬 파일은 삭제됩니다. 펜 안의 필기는 지워지지 않습니다.</div>
               </div>
             </div>
           </div>

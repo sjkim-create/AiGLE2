@@ -29,7 +29,8 @@ import TeacherManagement from './TeacherManagement';
 import SchoolTeacherManagement from './SchoolTeacherManagement';
 import SchoolManagement from './SchoolManagement';
 import { markConnectDownloaded } from './RequiredProgramModal';
-import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 환경설정 AiGLE Connect 카드 [로그]·[펜 데이터] → [🚨 장애 신고]
+import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 환경설정 AiGLE Connect 카드 [로그]·[펜 데이터] → [🚨 장애신고]
+import { listSessions as listPenRawSessions, subscribe as subscribePenRaw, PEN_RAW_KEEP } from './lib/penRawStore'; // [BRD-16 v1.7] 펜 원본 진단 파일 보관 현황
 import IncidentBoard from './IncidentBoard'; // [BRD-16] 시스템 관리자 > 게시판 > 장애신고
 import { openCount as incidentOpenCount, subscribeIncidents } from './lib/incidentStore';
 import TeacherRegistration from './TeacherRegistration';
@@ -295,7 +296,9 @@ function Setting() {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isSettingsMode, setIsSettingsMode] = useState(false);
   /** [SET-01 v1.5] 진단 로그 다운로드 — 날짜 선택 다이얼로그 */
-  const [isIncidentOpen, setIsIncidentOpen] = useState(false); // [BRD-16] 장애 신고 다이얼로그
+  const [isIncidentOpen, setIsIncidentOpen] = useState(false); // [BRD-16] 장애신고 다이얼로그
+  const [penRawCount, setPenRawCount] = useState(() => listPenRawSessions().length); // [BRD-16 v1.7] 로컬에 쌓인 채점 회차
+  useEffect(() => subscribePenRaw((s) => setPenRawCount(s.length)), []);
   const [incidentBadge, setIncidentBadge] = useState(() => incidentOpenCount()); // [BRD-16] 사이드바 장애신고 미처리 건수
   useEffect(() => subscribeIncidents(() => setIncidentBadge(incidentOpenCount())), []);
   /** [SET-01 v1.6] 펜 데이터 다운로드 — 안내 다이얼로그 (프로토타입은 안내까지) */
@@ -458,11 +461,10 @@ function Setting() {
   return (
     <div className="app-container">
       <TaskDeleteDialog task={taskToDelete} onCancel={() => setTaskToDelete(null)} onConfirm={handleDeleteTask} />
-      {/* [BRD-16] 장애 신고 — 환경설정에서 접수 (과제·그룹 없음, 진단 로그·연결된 펜 데이터 자동 첨부) */}
+      {/* [BRD-16] 장애신고 — 환경설정에서 접수 (과제·그룹 없음, 진단 로그·펜 원본 진단 파일 zip 자동 첨부) */}
       <IncidentReportDialog open={isIncidentOpen} onClose={() => setIsIncidentOpen(false)}
-        onSubmitted={(r) => showToast(`장애 신고가 접수되었습니다 — ${r.id} (Jira ${r.jira?.key}). 운영팀 답변은 메일로 보내 드립니다.`, 'success')}
-        context={{ source: '환경설정', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr',
-          penFiles: settingsPenData.map((p, i) => `PEN-${String(i + 1).padStart(3, '0')}_${String(p.mac || p.id || '').replace(/:/g, '').slice(0, 6)}.pen`) }} />
+        onSubmitted={(r) => showToast(`장애신고가 접수되었습니다 — ${r.id} (Jira ${r.jira?.key})${r.attachments?.penRaw ? ` · 펜 원본 ${r.attachments.penRaw.sessions}회분 전송 후 로컬 삭제` : ''}. 운영팀 답변은 메일로 보내 드립니다.`, 'success')}
+        context={{ source: '환경설정', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr' }} />
       <Sidebar
         activeMenu={activeMenu}
         setActiveMenu={setActiveMenu}
@@ -535,11 +537,11 @@ function Setting() {
                       {/* ① AiGLE Connect 관리 + 진단 로그 */}
                       <div style={row}>
                         {head('📦', 'AiGLE Connect 관리', null, chip('업데이트 있음', 'info'))}
-                        <div style={desc}>펜 연결·크래들 채점용 프로그램. 현재 2.0.5 → 최신 2.1.0<br />문제가 반복되면 [🚨 장애 신고]로 알려 주세요 — 진단 로그·펜 데이터가 함께 전달됩니다.</div>
+                        <div style={desc}>펜 연결·크래들 채점용 프로그램. 현재 2.0.5 → 최신 2.1.0<br />문제가 반복되면 [🚨 장애신고]로 알려 주세요 — 진단 로그와 채점 시 저장된 펜 원본 진단 파일이 zip으로 함께 전달됩니다.<br /><span style={{ color: '#94A3B8' }}>펜 원본 보관 {penRawCount}/{PEN_RAW_KEEP}회 (채점 시 자동 저장 · 전송 후 삭제)</span></div>
                         {foot((
                           <>
                             {/* [BRD-16] 舊 [⬇ 로그]·[⬇ 펜 데이터] → [🚨 장애 신고] */}
-                            {ghost('🚨 장애 신고', () => setIsIncidentOpen(true), { title: '학교·교사 정보와 진단 로그·연결된 펜 데이터를 함께 시스템 관리자에게 신고합니다. 운영팀 답변은 메일로 받습니다.' })}
+                            {ghost('🚨 장애신고', () => setIsIncidentOpen(true), { title: '학교·교사 정보와 진단 로그·펜 원본 진단 파일(최근 5회 채점분 zip)을 함께 시스템 관리자에게 신고합니다. 운영팀 답변은 메일로 받습니다.' })}
                             {primary('최신 버전 다운로드', handleDownloadConnect)}
                           </>
                         ))}

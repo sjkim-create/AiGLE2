@@ -39,7 +39,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import RequiredProgramModal from './RequiredProgramModal';
 import appLogger from './appLogger';
-import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 舊 LogDownloadDialog·PenDataDownloadDialog(⋯ 메뉴) → [🚨 장애 신고]
+import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 舊 LogDownloadDialog·PenDataDownloadDialog(⋯ 메뉴) → [🚨 장애신고]
+import { recordGradingSession } from './lib/penRawStore'; // [BRD-16 v1.7] 채점 때마다 펜 원본을 로컬에 쌓는다 (장애신고 zip 첨부용)
 
 const STEPS = [
   /* [SCR-07 v2.7] 단계 안내는 타이틀 호버 툴팁으로 — 본문 안내 카드를 없애 크래들이 바로 보이게 한다 */
@@ -699,6 +700,11 @@ const CradleGradingModal = ({
     const ids = [...new Set(gradableStudentIds)];
     appLogger.info('useBatchUploadPipeline', '일괄 업로드 시작', { collectedCount: ids.length, excludedCount: attentionPens.length });
     const penIds = Object.entries(verdicts).filter(([, v]) => v.type === 'ok').map(([penId]) => penId);
+    /* [BRD-16 v1.7] 펜 원본 진단 파일 — 이번 채점에 읽은 펜 데이터를 {일시}\{MAC}\{s.o.b}.raw 로 로컬 저장 (최근 5회 보관) */
+    recordGradingSession({
+      source: '크래들 일괄 채점', task: taskTitle, group: groupLabel,
+      pens: connectedPens.map((p) => ({ mac: p.mac, books: p.books.map((b) => ({ code: b.code, pages: b.answerPages.length })) })),
+    });
     setGradedIds(ids);
     // [POP-28 #11] 펜 연결 → AI 채점중
     setGradingPenIds(penIds);
@@ -943,9 +949,9 @@ const CradleGradingModal = ({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
             {/* [SCR-07 v4.18 · BRD-16] [🚨 장애 신고] — ⋯ 메뉴 대신 헤더에 바로 노출 */}
-            <button type="button" onClick={() => setIncidentOpen(true)} title="학교·교사·과제·그룹 정보와 진단 로그·펜 데이터를 함께 시스템 관리자에게 신고합니다."
+            <button type="button" onClick={() => setIncidentOpen(true)} title="학교·교사·과제·그룹 정보와 진단 로그·펜 원본 진단 파일(최근 5회 채점분 zip)을 함께 시스템 관리자에게 신고합니다."
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-              🚨 장애 신고
+              🚨 장애신고
             </button>
             <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
           </div>
@@ -1574,8 +1580,7 @@ const CradleGradingModal = ({
       {/* [BRD-16] 장애 신고 — 학교·교사·과제·그룹 + 진단 로그·펜 데이터 자동 첨부 */}
       <IncidentReportDialog open={incidentOpen} onClose={() => setIncidentOpen(false)} onSubmitted={handleIncidentSubmitted}
         context={{ source: '크래들 일괄 채점', school: '공주 고등학교', teacher: '김 b', teacherId, teacherEmail: 'tch20261zim@gjhs.kr',
-          task: taskTitle, group: groupLabel, studentCount: selectedStudents.length,
-          penFiles: connectedPens.map((p) => `${p.id}_${String(p.mac || '').replace(/:/g, '').slice(0, 6)}.pen`) }} />
+          task: taskTitle, group: groupLabel, studentCount: selectedStudents.length }} />
       <RequiredProgramModal
         open={programModalOpen}
         onClose={() => setProgramModalOpen(false)}

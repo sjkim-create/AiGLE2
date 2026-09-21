@@ -97,7 +97,7 @@ const writeFail = (what, id) => (err) => logError('incidentStore', `${what} 저�
 
 /** 교사 화면에서 신고 접수. 진단 로그 본문은 서브문서에, 펜 데이터는 파일 목록만 담는다 */
 // [v1.1] 진단 로그·펜 데이터는 항상 첨부한다 (교사가 고르지 않음). logDate = 'all' 또는 'YYYY-MM-DD'
-export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles = [], logDate = 'all' }) => {
+export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles = [], penRaw = null, logDate = 'all' }) => {
   start();
   const date = logDate && logDate !== 'all' ? logDate : null;
   const logName = logFileName(teacherId, date);
@@ -106,7 +106,8 @@ export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, 
     id: nextId(), createdAt: stamp(), source,
     school, teacher, teacherId, teacherEmail, task: task || '-', group: group || '-', studentCount: studentCount ?? null,
     symptom, detail: detail || '', logDate: date || '전체 기간',
-    attachments: { log: { name: logName, chars: logText.length }, penData: penFiles },
+    // [v1.7] penRaw = 채점 시 로컬에 쌓인 펜 원본 폴더(최근 5회)를 zip 으로 묶은 것. penData 목록은 zip 안 파일 경로 (게시판 표시는 종전과 동일)
+    attachments: { log: { name: logName, chars: logText.length }, penData: penFiles, penRaw },
     status: '장애 접수', jira: null, devComment: '', replyParts: null, replyDraft: '', mail: null,
   };
   // 게시판 등록과 동시에 Jira 자동 등록 (서버 연동 예정 — 시뮬레이션). 상태는 「장애 접수」 그대로
