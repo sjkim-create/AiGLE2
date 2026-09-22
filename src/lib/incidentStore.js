@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { buildLogText, logFileName, info as logInfo, error as logError } from '../appLogger';
-import { relayEnabled, createJiraIssue, addJiraComment } from './jiraRelay'; // [v2.1] Vercel 서버리스 중계로 실제 Jira(AGI) 등록
+import { relayEnabled, createJiraIssue, addJiraComment, fetchJiraIssue } from './jiraRelay'; // [v2.1] Vercel 서버리스 중계로 실제 Jira(AGI) 등록
 
 const COL = 'incidents';
 const LOG_MAX_CHARS = 200_000; // Firestore 문서 1MiB 제한 — 로그는 뒤쪽(최근) 20만 자만 보관
@@ -143,7 +143,57 @@ export const fetchIncidentLog = async (id) => {
   return snap.exists() ? snap.data() : null;
 };
 
-/** 개발자가 Jira에 댓글을 달면 개발자 답변으로 들어오고 메일 본문에 채워지며 상태가 「개발자 확인 완료」가 된다 (서버 연동 예정 — 시뮬레이션) */
+/** 실제 Jira 이슈가 연결된 신고인가 (시뮬레이션·등록 중·실패 제외) */
+export const hasRealJira = (r) => !!(r?.jira?.key && !r.jira.simulated && !r.jira.pending && !r.jira.error && relayEnabled());
+
+/* 운영팀이 메일 발송 기록으로 남긴 댓글은 개발자 답변에서 뺀다 */
+const MAIL_COMMENT_PREFIX = '[AiGLE 운영팀 답변 메일';
+const isDevComment = (c) => !String(c.text || '').startsWith(MAIL_COMMENT_PREFIX);
+
+/**
+ * [v2.2] Jira 에서 상태·댓글을 읽어 게시판에 반영한다.
+ *   · 개발자 댓글(메일 기록 댓글 제외) → 개발자 답변(devComment = 최신 댓글) · 메일 본문 칸이 비어 있으면 채움
+ *   · 개발자 댓글이 있고 아직 「장애 접수」면 → 「개발자 확인 완료」 (「메일 발송」은 게시판이 정하는 상태라 Jira 로 되돌리지 않는다)
+ *   · Jira 상태명·카테고리는 표시용으로 함께 저장 (jiraStatus · jiraStatusCategory)
+ * 반환: 갱신된 신고 (변화 없으면 그대로), 실패: null
+ */
+export const syncFromJira = async (id) => {
+  const r = getIncident(id);
+  if (!hasRealJira(r)) return r;
+  try {
+    const issue = await fetchJiraIssue(r.jira.key);
+    if (!issue) return r;
+    const devComments = (issue.comments || []).filter(isDevComment);
+    const latest = devComments[devComments.length - 1];
+    const patch = {
+      jiraStatus: issue.status || null, jiraStatusCategory: issue.statusCategory || null, jiraSyncedAt: stamp(),
+      jiraComments: devComments.map((c) => ({ id: c.id, author: c.author, created: c.created, text: c.text })),
+    };
+    if (latest && latest.text !== r.devComment) {
+      const parts = replyPartsOf(r);
+      patch.devComment = latest.text;
+      patch.replyParts = { ...parts, body: parts.body?.trim() ? parts.body : latest.text };
+      if (r.status === '장애 접수') patch.status = '개발자 확인 완료';
+    }
+    const changed = Object.keys(patch).some((k) => JSON.stringify(patch[k]) !== JSON.stringify(r[k]));
+    logInfo('incidentStore', 'Jira 동기화', { id, key: r.jira.key, status: issue.status, devComments: devComments.length, changed });
+    return changed ? updateIncident(id, patch) : r;
+  } catch (e) {
+    logError('incidentStore', 'Jira 동기화 실패', { id, key: r.jira?.key, error: e });
+    // Jira 쪽에서 이슈가 지워진 경우 — 실패가 아니라 상태로 보여 준다
+    if (/404/.test(e.message)) return updateIncident(id, { jiraStatus: 'Jira에 없음 (삭제됨)', jiraStatusCategory: null, jiraSyncedAt: stamp() });
+    return null;
+  }
+};
+
+/** 실제 Jira 가 연결된 신고 전부 동기화 — 목록 [↻ Jira 동기화] */
+export const syncAllFromJira = async () => {
+  const targets = cache.filter(hasRealJira);
+  const results = await Promise.all(targets.map((r) => syncFromJira(r.id)));
+  return { total: targets.length, failed: results.filter((x) => x === null).length };
+};
+
+/** 개발자가 Jira에 댓글을 달면 개발자 답변으로 들어오고 메일 본문에 채워지며 상태가 「개발자 확인 완료」가 된다 (시뮬레이션 — 실제 연동 신고는 syncFromJira) */
 export const receiveJiraComment = (id, comment) => {
   const r = getIncident(id);
   const parts = replyPartsOf(r || {});

@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { relayEnabled } from './lib/jiraRelay';
 import {
   listIncidents, subscribeIncidents, receiveJiraComment, saveReplyDraft, sendReplyMail, downloadText, fetchIncidentLog, INCIDENT_STATUS,
+  hasRealJira, syncFromJira, syncAllFromJira,
   replyPartsOf, composeReply, DEFAULT_GREETING, DEFAULT_CLOSING,
 } from './lib/incidentStore';
 
@@ -37,7 +38,7 @@ const btn = (extra = {}) => ({ padding: '7px 12px', borderRadius: 8, border: '1p
 const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', marginBottom: 4 };
 
 /* ── 목록 ─────────────────────────────────────────────── */
-const IncidentList = ({ items, onOpen }) => {
+const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
   const [filter, setFilter] = useState('전체');
   const [sort, setSort] = useState({ key: 'createdAt', dir: 'desc' });
 
@@ -68,7 +69,11 @@ const IncidentList = ({ items, onOpen }) => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>🚨 장애신고</h1>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>교사 화면에서 접수된 장애 신고 — 행을 누르면 상세에서 확인·답변합니다</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {relayEnabled() && (
+            <button type="button" onClick={onSyncAll} disabled={syncing} title="실제 Jira 가 연결된 신고의 상태·개발자 댓글을 모두 읽어 옵니다"
+              style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', fontFamily: 'inherit', marginRight: 6 }}>{syncing ? '가져오는 중…' : '↻ Jira 동기화'}</button>
+          )}
           {['전체', ...INCIDENT_STATUS].map((s) => (
             <button key={s} onClick={() => setFilter(s)} style={btn({ borderColor: filter === s ? '#2A75F3' : '#E2E8F0', color: filter === s ? '#1D4ED8' : '#475569', background: filter === s ? '#EFF6FF' : 'white' })}>
               {s} ({s === '전체' ? items.length : items.filter((r) => r.status === s).length})
@@ -130,6 +135,18 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
   const sent = sentStatus && !resending;
   const startResend = () => { setParts(replyPartsOf(item)); setMailTo(item.mail?.to || item.teacherEmail || ''); setResending(true); };
   const cancelResend = () => { setParts(replyPartsOf(item)); setMailTo(item.mail?.to || item.teacherEmail || ''); setResending(false); };
+
+  // [v2.2] 실제 Jira 연동 신고 — 상세를 열면 상태·댓글을 읽어 온다. [↻ Jira에서 가져오기]로 수동 갱신
+  const realJira = hasRealJira(item);
+  const [syncing, setSyncing] = useState(false);
+  const syncNow = async (silent) => {
+    if (!realJira) return;
+    setSyncing(true);
+    const r = await syncFromJira(item.id);
+    setSyncing(false);
+    if (!silent) showToast && showToast(r ? `Jira ${item.jira.key} 에서 가져왔습니다 — 상태 「${r.jiraStatus || '-'}」 · 개발자 댓글 ${(r.jiraComments || []).length}건` : 'Jira 에서 가져오지 못했습니다. 잠시 후 다시 시도하세요.', r ? 'success' : 'error');
+  };
+  useEffect(() => { if (hasRealJira(item)) syncNow(true); }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const simulateJiraComment = () => {
     receiveJiraComment(item.id, SIM_DEV_COMMENTS[index % SIM_DEV_COMMENTS.length]);
@@ -216,12 +233,30 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
                 <span style={{ color: '#64748B' }}> · 게시판 등록 시 자동 등록 ({item.jira.registeredAt})</span>
               </span>
             )}
+            {realJira && (
+              <>
+                {item.jiraStatus && <span title="Jira 이슈의 현재 상태" style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: item.jiraStatusCategory === 'done' ? '#D1FAE5' : item.jiraStatusCategory === 'indeterminate' ? '#DBEAFE' : '#F1F5F9', color: item.jiraStatusCategory === 'done' ? '#047857' : item.jiraStatusCategory === 'indeterminate' ? '#1D4ED8' : '#475569' }}>Jira: {item.jiraStatus}</span>}
+                <button type="button" onClick={() => syncNow(false)} disabled={syncing} style={{ ...btn({ padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)' }), marginLeft: 'auto' }}>{syncing ? '가져오는 중…' : '↻ Jira에서 가져오기'}</button>
+                {item.jiraSyncedAt && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{item.jiraSyncedAt}</span>}
+              </>
+            )}
           </div>
+          {/* [v2.2] 실제 Jira 의 개발자 댓글 목록 (메일 발송 기록 댓글은 제외). 최신 댓글이 메일 본문 칸의 「개발자 답변」이 된다 */}
+          {realJira && (item.jiraComments || []).length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+              {item.jiraComments.map((c) => (
+                <div key={c.id} style={{ padding: '8px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginBottom: 2 }}><strong style={{ color: '#1E293B' }}>{c.author || '개발자'}</strong> · {String(c.created || '').replace('T', ' ').slice(0, 16)}</div>
+                  <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{c.text}</div>
+                </div>
+              ))}
+            </div>
+          )}
           {/* [v1.6] 개발자 답변 원문 블록 삭제 — 본문 칸(본문 — 개발자 답변)에 이미 채워지므로 중복 표시하지 않는다 */}
           {!item.devComment && !sent && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>아직 개발자 답변이 없습니다. 개발자가 Jira에 댓글을 쓰면 아래 본문에 채워지고 상태가 「개발자 확인 완료」로 바뀝니다.</span>
-              <button onClick={simulateJiraComment} style={btn({ whiteSpace: 'nowrap' })}>Jira 댓글 가져오기 (시뮬레이션)</button>
+              {!realJira && <button onClick={simulateJiraComment} style={btn({ whiteSpace: 'nowrap' })}>Jira 댓글 가져오기 (시뮬레이션)</button>}
             </div>
           )}
         </div>
@@ -317,8 +352,18 @@ const IncidentBoard = ({ showToast }) => {
   const [openId, setOpenId] = useState(null);
   useEffect(() => subscribeIncidents((list) => setItems(list.slice())), []);
   const idx = items.findIndex((r) => r.id === openId);
+  // [v2.2] 목록 진입 시 1회 + [↻ Jira 동기화] — 실제 Jira 연동 신고의 상태·댓글 갱신
+  const [syncing, setSyncing] = useState(false);
+  const syncAll = async (silent) => {
+    if (!relayEnabled()) return;
+    setSyncing(true);
+    const { total, failed } = await syncAllFromJira();
+    setSyncing(false);
+    if (!silent && showToast) showToast(failed ? `Jira 동기화 — ${total}건 중 ${failed}건 실패` : `Jira 동기화 완료 — ${total}건`, failed ? 'error' : 'success');
+  };
+  useEffect(() => { syncAll(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (openId && idx >= 0) return <IncidentDetail item={items[idx]} index={idx} onBack={() => setOpenId(null)} showToast={showToast} />;
-  return <IncidentList items={items} onOpen={setOpenId} />;
+  return <IncidentList items={items} onOpen={setOpenId} onSyncAll={() => syncAll(false)} syncing={syncing} />;
 };
 
 export default IncidentBoard;
