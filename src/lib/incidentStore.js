@@ -146,8 +146,12 @@ export const receiveJiraComment = (id, comment) => {
 /** 운영팀 답변 임시저장(인사말·본문·맺음말) — 상태는 바꾸지 않는다 */
 export const saveReplyDraft = (id, parts) => updateIncident(id, { replyParts: parts, replyDraft: composeReply(parts) });
 
-export const sendReplyMail = (id, { to, parts }) =>
-  updateIncident(id, { replyParts: parts, replyDraft: composeReply(parts), mail: { sentAt: stamp(), to }, status: '메일 발송' });
+export const sendReplyMail = (id, { to, parts }) => {
+  // [v1.9] 재발송 — 이미 보낸 메일이 있으면 이전 발송을 mailHistory 에 남기고 최신 발송으로 덮는다
+  const prev = getIncident(id);
+  const mailHistory = prev?.mail ? [...(prev.mailHistory || []), { ...prev.mail, body: prev.replyDraft || '' }] : (prev?.mailHistory || []);
+  return updateIncident(id, { replyParts: parts, replyDraft: composeReply(parts), mail: { sentAt: stamp(), to }, mailHistory, status: '메일 발송' });
+};
 
 /** 첨부 파일 다운로드 (브라우저 Blob) */
 export const downloadText = (name, text) => {

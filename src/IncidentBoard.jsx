@@ -121,8 +121,14 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
   const setPart = (k) => (e) => setParts((p) => ({ ...p, [k]: e.target.value }));
 
   const toast = (m) => showToast && showToast(m, 'success');
+  // [v1.9] 재발송 — 발송된 메일 화면에서 [↻ 재발송]을 누르면 수신자·내용을 다시 편집할 수 있는 상태로 돌아간다
+  const [resending, setResending] = useState(false);
+  useEffect(() => { setResending(false); }, [item?.id]);
   if (!item) return null;
-  const sent = item.status === '메일 발송';
+  const sentStatus = item.status === '메일 발송';
+  const sent = sentStatus && !resending;
+  const startResend = () => { setParts(replyPartsOf(item)); setMailTo(item.mail?.to || item.teacherEmail || ''); setResending(true); };
+  const cancelResend = () => { setParts(replyPartsOf(item)); setMailTo(item.mail?.to || item.teacherEmail || ''); setResending(false); };
 
   const simulateJiraComment = () => {
     receiveJiraComment(item.id, SIM_DEV_COMMENTS[index % SIM_DEV_COMMENTS.length]);
@@ -144,8 +150,10 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
   const onSendMail = () => {
     if (!parts.body.trim()) { showToast && showToast('본문(개발자 답변)을 입력하세요.', 'error'); return; }
     if (!mailTo.trim()) { showToast && showToast('수신 메일 주소를 입력하세요.', 'error'); return; }
+    const wasResend = resending;
     sendReplyMail(item.id, { to: mailTo.trim(), parts });
-    toast(`${item.teacher} 선생님(${mailTo.trim()})께 답변 메일을 발송했습니다. (프로토타입 — 실제 발송 없음)`);
+    setResending(false);
+    toast(`${item.teacher} 선생님(${mailTo.trim()})께 답변 메일을 ${wasResend ? '재발송' : '발송'}했습니다. (프로토타입 — 실제 발송 없음)`);
   };
 
   const box = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: 18 };
@@ -219,15 +227,31 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
         <div style={box}>
           {sent ? (
             <>
-              <div style={{ ...label, marginBottom: 8 }}>발송된 메일</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ ...label, marginBottom: 0 }}>발송된 메일</div>
+                {/* [v1.9] 재발송 — 수신자·내용을 수정할 수 있는 상태로 전환 */}
+                <button type="button" onClick={startResend} title="수신 메일과 내용을 수정한 뒤 다시 보냅니다." style={{ ...btn(), marginLeft: 'auto' }}>↻ 재발송</button>
+              </div>
               <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', marginBottom: 8 }}>
                 <strong style={{ color: '#047857' }}>✓ {item.mail?.sentAt} 발송</strong> · 수신 <strong>{item.mail?.to}</strong>
+                {(item.mailHistory || []).length > 0 && <span style={{ color: '#94A3B8' }}> · 재발송 {item.mailHistory.length}회</span>}
               </div>
               <pre style={{ margin: 0, padding: '14px 16px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, whiteSpace: 'pre-wrap', fontFamily: 'inherit', lineHeight: 1.7, color: '#1E293B', fontSize: 'var(--neo-font-size-sm)' }}>{item.replyDraft || composeReply(replyPartsOf(item))}</pre>
+              {(item.mailHistory || []).length > 0 && (
+                <details style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)' }}>
+                  <summary style={{ cursor: 'pointer', color: '#475569', fontWeight: 700 }}>이전 발송 {item.mailHistory.length}건</summary>
+                  {item.mailHistory.slice().reverse().map((m, i) => (
+                    <div key={i} style={{ marginTop: 8, padding: '10px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+                      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginBottom: 4 }}>{m.sentAt} 발송 · 수신 {m.to}</div>
+                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', lineHeight: 1.6, color: '#475569', fontSize: 'var(--neo-font-size-xs)' }}>{m.body}</pre>
+                    </div>
+                  ))}
+                </details>
+              )}
             </>
           ) : (
             <>
-          <div style={{ ...label, marginBottom: 8 }}>운영팀 답변 메일 — 인사말 · 본문(개발자 답변) · 맺음말. 모두 수정할 수 있습니다</div>
+          <div style={{ ...label, marginBottom: 8 }}>{resending ? '재발송 — 수신 메일과 내용을 수정한 뒤 다시 보냅니다' : '운영팀 답변 메일 — 인사말 · 본문(개발자 답변) · 맺음말. 모두 수정할 수 있습니다'}</div>
           {(() => {
             const ta = (extra = {}) => ({ width: '100%', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box', resize: 'vertical', background: sent ? '#F8FAFC' : 'white', ...extra });
             const sub = (text, action) => (
@@ -268,8 +292,12 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
             <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>수신</span>
             <input value={mailTo} onChange={(e) => setMailTo(e.target.value)} disabled={sent} placeholder="교사 메일 주소"
               style={{ flex: '1 1 220px', padding: '7px 10px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }} />
-            <button onClick={onSaveDraft} style={btn()}>임시저장</button>
-            <button onClick={onSendMail} style={btn({ background: '#2A75F3', color: 'white', borderColor: '#2A75F3' })}>✉ 메일 발송</button>
+            {resending ? (
+              <button onClick={cancelResend} style={btn()}>취소</button>
+            ) : (
+              <button onClick={onSaveDraft} style={btn()}>임시저장</button>
+            )}
+            <button onClick={onSendMail} style={btn({ background: '#2A75F3', color: 'white', borderColor: '#2A75F3' })}>{resending ? '✉ 재발송' : '✉ 메일 발송'}</button>
           </div>
             </>
           )}
