@@ -12,7 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { relayEnabled } from './lib/jiraRelay';
 import {
   listIncidents, subscribeIncidents, receiveJiraComment, saveReplyDraft, sendReplyMail, downloadText, fetchIncidentLog, INCIDENT_STATUS,
-  hasRealJira, syncFromJira, syncAllFromJira,
+  hasRealJira, syncFromJira, syncAllFromJira, deleteIncidents,
   replyPartsOf, composeReply, DEFAULT_GREETING, DEFAULT_CLOSING,
 } from './lib/incidentStore';
 
@@ -38,8 +38,13 @@ const btn = (extra = {}) => ({ padding: '7px 12px', borderRadius: 8, border: '1p
 const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', marginBottom: 4 };
 
 /* ── 목록 ─────────────────────────────────────────────── */
-const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
+const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast }) => {
   const [filter, setFilter] = useState('전체');
+  // [v2.3] 선택 삭제 — 체크박스로 고른 신고를 확인창을 거쳐 지운다 (게시판 기록만, Jira 이슈는 유지)
+  const [selected, setSelected] = useState(() => new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => { setSelected((s) => new Set([...s].filter((id) => items.some((r) => r.id === id)))); }, [items]);
+  const toggleOne = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [sort, setSort] = useState({ key: 'createdAt', dir: 'desc' });
 
   const rows = useMemo(() => {
@@ -55,6 +60,14 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
   }, [items, filter, sort]);
 
   const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'createdAt' ? 'desc' : 'asc' }));
+  const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggleAll = () => setSelected((s) => { const n = new Set(s); if (allChecked) rows.forEach((r) => n.delete(r.id)); else rows.forEach((r) => n.add(r.id)); return n; });
+  const selectedRows = items.filter((r) => selected.has(r.id));
+  const doDelete = () => {
+    const n = deleteIncidents(selectedRows.map((r) => r.id));
+    setSelected(new Set()); setConfirmDelete(false);
+    showToast && showToast(`장애 신고 ${n}건을 삭제했습니다.`, 'success');
+  };
 
   const cell = { padding: '11px 12px', fontSize: 'var(--neo-font-size-sm)', borderBottom: '1px solid #F1F5F9', verticalAlign: 'middle' };
   const th = (key, text) => (
@@ -70,6 +83,10 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
         <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>🚨 장애신고</h1>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>교사 화면에서 접수된 장애 신고 — 행을 누르면 상세에서 확인·답변합니다</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {selected.size > 0 && (
+            <button type="button" onClick={() => setConfirmDelete(true)} title="선택한 신고를 게시판에서 삭제합니다 (Jira 이슈는 남습니다)"
+              style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#DC2626', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', marginRight: 6 }}>🗑 선택 삭제 ({selected.size})</button>
+          )}
           {relayEnabled() && (
             <button type="button" onClick={onSyncAll} disabled={syncing} title="실제 Jira 가 연결된 신고의 상태·개발자 댓글을 모두 읽어 옵니다"
               style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', fontFamily: 'inherit', marginRight: 6 }}>{syncing ? '가져오는 중…' : '↻ Jira 동기화'}</button>
@@ -86,6 +103,9 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
+              <th style={{ ...cell, background: '#F8FAFC', width: 36, textAlign: 'center' }}>
+                <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="전체 선택" title="목록 전체 선택" style={{ cursor: 'pointer' }} />
+              </th>
               {th('createdAt', SORT_KEYS.createdAt)}
               {th('school', SORT_KEYS.school)}
               {th('teacher', SORT_KEYS.teacher)}
@@ -97,11 +117,14 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={7} style={{ ...cell, textAlign: 'center', color: '#94A3B8', padding: 28 }}>접수된 장애 신고가 없습니다.</td></tr>
+              <tr><td colSpan={8} style={{ ...cell, textAlign: 'center', color: '#94A3B8', padding: 28 }}>접수된 장애 신고가 없습니다.</td></tr>
             )}
             {rows.map((r) => (
               <tr key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; }}>
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }} onMouseLeave={(e) => { e.currentTarget.style.background = selected.has(r.id) ? '#EFF6FF' : 'white'; }}>
+                <td style={{ ...cell, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} aria-label={`${r.createdAt} ${r.teacher} 선택`} style={{ cursor: 'pointer' }} />
+                </td>
                 <td style={{ ...cell, color: '#475569', whiteSpace: 'nowrap' }}>{r.createdAt}</td>
                 <td style={{ ...cell, fontWeight: 700 }}>{r.school}</td>
                 <td style={{ ...cell, fontWeight: 700 }}>{r.teacher}</td>
@@ -114,6 +137,25 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing }) => {
           </tbody>
         </table>
       </div>
+      {/* [v2.3] 선택 삭제 확인창 */}
+      {confirmDelete && (
+        <div onClick={() => setConfirmDelete(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="장애 신고 삭제" style={{ background: 'white', borderRadius: 14, width: 480, maxWidth: '94vw', padding: '22px 24px', boxShadow: '0 20px 50px rgba(15,23,42,0.28)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>장애 신고 {selectedRows.length}건을 삭제할까요?</h3>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.7, marginBottom: 12 }}>
+              게시판의 신고 기록(신고 정보 · 첨부 · 답변 · 발송 메일)이 지워지며 되돌릴 수 없습니다.<br />
+              Jira에 등록된 이슈는 삭제되지 않습니다.
+            </div>
+            <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: 'var(--neo-font-size-xs)', color: '#475569', lineHeight: 1.7 }}>
+              {selectedRows.map((r) => <div key={r.id}>{r.createdAt} · {r.school} {r.teacher} · {r.symptom}{r.jira?.key && !r.jira.simulated ? ` · ${r.jira.key}` : ''}</div>)}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setConfirmDelete(false)} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #D5DAE0', background: 'white', color: '#1E293B', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+              <button type="button" onClick={doDelete} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -363,7 +405,7 @@ const IncidentBoard = ({ showToast }) => {
   };
   useEffect(() => { syncAll(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (openId && idx >= 0) return <IncidentDetail item={items[idx]} index={idx} onBack={() => setOpenId(null)} showToast={showToast} />;
-  return <IncidentList items={items} onOpen={setOpenId} onSyncAll={() => syncAll(false)} syncing={syncing} />;
+  return <IncidentList items={items} onOpen={setOpenId} onSyncAll={() => syncAll(false)} syncing={syncing} showToast={showToast} />;
 };
 
 export default IncidentBoard;

@@ -16,7 +16,7 @@
  *   장애 접수(게시판 등록 + Jira 자동 등록) → 개발자 확인 완료(Jira 댓글 수신) → 메일 발송(운영팀 답변 발송)
  */
 import {
-  collection, doc, getDoc, onSnapshot, orderBy, query, setDoc, updateDoc,
+  collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, setDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { buildLogText, logFileName, info as logInfo, error as logError } from '../appLogger';
@@ -135,6 +135,21 @@ export const updateIncident = (id, patch) => {
   notify();
   updateDoc(doc(db, COL, id), patch).catch(writeFail('신고 수정', id));
   return getIncident(id);
+};
+
+/** [v2.3] 신고 삭제 — 게시판 기록(본문 + 진단 로그 서브문서)만 지운다. Jira 이슈는 남는다 */
+export const deleteIncidents = (ids = []) => {
+  start();
+  const set = new Set(ids);
+  const removed = cache.filter((r) => set.has(r.id));
+  cache = cache.filter((r) => !set.has(r.id));
+  notify();
+  removed.forEach((r) => {
+    deleteDoc(doc(db, COL, r.id, 'attachments', 'log')).catch(() => {});
+    deleteDoc(doc(db, COL, r.id)).catch(writeFail('신고 삭제', r.id));
+  });
+  logInfo('incidentStore', '장애 신고 삭제', { count: removed.length, ids: removed.map((r) => r.id), jira: removed.map((r) => r.jira?.key).filter(Boolean) });
+  return removed.length;
 };
 
 /** 진단 로그 본문 — 상세에서 내려받을 때만 읽는다 (없으면 null) */
