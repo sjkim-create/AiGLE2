@@ -195,15 +195,30 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
     toast(`Jira ${item.jira?.key} 개발자 댓글을 가져왔습니다 — 상태 「개발자 확인 완료」. (서버 연동 예정 — 시뮬레이션)`);
   };
   // 로그 본문은 목록에 싣지 않고 내려받을 때 서브문서에서 읽는다
-  const onDownloadLog = async () => {
-    const name = item.attachments.log.name;
+  /* [v2.6] 첨부는 zip 1개 — 접수 시 진단 로그와 펜 원본이 하나로 묶여 올라온다.
+   *   프로토타입은 실제 zip 대신 같은 내용을 담은 파일 1개를 내려받는다 (실서비스는 서버가 만든 zip). */
+  const zipName = item.attachments?.penRaw?.zipName
+    || `aigle-diagnostics_${item.teacherId || 'unknown'}_${String(item.id).replace(/[^0-9A-Za-z-]/g, '')}.zip`;
+  const penFiles = item.attachments?.penData || [];
+  const onDownloadDiagnostics = async () => {
+    const logName = item.attachments?.log?.name || '-';
     try {
-      const log = await fetchIncidentLog(item.id);
-      if (!log) { showToast && showToast('진단 로그 본문을 찾지 못했습니다.', 'error'); return; }
-      downloadText(log.name || name, log.text || '');
-      toast(`진단 로그를 내려받았습니다 — ${log.name || name}${log.truncated ? ' (최근 부분만 보관)' : ''}`);
+      const log = item.attachments?.log ? await fetchIncidentLog(item.id) : null;
+      const body = [
+        `# AiGLE 진단 자료 (prototype — 실서비스는 zip 1개)`,
+        `# 접수번호 : ${item.id}    접수 일시 : ${item.createdAt}`,
+        `# 학교/교사 : ${item.school} · ${item.teacher} (${item.teacherId})`,
+        '',
+        `## 1. 진단 로그 — ${logName} (${item.logDate || '전체 기간'})${log?.truncated ? ' · 최근 부분만 보관' : ''}`,
+        log?.text || '(진단 로그 없음)',
+        '',
+        `## 2. 펜 원본 진단 파일 — ${penFiles.length}개`,
+        ...(penFiles.length ? penFiles.map((n) => `  ${n}`) : ['  (없음)']),
+      ].join('\n');
+      downloadText(zipName.replace(/\.zip$/, '.txt'), body);
+      toast(`진단 자료를 내려받았습니다 — ${zipName}`);
     } catch (e) {
-      showToast && showToast(`진단 로그를 읽지 못했습니다 — ${e.message}`, 'error');
+      showToast && showToast(`진단 자료를 읽지 못했습니다 — ${e.message}`, 'error');
     }
   };
   const onSaveDraft = () => { saveReplyDraft(item.id, parts); toast('답변을 임시저장했습니다.'); };
@@ -248,17 +263,17 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
         {/* 첨부 */}
         <div style={box}>
           <div style={{ ...label, marginBottom: 10 }}>첨부 (개발자 확인용)</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {item.attachments?.log ? (
-              <button onClick={onDownloadLog} style={btn()}>
-                ⬇ 진단 로그 <span style={{ color: '#94A3B8', fontWeight: 600 }}>{item.logDate || '전체 기간'} · {item.attachments.log.name}</span>
-              </button>
-            ) : <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>진단 로그 없음</span>}
-            {item.attachments?.penData?.length ? (
-              <button onClick={() => { const names = item.attachments.penData; downloadText(`${item.id}_pen-data.txt`, `# AiGLE pen data (prototype)\n# incident : ${item.id}\n${names.map((n) => `DOWNLOAD/AiGLE-PEN00/${n}`).join('\n')}\n`); toast(`펜 데이터 ${names.length}개를 내려받았습니다.`); }} style={btn()}>
-                ⬇ 펜 데이터 <span style={{ color: '#94A3B8', fontWeight: 600 }}>{item.attachments.penData.length}개</span>
-              </button>
-            ) : <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>펜 데이터 없음</span>}
+          {/* [v2.6] 진단 로그 + 펜 원본을 묶은 zip 1개. 舊 2개 버튼(진단 로그 / 펜 데이터) 폐기 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {item.attachments?.log || penFiles.length ? (
+              <>
+                <button onClick={onDownloadDiagnostics} style={btn()}>⬇ 진단 자료 <span style={{ color: '#94A3B8', fontWeight: 600 }}>{zipName}</span></button>
+                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>
+                  진단 로그 {item.attachments?.log ? `1개 (${item.logDate || '전체 기간'})` : '없음'} · 펜 원본 {penFiles.length}개
+                  {item.attachments?.penRaw ? ` · 채점 ${item.attachments.penRaw.sessions}회분` : ''}
+                </span>
+              </>
+            ) : <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>첨부 없음</span>}
           </div>
         </div>
 
