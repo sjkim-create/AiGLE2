@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { addIncident, SYMPTOMS } from './lib/incidentStore';
 import { availableDates } from './appLogger';
-import { listSessions, buildZipManifest, clearAll as clearPenRaw, formatBytes, PEN_RAW_ROOT, PEN_RAW_KEEP } from './lib/penRawStore';
+import { buildZipManifest, clearAll as clearPenRaw } from './lib/penRawStore';
 
 const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
   const [symptom, setSymptom] = useState(SYMPTOMS[0].label);
@@ -21,10 +21,8 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
   if (!open) return null;
 
   const { source = '환경설정', school = '공주 고등학교', teacher = '김 b', teacherId = 'tch20261zim', teacherEmail = 'tch20261zim@gjhs.kr', task = null, group = null, studentCount = null } = context || {};
-  const dates = availableDates();
-  const penSessions = listSessions();
+
   const manifest = buildZipManifest(teacherId);
-  const fmtAt = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
   const submit = () => {
     if (submitting) return;
@@ -86,37 +84,7 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
               style={{ width: '100%', minHeight: 84, marginTop: 10, padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box', resize: 'vertical' }} />
           </div>
 
-          {/* 자동 첨부 — [v1.3] 항목명 없이 진단 로그(일자)·펜 데이터 안내만 */}
-          <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <strong>진단 로그</strong>
-                {dates.length ? (
-                  <select value={logDate} onChange={(e) => setLogDate(e.target.value)} aria-label="진단 로그 일자 선택"
-                    style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', background: 'white', fontFamily: 'inherit', minWidth: 140 }}>
-                    {dates.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                ) : <span style={{ color: '#94A3B8' }}>기록된 로그 없음</span>}
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <strong>펜 원본 진단 파일</strong>
-                  {penSessions.length
-                    ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', padding: '2px 8px', borderRadius: 999 }}>최근 {penSessions.length}/{PEN_RAW_KEEP}회 · 펜 {manifest.pens}자루 · 파일 {manifest.files.length}개 · {formatBytes(manifest.bytes)}</span>
-                    : <span style={{ color: '#94A3B8' }}>저장된 파일 없음 — 채점할 때 자동으로 쌓입니다</span>}
-                </div>
-                {penSessions.length > 0 && (
-                  <div style={{ marginTop: 6, padding: '8px 10px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, fontFamily: 'monospace', fontSize: 'var(--neo-font-size-xs)', color: '#475569', lineHeight: 1.7 }}>
-                    {PEN_RAW_ROOT}<br />
-                    {penSessions.map((s) => (
-                      <div key={s.id}>└ {s.id}\ <span style={{ color: '#94A3B8' }}>({fmtAt(s.at)} · {s.task} · {s.group} · 펜 {s.pens.length}자루)</span></div>
-                    ))}
-                  </div>
-                )}
-                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 4 }}>채점 때마다 펜 MAC → 답안지(s.o.b) 단위로 저장되며 최근 {PEN_RAW_KEEP}회만 보관합니다. 접수하면 이 폴더를 zip으로 전송하고 로컬 파일은 삭제됩니다. 펜 안의 필기는 지워지지 않습니다.</div>
-              </div>
-            </div>
-          </div>
+          {/* [v2.4] 진단 로그(일자)·펜 원본 진단 파일 안내 블록 삭제 — 화면에 보이지 않고 자동 첨부만 한다 (로그 = 최신 날짜, 펜 원본 = 로컬 보관분 전체) */}
         </div>
 
         <div style={{ display: 'flex', gap: 8, padding: '12px 22px 18px', justifyContent: 'flex-end', borderTop: '1px solid #F1F5F9' }}>
