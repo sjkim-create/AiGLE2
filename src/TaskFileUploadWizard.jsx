@@ -4004,7 +4004,7 @@ const RowMenu = ({ onAddBelow, onDelete, onOpenEditor, addLabel }) => {
       {open && (
         <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 30, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.15)', padding: 6, minWidth: 168 }}>
           {item('∑ 수식 편집', onOpenEditor)}
-          {item(`＋ 아래에 추가${addLabel ? ` (${addLabel})` : ''}`, onAddBelow, { disabled: !onAddBelow })}
+          {item('＋ 아래에 추가', onAddBelow, { disabled: !onAddBelow })}
           <div style={{ height: 1, background: '#F1F5F9', margin: '4px 0' }} />
           {item('✕ 삭제', onDelete, { danger: true, disabled: !onDelete })}
         </div>
