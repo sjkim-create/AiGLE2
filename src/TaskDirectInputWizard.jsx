@@ -1780,6 +1780,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
         subject={basicInfo?.subject || '국어'}
         taskTitle={basicInfo?.title || '과제명'}
         groups={groupList.map((g) => g.label)}
+        groupStudentCounts={Object.fromEntries(groupList.map((g) => [g.label, g.studentCount]))}
         onPrint={markGroupPrinted}
       />
     </div>
