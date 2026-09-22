@@ -1,12 +1,12 @@
 /**
  * jiraRelay.js — 장애신고 ↔ Jira 중계 클라이언트
  *
- * 브라우저는 Jira 를 직접 부르지 못하므로 Cloudflare Worker(`jira-relay/`)를 거친다.
+ * 브라우저는 Jira 를 직접 부르지 못하므로 Vercel 서버리스 함수(`jira-relay/`, /api/…)를 거친다.
  * `VITE_JIRA_RELAY_URL` 이 없으면 모든 함수가 null 을 돌려주고, incidentStore 는 종전 시뮬레이션(가짜 키)으로 동작한다.
  */
 import { info as logInfo, error as logError } from '../appLogger';
 
-const RELAY = String(import.meta.env.VITE_JIRA_RELAY_URL || '').replace(/\/+$/, '');
+const RELAY = String(import.meta.env.VITE_JIRA_RELAY_URL || '').replace(/\/+$/, '').replace(/\/api$/, '') + (import.meta.env.VITE_JIRA_RELAY_URL ? '/api' : '');
 
 export const relayEnabled = () => !!RELAY;
 

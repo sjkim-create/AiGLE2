@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { buildLogText, logFileName, info as logInfo, error as logError } from '../appLogger';
-import { relayEnabled, createJiraIssue, addJiraComment } from './jiraRelay'; // [v2.1] Cloudflare Worker 중계로 실제 Jira(AGI) 등록
+import { relayEnabled, createJiraIssue, addJiraComment } from './jiraRelay'; // [v2.1] Vercel 서버리스 중계로 실제 Jira(AGI) 등록
 
 const COL = 'incidents';
 const LOG_MAX_CHARS = 200_000; // Firestore 문서 1MiB 제한 — 로그는 뒤쪽(최근) 20만 자만 보관
