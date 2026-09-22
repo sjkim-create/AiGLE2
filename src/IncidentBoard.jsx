@@ -9,6 +9,7 @@
  *   · 상태 3단계: 장애 접수 → 개발자 확인 완료 → 메일 발송
  */
 import React, { useEffect, useMemo, useState } from 'react';
+import { relayEnabled } from './lib/jiraRelay';
 import {
   listIncidents, subscribeIncidents, receiveJiraComment, saveReplyDraft, sendReplyMail, downloadText, fetchIncidentLog, INCIDENT_STATUS,
   replyPartsOf, composeReply, DEFAULT_GREETING, DEFAULT_CLOSING,
@@ -206,10 +207,12 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
         <div style={box}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <div style={{ ...label, marginBottom: 0 }}>Jira</div>
-            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>서버 연동 예정 — 시뮬레이션</span>
+            {(!relayEnabled() || item.jira?.simulated) && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>서버 연동 예정 — 시뮬레이션</span>}
+            {item.jira?.pending && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', background: '#EFF6FF', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>Jira 등록 중…</span>}
+            {item.jira?.error && <span title={item.jira.error} style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', background: '#FEE2E2', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>Jira 등록 실패 — {item.jira.error}</span>}
             {item.jira && (
               <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', marginLeft: 6 }}>
-                <a href={item.jira.url} target="_blank" rel="noreferrer" style={{ fontWeight: 800, color: '#1D4ED8' }}>{item.jira.key}</a>
+                {item.jira.url ? <a href={item.jira.url} target="_blank" rel="noreferrer" style={{ fontWeight: 800, color: '#1D4ED8' }}>{item.jira.key}</a> : <span style={{ fontWeight: 800, color: '#64748B' }}>{item.jira.key}</span>}
                 <span style={{ color: '#64748B' }}> · 게시판 등록 시 자동 등록 ({item.jira.registeredAt})</span>
               </span>
             )}

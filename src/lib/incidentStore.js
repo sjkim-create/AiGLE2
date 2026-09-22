@@ -20,6 +20,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { buildLogText, logFileName, info as logInfo, error as logError } from '../appLogger';
+import { relayEnabled, createJiraIssue, addJiraComment } from './jiraRelay'; // [v2.1] Cloudflare Worker 중계로 실제 Jira(AGI) 등록
 
 const COL = 'incidents';
 const LOG_MAX_CHARS = 200_000; // Firestore 문서 1MiB 제한 — 로그는 뒤쪽(최근) 20만 자만 보관
@@ -110,14 +111,20 @@ export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, 
     attachments: { log: { name: logName, chars: logText.length }, penData: penFiles, penRaw },
     status: '장애 접수', jira: null, devComment: '', replyParts: null, replyDraft: '', mail: null,
   };
-  // 게시판 등록과 동시에 Jira 자동 등록 (서버 연동 예정 — 시뮬레이션). 상태는 「장애 접수」 그대로
-  report.jira = simulateJira();
+  // 게시판 등록과 동시에 Jira 자동 등록. 상태는 「장애 접수」 그대로
+  //   [v2.1] 중계(VITE_JIRA_RELAY_URL)가 있으면 실제 AGI 이슈를 만들고 키를 채운다(비동기). 없으면 종전 시뮬레이션
+  report.jira = relayEnabled() ? { key: '등록 중…', registeredAt: stamp(), url: '', pending: true } : simulateJira();
   cache = [report, ...cache];
   notify();
   const { id, ...body } = report;
   setDoc(doc(db, COL, id), body)
     .then(() => setDoc(doc(db, COL, id, 'attachments', 'log'), { name: logName, text: logText.slice(-LOG_MAX_CHARS), truncated: logText.length > LOG_MAX_CHARS }))
     .catch(writeFail('신고 접수', id));
+  if (relayEnabled()) {
+    createJiraIssue(report)
+      .then((r) => updateIncident(id, { jira: { key: r.key, url: r.url, registeredAt: stamp(), pending: false } }))
+      .catch((e) => updateIncident(id, { jira: { key: '등록 실패', url: '', registeredAt: stamp(), pending: false, error: e.message } }));
+  }
   logInfo('incidentStore', '장애 신고 접수', { id, source, task: report.task, group: report.group, jira: report.jira.key });
   return report;
 };
@@ -150,7 +157,14 @@ export const sendReplyMail = (id, { to, parts }) => {
   // [v1.9] 재발송 — 이미 보낸 메일이 있으면 이전 발송을 mailHistory 에 남기고 최신 발송으로 덮는다
   const prev = getIncident(id);
   const mailHistory = prev?.mail ? [...(prev.mailHistory || []), { ...prev.mail, body: prev.replyDraft || '' }] : (prev?.mailHistory || []);
-  return updateIncident(id, { replyParts: parts, replyDraft: composeReply(parts), mail: { sentAt: stamp(), to }, mailHistory, status: '메일 발송' });
+  const next = updateIncident(id, { replyParts: parts, replyDraft: composeReply(parts), mail: { sentAt: stamp(), to }, mailHistory, status: '메일 발송' });
+  // [v2.1] Jira 이슈에 발송 기록을 댓글로 남긴다 (중계 미설정이면 no-op)
+  if (next?.jira?.key && !next.jira.pending && !next.jira.error && !next.jira.simulated) {
+    addJiraComment(next.jira.key, `[AiGLE 운영팀 답변 메일 ${mailHistory.length ? '재발송' : '발송'}] ${stamp()} → ${to}
+
+${composeReply(parts)}`);
+  }
+  return next;
 };
 
 /** 첨부 파일 다운로드 (브라우저 Blob) */

@@ -1,0 +1,15 @@
+{
+  "name": "aigle-jira-relay",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secret:email": "wrangler secret put JIRA_EMAIL",
+    "secret:token": "wrangler secret put JIRA_API_TOKEN"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
