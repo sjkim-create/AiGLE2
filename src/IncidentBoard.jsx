@@ -283,9 +283,13 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
               </>
             )}
           </div>
-          {/* [v2.2] 실제 Jira 의 개발자 댓글 목록 (메일 발송 기록 댓글은 제외). 최신 댓글이 메일 본문 칸의 「개발자 답변」이 된다 */}
+          {/* [v2.5] 개발자 원문 (Jira 댓글) — 읽기 전용. 이 문장을 그대로 보내지 않고 아래 본문에서 선생님 눈높이로 다시 쓴다 */}
           {realJira && (item.jiraComments || []).length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ ...label, marginBottom: 0 }}>개발자 원문</div>
+                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>Jira 댓글 — 선생님께 그대로 보내지 않습니다. 아래 「본문」에서 쉬운 말로 다시 씁니다.</span>
+              </div>
               {item.jiraComments.map((c) => (
                 <div key={c.id} style={{ padding: '8px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
                   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginBottom: 2 }}><strong style={{ color: '#1E293B' }}>{c.author || '개발자'}</strong> · {String(c.created || '').replace('T', ' ').slice(0, 16)}</div>
@@ -331,7 +335,7 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
             </>
           ) : (
             <>
-          <div style={{ ...label, marginBottom: 8 }}>{resending ? '재발송 — 수신 메일과 내용을 수정한 뒤 다시 보냅니다' : '운영팀 답변 메일 — 인사말 · 본문(개발자 답변) · 맺음말. 모두 수정할 수 있습니다'}</div>
+          <div style={{ ...label, marginBottom: 8 }}>{resending ? '재발송 — 수신 메일과 내용을 수정한 뒤 다시 보냅니다' : '운영팀 답변 메일 — 인사말 · 본문(선생님 안내문) · 맺음말. 모두 수정할 수 있습니다'}</div>
           {(() => {
             const ta = (extra = {}) => ({ width: '100%', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box', resize: 'vertical', background: sent ? '#F8FAFC' : 'white', ...extra });
             const sub = (text, action) => (
@@ -350,12 +354,22 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
                   <textarea value={parts.greeting} onChange={setPart('greeting')} disabled={sent} style={ta({ minHeight: 64 })} />
                 </div>
                 <div>
-                  {sub('본문 — 개발자 답변', item.devComment && !sent && (
-                    <button type="button" onClick={() => setParts((p) => ({ ...p, body: item.devComment }))} style={btn({ padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' })}>개발자 답변 원문으로</button>
+                  {/* [v2.5] 본문 = 선생님이 읽을 안내문. 개발자 원문은 위 블록에서만 보고, 여기에는 쉬운 말로 풀어 쓴다 */}
+                  {sub('본문 — 선생님 안내문', !sent && (
+                    <>
+                      <button type="button" disabled title="개발자 원문을 CS 어투의 안내문(원인 · 조치 방법 따라하기 순서)으로 바꿔 줍니다. 연동 예정 — BRD-16 §4.4"
+                        style={btn({ padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', borderColor: '#E2E8F0', cursor: 'not-allowed' })}>✨ 쉬운 말로 변환 (연동 예정)</button>
+                      {item.devComment && (
+                        <button type="button" onClick={() => setParts((p) => ({ ...p, body: item.devComment }))} style={btn({ padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' })}>개발자 원문 붙여넣기</button>
+                      )}
+                    </>
                   ))}
                   <textarea value={parts.body} onChange={setPart('body')} disabled={sent}
-                    placeholder="개발자 답변이 들어오면 여기에 채워집니다. 사용자에게 보낼 문장으로 다듬으세요."
-                    style={ta({ minHeight: 110, borderColor: '#93C5FD' })} />
+                    placeholder={'선생님이 바로 따라 할 수 있게 적어 주세요. 예)\n무엇이 문제였는지 한 줄 → 왜 생겼는지 한 줄 → 어떻게 하면 되는지 번호 순서 → 그래도 안 될 때 연락 방법'}
+                    style={ta({ minHeight: 130, borderColor: '#93C5FD' })} />
+                  {item.devComment && !parts.body.trim() && !sent && (
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', marginTop: 4 }}>개발자 원문이 도착했습니다. 위 원문을 보고 본문을 선생님 눈높이로 작성해 주세요.</div>
+                  )}
                 </div>
                 <div>
                   {sub('맺음말', resetBtn('closing', DEFAULT_CLOSING))}

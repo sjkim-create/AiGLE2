@@ -185,9 +185,9 @@ export const syncFromJira = async (id) => {
       jiraComments: devComments.map((c) => ({ id: c.id, author: c.author, created: c.created, text: c.text })),
     };
     if (latest && latest.text !== r.devComment) {
-      const parts = replyPartsOf(r);
+      // [v2.5] 개발자 원문을 메일 본문에 그대로 복사하지 않는다 — 본문은 선생님이 읽을 안내문 자리이고,
+      //        원문은 위 「개발자 원문」 블록에서만 보여 준다 (변환은 BRD-16 §4.4 요구사항)
       patch.devComment = latest.text;
-      patch.replyParts = { ...parts, body: parts.body?.trim() ? parts.body : latest.text };
       if (r.status === '장애 접수') patch.status = '개발자 확인 완료';
     }
     const changed = Object.keys(patch).some((k) => JSON.stringify(patch[k]) !== JSON.stringify(r[k]));
