@@ -158,6 +158,18 @@ export const designRubric = (area) => {
 export const criteriaHaveContent = (criteria) =>
   Array.isArray(criteria) && criteria.some((c) => (c.name && c.name.trim()) || (c.rows || []).some((r) => r.desc && r.desc.trim()));
 
+// ── [TSK v3.82 · SCR-01/03 · POP-19] 채점 결과 표기 — 과제의 resultMode('grade' | 'score')에 따라 등급명 또는 점수 ──
+//   프로토타입은 학생 데이터가 등급명만 갖고 있어, 점수 모드에서는 등급을 대표 백분율로 환산해 보여 준다 (실제는 채점 합산 점수)
+export const RESULT_MODE_LABEL = { grade: '등급', score: '점수' };
+const GRADE_PCT = { '매우우수': 0.95, '매우 우수': 0.95, '우수': 0.85, '보통': 0.7, '노력': 0.55, '매우 노력': 0.4 };
+export const gradeToPoints = (grade, max) => { const pct = GRADE_PCT[grade]; return pct == null || !max ? null : Math.round(pct * max); };
+/** 등급명·(있으면) 점수 → 화면 표기. 점수 모드면 "n점", 등급 모드면 등급명 그대로 */
+export const formatResult = (grade, { resultMode = 'grade', maxPoints = 0, score } = {}) => {
+  if (resultMode !== 'score') return grade || '-';
+  const pts = (score != null && score !== '') ? Number(score) : gradeToPoints(grade, maxPoints);
+  return pts == null ? '-' : `${pts}점`;
+};
+
 // [v3.51] 점수 → 등급 환산 — % 기반 cutoff 복귀 (학교 평가 관례 정합)
 export const scoreToGrade = (score, max, scale) => {
   if (!max || max <= 0) return '-';

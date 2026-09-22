@@ -13,6 +13,7 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { lookupPattern } from './handwritingPatternMatrix';
+import { formatResult, gradeToPoints, scoreToGrade } from './lib/gradingShared'; // [TSK v3.82] 과제의 채점 결과 표기(등급/점수)
 
 const ANSWER_SHEET_IMG = `${import.meta.env.BASE_URL}images/answer-sheet-sample.png`;
 
@@ -142,6 +143,9 @@ const GradingReviewModal = ({
     onRevertToUngraded,
     onHandwritingEvaluated,
     taskSubject,
+    // [TSK v3.82] 과제의 채점 결과 표기 — 'grade' | 'score'. 점수면 등급 대신 n점을 보여 주고 교사도 점수를 입력한다
+    resultMode = 'grade',
+    maxPoints = 0,
     // [SCR-06] 퇴고 — 채점 관리 2(v2)에서만 전달된다. 미전달 시 관련 UI 전부 미노출
     isV2 = false,
     aiGradingLimitPerRound = 2,
@@ -154,6 +158,9 @@ const GradingReviewModal = ({
         isV2 && isSent && (selectedStudent?.round ?? 1) === 1 && typeof onRevisionRequest === 'function';
 
     const [teacherGrade, setTeacherGrade] = useState('선택 안함');
+    const isScoreMode = resultMode === 'score';
+    const [teacherScore, setTeacherScore] = useState(''); // 점수 모드의 교사 채점 (0~maxPoints)
+    const fmt = (grade, score) => formatResult(grade, { resultMode, maxPoints, score });
     const [rightTab, setRightTab] = useState('feedback'); // 'feedback' | 'original'
     const [processEvalState, setProcessEvalState] = useState('idle'); // 'idle' | 'processing' | 'completed'
     const [isSaved, setIsSaved] = useState(false);
@@ -203,6 +210,7 @@ const GradingReviewModal = ({
     useEffect(() => {
         setIsPlaybackMode(false); setIsPlaying(false); setRightTab('feedback');
         setTeacherGrade(isStep3 && selectedStudent?.teacherGrade && selectedStudent.teacherGrade !== '-' ? selectedStudent.teacherGrade : '선택 안함');
+        setTeacherScore(selectedStudent?.teacherScore ?? (isStep3 ? (gradeToPoints(selectedStudent?.teacherGrade, maxPoints) ?? '') : ''));
         setProcessEvalState(selectedStudent?.handwritingEvaluation ? 'completed' : 'idle');
     }, [selectedStudent?.id, isOpen]);
 
@@ -264,7 +272,10 @@ const GradingReviewModal = ({
         ? (isSent ? '학생에게 결과가 발송되었습니다. 취소하려면 [결과발송 취소]를 눌러주세요.' : '완료된 채점 결과를 학생에게 발송합니다.')
         : 'AI 채점 결과는 완벽하지 않을 수 있습니다. 점수 확정 전 선생님께서 내용을 확인해주세요.';
     const reflected = gradingHistory.find(h => h.id === reflectedHistoryId);
-    const aiGradeDisplay = selectedStudent?.aiGradeDisplay || `${selectedStudent?.aiGrade || reflected?.level || '우수'} (${gradeFb.scale.replace(' 기준', '')})`;
+    const aiGradeDisplay = isScoreMode
+        ? `${fmt(selectedStudent?.aiGrade || reflected?.level || '우수', selectedStudent?.aiScore)} / ${maxPoints}점`
+        : (selectedStudent?.aiGradeDisplay || `${selectedStudent?.aiGrade || reflected?.level || '우수'} (${gradeFb.scale.replace(' 기준', '')})`);
+    const aiPoints = selectedStudent?.aiScore ?? gradeToPoints(selectedStudent?.aiGrade || reflected?.level || '우수', maxPoints);
 
     /* ── 좌측: AI 과정 분석 카드 ── */
     const renderProcessCard = () => {
@@ -311,11 +322,16 @@ const GradingReviewModal = ({
     /* ── 우측: 피드백 보기 (등급평가 공통 + 과정 분석 전용 영역) ── */
     const renderFeedback = () => (
         <div style={{ padding: '4px 20px 20px' }}>
-            {/* 등급 */}
+            {/* 등급 — 점수 모드 과제는 등급 대신 「n점 / 만점」 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 6px' }}>
+                {isScoreMode ? (<>
+                    <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: '#2A75F3' }}>{aiPoints ?? '-'}점</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>/ {maxPoints}점 만점 · 점수제 과제</span>
+                </>) : (<>
                 <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: gradeColorMap[gradeFb.label] || '#2A75F3' }}>{gradeFb.letter}</span>
                 <span style={pill(gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#FEE2E2' : '#DCFCE7', gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#B91C1C' : '#15803D')}>{gradeFb.label}</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>{gradeFb.scale}</span>
+                </>)}
                 {isSaved && <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#059669', fontWeight: 600 }}>✓ 저장됨</span>}
             </div>
 
@@ -520,7 +536,15 @@ const GradingReviewModal = ({
                                     {isStep3 ? (
                                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
                                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: gradeColorMap[selectedStudent?.teacherGrade] || '#8A94A1', display: 'inline-block' }} />
-                                            {selectedStudent?.teacherGrade || '-'}
+                                            {fmt(selectedStudent?.teacherGrade, selectedStudent?.teacherScore)}{isScoreMode && <span style={{ color: T.sub, fontWeight: 400 }}> / {maxPoints}점</span>}
+                                        </span>
+                                    ) : isScoreMode ? (
+                                        /* 점수 모드 — 교사가 합산 점수를 직접 입력 (0~총 배점) */
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                            <input type="number" min={0} max={maxPoints} value={teacherScore} placeholder="점수"
+                                                onChange={(e) => { const v = e.target.value; if (v === '') { setTeacherScore(''); return; } const n = Math.max(0, Math.min(maxPoints, Math.round(Number(v)))); setTeacherScore(Number.isFinite(n) ? n : ''); }}
+                                                style={{ width: 72, padding: '4px 8px', border: `1px solid ${T.line}`, borderRadius: 'var(--neo-radius-md, 6px)', fontWeight: 600, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', textAlign: 'center' }} />
+                                            <span style={{ color: T.sub }}>/ {maxPoints}점</span>
                                         </span>
                                     ) : (
                                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #CBD5E1', borderRadius: 'var(--neo-radius-md, 6px)', padding: '2px 8px' }}>
@@ -557,7 +581,7 @@ const GradingReviewModal = ({
                                                         {reflectedHistoryId === h.id ? '✓ 반영' : '반영'}
                                                     </button>
                                                 </div>
-                                                <div style={{ fontSize: 'var(--neo-font-size-sm)' }}><span style={{ color: T.sub }}>채점 등급</span> <strong style={{ marginLeft: 6 }}>{h.level}</strong></div>
+                                                <div style={{ fontSize: 'var(--neo-font-size-sm)' }}><span style={{ color: T.sub }}>{isScoreMode ? '채점 점수' : '채점 등급'}</span> <strong style={{ marginLeft: 6 }}>{fmt(h.level, h.score)}</strong></div>
                                             </div>
                                         ))}
                                     </div>
@@ -593,6 +617,12 @@ const GradingReviewModal = ({
                                 ) : (
                                     <button className="btn-review-complete" style={{ padding: '0.6rem 2.2rem', background: '#2A75F3' }}
                                         onClick={() => {
+                                            if (isScoreMode) {
+                                                if (teacherScore === '' || teacherScore == null) { alert('교사 채점 점수를 먼저 입력해 주세요. 점수가 입력되어야 결과 발송 단계로 이동할 수 있습니다.'); return; }
+                                                // 점수 모드도 등급명을 함께 저장해 등급 기반 화면(추이·통계)이 그대로 동작하게 한다
+                                                if (onReviewComplete) onReviewComplete({ ...selectedStudent, teacherScore, teacherGrade: scoreToGrade(teacherScore, maxPoints, 5) }); else onClose();
+                                                return;
+                                            }
                                             if (teacherGrade === '선택 안함') { alert('교사 채점을 먼저 선택해 주세요. 교사 채점이 선택되어야 결과 발송 단계로 이동할 수 있습니다.'); return; }
                                             if (onReviewComplete) onReviewComplete({ ...selectedStudent, teacherGrade }); else onClose();
                                         }}>검토 완료</button>

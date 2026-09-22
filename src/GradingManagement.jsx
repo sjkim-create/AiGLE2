@@ -16,6 +16,7 @@ import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
 import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_GUIDE_SAMPLE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
+import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
@@ -129,8 +130,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
   // ── 목 데이터 ──
   const tasks = [
-    { id: 1, type: '국어', title: '과제테스트', date: '2024.02.23', submissions: '0/10', description: '테스트' },
-    { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트' }
+    // resultMode = 과제 등록 Step 「채점 결과」에서 고른 값 — 'grade'(등급) | 'score'(점수). 데모: 국어 과제는 점수 모드
+    { id: 1, type: '국어', title: '과제테스트', date: '2024.02.23', submissions: '0/10', description: '테스트', resultMode: 'score' },
+    { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트', resultMode: 'grade' }
   ];
   // sheets = TSK-02 「답안지 출력 장수 설정」(문항별 기준 장수).
   // 스캔 채점(SCR-05)의 결손 판정 기준으로 사용된다 — 실제 연결 장수가 이 값보다 적으면 누락으로 안내
@@ -180,6 +182,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   }, []);
 
   const currentTask = tasks.find(t => t.id === selectedTask) || tasks[1];
+  // [TSK v3.82] 결과 표기 — 과제가 「점수」면 등급 대신 n점 (총 배점 = 문항 배점 합)
+  const resultMode = currentTask.resultMode || 'grade';
+  const totalPoints = questions.reduce((sum, q) => sum + (Number(q.score) || 0), 0);
+  const fmtResult = (grade, score) => formatResult(grade, { resultMode, maxPoints: totalPoints, score });
 
   // ── 핸들러 ──
   const handleOpenModal = (student) => {
@@ -1069,13 +1075,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div className="grading-info">
                       <div className="grading-row">
                         <span className="label">AI채점 :</span>
-                        <span className="value">{student.aiGrade}</span>
+                        <span className="value">{fmtResult(student.aiGrade, student.aiScore)}</span>
                       </div>
                       <div className="grading-row">
                         <span className="label">교사채점 :</span>
                         <span className="value">
                           {student.teacherGrade !== '-' && <span className="badge-dot badge-orange"></span>}
-                          {student.teacherGrade}
+                          {fmtResult(student.teacherGrade, student.teacherScore)}
                         </span>
                       </div>
                       {/* [SCR-06] 1차→2차 등급 추이 · 차수별 AI 채점 잔여 횟수 */}
@@ -1168,11 +1174,11 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                                 채점중...
                               </span>
                             ) : (
-                              <span className="cell-value">{student.aiGrade}</span>
+                              <span className="cell-value">{fmtResult(student.aiGrade, student.aiScore)}</span>
                             )}
                           </td>
                           <td className="cell-teacher">
-                            <span className="cell-value">{student.teacherGrade}</span>
+                            <span className="cell-value">{fmtResult(student.teacherGrade, student.teacherScore)}</span>
                           </td>
                           {isV2 && (
                             <td>
@@ -1251,6 +1257,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         students={roster.filter(s => s.status === '채점 확인' || s.status === '결과 발송 전' || s.status === '결과 발송 완료')}
         questions={questions}
         taskSubject={currentTask.type}
+        resultMode={resultMode}
+        maxPoints={totalPoints}
         activeQuestion={activeQuestion}
         setActiveQuestion={setActiveQuestion}
         gradingHistory={gradingHistory}
@@ -1566,14 +1574,14 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <tr>
                             <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>문항번호</th>
                             <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>배점</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>등급</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>{RESULT_MODE_LABEL[resultMode]}</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
                             <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>1</td>
                             <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>3</td>
-                            <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>{previewStudent.teacherGrade || '우수'} / 4단계 척도</td>
+                            <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>{resultMode === 'score' ? `${fmtResult(previewStudent.teacherGrade || '우수', previewStudent.teacherScore)} / ${totalPoints}점 만점` : `${previewStudent.teacherGrade || '우수'} / 4단계 척도`}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1938,7 +1946,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           {s.name} <span style={{ color: '#94A3B8', fontWeight: 400 }}>{s.grade}</span>
                         </td>
                         <td style={{ padding: '8px 12px', color: '#475569' }}>
-                          AI {s.aiGrade} · 교사 {s.teacherGrade}
+                          AI {fmtResult(s.aiGrade, s.aiScore)} · 교사 {fmtResult(s.teacherGrade, s.teacherScore)}
                         </td>
                         <td style={{ padding: '8px 12px', color: '#7C3AED', fontWeight: 700 }}>
                           {s.sheetNo} → {issueRevisionSheetNo(s.sheetNo)}
