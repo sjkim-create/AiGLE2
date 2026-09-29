@@ -136,12 +136,22 @@ const JUDGE_PHASES = [
 ];
 
 /** 펜 연결(거치) 상태 */
+/* [SCR-07 v4.23] 「실패」 상태 폐기 — 펜에 오류가 있으면 크래들이 펜을 잡지 못해
+ *   에뮬레이터 슬롯에 **거치 자체가 표시되지 않는다**(빈 슬롯으로 남는다).
+ *   꽂았는데 보이지 않는다는 사실만 안내로 알리고, 상태 칩으로는 말하지 않는다. */
 const LINK_TOKEN = {
-  /* [SCR-07 v2.3] 슬롯 폭이 좁아 두 글자로 — 연결 중 / 연결 / 실패 */
   linking:   { label: '연결 중', color: '#B45309', bg: '#FEF3C7' },
   connected: { label: '연결',    color: '#166534', bg: '#DCFCE7' },
-  failed:    { label: '실패',    color: '#991B1B', bg: '#FEE2E2' },
 };
+
+/* [SCR-07 v4.23] 저장 잔량 색 — 20% 미만 주의, 10% 미만 위험 */
+const CAPACITY_LOW = 20;
+const CAPACITY_CRITICAL = 10;
+const capacityToken = (pct) => (pct < CAPACITY_CRITICAL
+  ? { color: '#991B1B', bg: '#FEE2E2', bar: '#DC2626' }
+  : pct < CAPACITY_LOW
+    ? { color: '#B45309', bg: '#FEF3C7', bar: '#F59E0B' }
+    : { color: '#166534', bg: '#DCFCE7', bar: '#10B981' });
 
 /* [SCR-07 v4.19] 舊 번호표 격자 상수(TAG_ROWS·TAG_COLS·TAG_PAGES·TAG_CAPACITY)·seqToCell 폐기 — 번호표를 쓰지 않는다 */
 
@@ -240,14 +250,23 @@ const buildPen = ({ slot, scenario, student, roster, myBook, siblingBook, taskTi
     slot,
     mac: `9C:7B:D2:${pad(slot * 7 % 100, 2)}:${pad(slot * 13 % 100, 2)}:${pad(slot * 3 % 100, 2)}`,
     battery: [92, 85, 74, 61, 88, 57, 96, 43, 79, 68][(slot - 1) % 10] - ((slot - 1) % 7) * 2,
+    /* [SCR-07 v4.23] 펜 저장 잔량(%) — 펜 안에 쌓인 필기가 차지하고 남은 공간.
+     *   채점이 정상 완료되면 그 펜의 데이터가 지워져 잔량이 회복된다(§4.6 업로드 규약).
+     *   잔량이 없으면 다음 답안을 더 쓰지 못하므로 거치 단계에서 미리 보여 준다. */
+    capacity: Math.max(2, 100 - Math.max(4, CAPACITY_USED[(slot - 1) % 10] - Math.floor((slot - 1) / SLOTS_PER_CRADLE) * 22) - (scenario === 'empty' ? 0 : 6)),
     firmware: slot === 3 ? '2.0.5' : '2.1.0',
     needsUpdate: slot === 3,
-    /* [SCR-07 v2.3] 접촉 불량 에뮬레이션 — 처음 꽂을 때 한 번 「연결 실패」가 나고, 뺐다 다시 꽂으면 연결된다 */
+    /* [SCR-07 v4.23] 펜 오류 에뮬레이션 — 처음 꽂을 때 크래들이 인식하지 못해 **거치 표시가 뜨지 않고**, 뺐다 다시 꽂으면 연결된다 */
     flaky: slot === 8 || slot === 19,
     books,
     scenario,
   };
 };
+
+/* [SCR-07 v4.23] 펜별 저장 사용량(%) 목 — 크래들 1의 슬롯 5는 주의(잔량 11%), 슬롯 7은 위험(잔량 7%).
+ *   이전 과제 필기를 지우지 않은 펜이 몇 자루 섞여 있는 것이 교실의 실제 모습이다.
+ *   크래들 2·3으로 갈수록 사용량을 낮춰(–22%p) 잔량 부족 펜이 무더기로 잡히지 않게 한다. */
+const CAPACITY_USED = [12, 38, 64, 21, 83, 47, 93, 71, 55, 30];
 
 /** 크래들 전체 목 구성 — 선택 학생 수에 따라 자동으로 늘고 준다 */
 const buildCradleFixture = (students, groupLabel, taskTitle, questions) => {
@@ -338,6 +357,8 @@ const CradleGradingModal = ({
   /** [POP-28 #11·#12] 채점 중인 펜 / 업로드가 끝나 펜 파일이 삭제된 펜 */
   const [gradingPenIds, setGradingPenIds] = useState([]);
   const [uploadedPenIds, setUploadedPenIds] = useState([]);
+  /* [SCR-07 v4.23] 꽂았지만 크래들이 잡지 못한 펜 — 슬롯에는 표시되지 않으므로 별도로 센다 */
+  const [unrecognized, setUnrecognized] = useState([]);
   /* [SCR-07 v2.0] 직접 매칭 — { [penId]: { studentId, bookCode } }.
    *   舊 「번호표 재체크 후 재거치」(v1.2~1.4) 폐기. 교사가 답안(기재란 손글씨)을 보고 학생을 고르면 그 자리에서 매칭된다.
    *   매칭 단위는 페이지가 아니라 **반(북코드) 답안 묶음** — 한 북코드 안의 이 과제 답안 페이지는 서식상 고정된 묶음이라
@@ -359,7 +380,7 @@ const CradleGradingModal = ({
    *   교사가 여러 자루를 다 고친 뒤 [다시 읽기]를 누를 때 한 번만 돈다. */
   const [judgedPenIds, setJudgedPenIds] = useState([]);
   const dockedRef = React.useRef({});
-  /** 첫 거치에서 연결 실패를 이미 낸 펜 — 다시 꽂으면 연결된다 */
+  /** 첫 거치에서 인식 실패를 이미 낸 펜 — 다시 꽂으면 연결된다 */
   const failedOnceRef = React.useRef(new Set());
 
   // ── Step 3·4: 채점 상태 ──
@@ -442,18 +463,24 @@ const CradleGradingModal = ({
     /* [SCR-07 v1.3] 다시 꽂힌 펜은 «아직 안 읽은» 상태로 되돌린다.
      * 빼는 사이에 기재란을 고쳐 썼을 수 있으므로, 이전 판정을 그대로 믿으면 안 된다. */
     setJudgedPenIds((prev) => prev.filter((id) => id !== pen.id));
+    setUnrecognized((prev) => prev.filter((u) => u.slot !== slot));
     setDocked((prev) => ({ ...prev, [slot]: { ...pen, link: 'linking' } }));
-    /* [SCR-07 v2.3] 연결 실패 — 접촉 불량 등으로 크래들이 펜을 못 잡는 경우. 첫 거치에서 한 번만 실패시켜
-     * 「빼서 다시 꽂으면 정상」 흐름을 보여 준다. 실패한 펜은 연결 완료·판정 대상에 들어가지 않는다. */
+    /* [SCR-07 v4.23] 펜 오류 — 접촉 불량·펜 고장으로 크래들이 펜을 잡지 못하는 경우.
+     *   이때 크래들은 «펜이 꽂혔다»는 사실조차 알지 못하므로 슬롯은 **빈 칸으로 되돌아간다**.
+     *   舊 v2.3은 붉은 「실패」 칩이 달린 펜을 그렸는데, 실물 크래들에서는 그런 표시가 없다.
+     *   첫 거치에서 한 번만 실패시켜 「빼서 다시 꽂으면 정상」 흐름을 보여 준다. */
     const willFail = pen.flaky && !failedOnceRef.current.has(pen.id);
     if (willFail) failedOnceRef.current.add(pen.id);
     appLogger.info('usb-pen-monitor', '펜 거치 감지', { mac: pen.mac, penId: pen.id, cradle: cradleOf(slot), slot: slotInCradle(slot) });
     setTimeout(() => {
-      setDocked((prev) => (prev[slot] ? { ...prev, [slot]: { ...prev[slot], link: willFail ? 'failed' : 'connected' } } : prev));
       if (willFail) {
-        appLogger.error('usb-pen-monitor', '펜 연결 실패', { mac: pen.mac, penId: pen.id, error: { message: 'USB handshake timeout', code: 'E-PEN-LINK-TIMEOUT' } });
+        // 인식 실패 → 슬롯에서 지운다(거치 표시 없음). 어느 자리인지만 안내로 남긴다
+        setDocked((prev) => { const next = { ...prev }; delete next[slot]; return next; });
+        setUnrecognized((prev) => (prev.some((u) => u.slot === slot) ? prev : [...prev, { slot, penId: pen.id }]));
+        appLogger.error('usb-pen-monitor', '펜 인식 실패 — 거치 미표시', { mac: pen.mac, penId: pen.id, error: { message: 'USB handshake timeout', code: 'E-PEN-LINK-TIMEOUT' } });
       } else {
-        appLogger.info('usb-pen-monitor', '펜 연결 완료', { mac: pen.mac, penId: pen.id, firmware: pen.firmware, battery: pen.battery });
+        setDocked((prev) => (prev[slot] ? { ...prev, [slot]: { ...prev[slot], link: 'connected' } } : prev));
+        appLogger.info('usb-pen-monitor', '펜 연결 완료', { mac: pen.mac, penId: pen.id, firmware: pen.firmware, battery: pen.battery, capacity: pen.capacity });
       }
     }, 700);
   };
@@ -467,7 +494,18 @@ const CradleGradingModal = ({
   };
   const toggleSlot = (slot) => (docked[slot] ? undockPen(slot) : dockPen(slot));
   const dockAll = () => penPool.forEach((p) => { if (!docked[p.slot]) dockPen(p.slot); });
-  const undockAll = () => setDocked({});
+  const undockAll = () => { setDocked({}); setUnrecognized([]); };
+
+  /* [SCR-07 v4.23] 화면에 보이는 저장 잔량 — 채점이 정상 완료돼 데이터가 지워진 펜은 잔량이 회복된다 (§4.6) */
+  const capacityOf = React.useCallback(
+    (pen) => (uploadedPenIds.includes(pen.id) ? 99 : pen.capacity),
+    [uploadedPenIds]
+  );
+  /** 거치된 펜 중 가장 적게 남은 잔량 — 크래들 단위 요약 */
+  const minCapacityIn = (cradleNo) => {
+    const pens = dockedPens.filter((p) => cradleOf(p.slot) === cradleNo);
+    return pens.length ? Math.min(...pens.map(capacityOf)) : null;
+  };
 
   const runFirmwareUpdate = (penId) => {
     let v = 0;
@@ -688,7 +726,7 @@ const CradleGradingModal = ({
     setTimeout(() => setJudgePhase('duplicate'), 1900 * t);
     setTimeout(() => {
       // 이번 판정이 실제로 읽은 펜을 확정한다 (그 사이 꽂힌 펜은 다음 판정 몫)
-      // 연결 실패 펜은 판정 대상이 아니므로 「읽은 펜」에도 넣지 않는다 — 넣으면 곧바로 「구성이 바뀌었다」로 오판한다
+      // 인식되지 않은 펜은 애초에 거치 목록에 없다 — 「읽은 펜」은 연결된 펜만으로 센다
       setJudgedPenIds(Object.values(dockedRef.current).filter((p) => p.link === 'connected').map((p) => p.id));
       setJudgePhase(null);
       setReading(false);
@@ -837,15 +875,29 @@ const CradleGradingModal = ({
           {!compact && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, color: 'rgba(255,255,255,0.72)' }}>
               <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, letterSpacing: 1 }}>◈ NEO SMARTPEN <span style={{ opacity: 0.7, letterSpacing: 0, marginLeft: 6 }}>크래들 {cradleNo}</span></span>
-              <span style={{ fontSize: 'var(--neo-font-size-xs)' }}>
+              <span style={{ fontSize: 'var(--neo-font-size-xs)', display: 'flex', alignItems: 'center', gap: 10 }}>
                 {connectorState === 'ready'
                   ? <span style={{ color: '#86EFAC', fontWeight: 700 }}>● 연결됨 · {dockedIn(cradleNo)}/{SLOTS_PER_CRADLE}</span>
                   : <span style={{ color: '#FCD34D', fontWeight: 700 }}>● 확인 중</span>}
+                {/* [SCR-07 v4.23] 저장 잔량 — 거치된 펜 중 가장 적게 남은 값 */}
+                {minCapacityIn(cradleNo) != null && (
+                  <span title="거치된 펜 중 저장 잔량이 가장 적은 펜의 남은 용량입니다. 채점이 끝나 데이터가 지워지면 회복됩니다."
+                    style={{ fontWeight: 700, color: minCapacityIn(cradleNo) < CAPACITY_LOW ? '#FCA5A5' : 'rgba(255,255,255,0.8)' }}>
+                    잔량 최저 {minCapacityIn(cradleNo)}%
+                  </span>
+                )}
               </span>
             </div>
           )}
           {compact && (
-            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 9, fontWeight: 800, marginBottom: 2, letterSpacing: 1 }}>크래들 {cradleNo}</div>
+            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 9, fontWeight: 800, marginBottom: 2, letterSpacing: 1 }}>
+              크래들 {cradleNo}
+              {minCapacityIn(cradleNo) != null && (
+                <span title="거치된 펜 중 저장 잔량이 가장 적은 펜의 남은 용량" style={{ marginLeft: 4, letterSpacing: 0, color: minCapacityIn(cradleNo) < CAPACITY_LOW ? '#FCA5A5' : 'rgba(255,255,255,0.45)' }}>
+                  · 잔량 {minCapacityIn(cradleNo)}%
+                </span>
+              )}
+            </div>
           )}
 
           <div style={{ display: 'flex', gap: compact ? 3 : 6 }}>
@@ -910,10 +962,17 @@ const CradleGradingModal = ({
 
                   {/* 슬롯 하단 상태 — 연결 단계는 배터리/펌웨어, 매핑 단계는 판정 배지 */}
                   <div style={{ position: 'absolute', top: wellH + (compact ? 24 : 86), left: '50%', transform: 'translateX(-50%)', width: compact ? 20 : 60, textAlign: 'center' }}>
-                    {/* [SCR-07 v2.3] 슬롯 아래는 연결 상태(연결 중 / 연결됨 / 연결 실패)만. 배터리·펌웨어는 아래 목록이 맡는다 */}
-                    {pen && step === 'connect' && (
+                    {/* [SCR-07 v4.23] 슬롯 아래는 연결 중 → **저장 잔량 %**.
+                        펜이 그려져 있다는 것 자체가 「연결됨」이므로(오류 펜은 표시되지 않는다)
+                        자리를 잔량에 내준다. 배터리·펌웨어는 아래 목록이 맡는다. */}
+                    {pen && step === 'connect' && pen.link === 'linking' && (
                       <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, display: 'inline-block', whiteSpace: 'nowrap',
-                        background: LINK_TOKEN[pen.link].bg, color: LINK_TOKEN[pen.link].color }}>{LINK_TOKEN[pen.link].label}</div>
+                        background: LINK_TOKEN.linking.bg, color: LINK_TOKEN.linking.color }}>{LINK_TOKEN.linking.label}</div>
+                    )}
+                    {pen && step === 'connect' && pen.link === 'connected' && (
+                      <div title={`저장 잔량 ${capacityOf(pen)}% — 펜에 쌓인 필기가 차지하고 남은 공간입니다.`}
+                        style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, display: 'inline-block', whiteSpace: 'nowrap',
+                          background: capacityToken(capacityOf(pen)).bg, color: capacityToken(capacityOf(pen)).color }}>{capacityOf(pen)}%</div>
                     )}
                     {/* 매핑 단계의 미니 크래들은 판정 배지를 「점」으로만 찍는다.
                         슬롯 폭이 34px라 `동기화 불가` 같은 라벨은 이웃 슬롯을 침범한다.
@@ -1022,8 +1081,19 @@ const CradleGradingModal = ({
               {connectorState === 'ready' && (
                 <>
                   {/* [SCR-07 v2.7] 안내 카드 없음 — 단계 안내는 타이틀 호버, 장애 반복 안내는 ⋯ 툴팁이 맡는다. 실패 안내만 텍스트로 */}
-                  {dockedPens.some((p) => p.link === 'failed') && (
-                    <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px' }}>⚠ 연결 실패한 펜은 뺐다가 다시 꽂아 주세요.</div>
+                  {/* [SCR-07 v4.23] 펜 오류 = 거치 미표시. 슬롯이 비어 보이는 이유를 여기서만 말한다 */}
+                  {unrecognized.length > 0 && (
+                    <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px', lineHeight: 1.7 }}>
+                      ⚠ 펜 {unrecognized.length}자루가 크래들에 표시되지 않습니다 — 펜 오류로 인식되지 않은 상태입니다.
+                      <span style={{ fontWeight: 600, color: '#B45309' }}> 꽂혀 있는데 빈 자리로 보이는 펜을 뺐다가 다시 꽂아 주세요. 계속 표시되지 않으면 [🚨 오류 접수]로 알려 주세요.</span>
+                    </div>
+                  )}
+                  {/* 저장 잔량 부족 — 다음 답안을 더 쓰지 못한다 */}
+                  {connectedPens.some((p) => capacityOf(p) < CAPACITY_LOW) && (
+                    <div style={{ color: '#B45309', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px', lineHeight: 1.7 }}>
+                      ⚠ 저장 잔량이 {CAPACITY_LOW}% 미만인 펜 {connectedPens.filter((p) => capacityOf(p) < CAPACITY_LOW).length}자루
+                      <span style={{ fontWeight: 600 }}> — 이전 필기가 남아 있는 펜입니다. 채점이 정상 완료되면 그 펜의 데이터가 지워져 잔량이 회복됩니다.</span>
+                    </div>
                   )}
 
                   {renderCradle()}
@@ -1033,10 +1103,20 @@ const CradleGradingModal = ({
                       거치 <span style={{ color: '#2A75F3' }}>{dockedPens.length}</span> / {SLOT_COUNT}개
                       <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
                       연결 완료 <span style={{ color: '#10B981' }}>{connectedPens.length}개</span>
-                      {dockedPens.some((p) => p.link === 'failed') && (
+                      {unrecognized.length > 0 && (
                         <>
                           <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
-                          연결 실패 <span style={{ color: '#DC2626' }}>{dockedPens.filter((p) => p.link === 'failed').length}개</span>
+                          <span title={`크래들이 인식하지 못해 거치 표시가 없는 펜 — ${unrecognized.map((u) => slotLabel(u.slot)).join(' · ')}`}>
+                            인식 안 됨 <span style={{ color: '#DC2626' }}>{unrecognized.length}자루</span>
+                          </span>
+                        </>
+                      )}
+                      {connectedPens.length > 0 && (
+                        <>
+                          <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
+                          <span title="거치된 펜 중 저장 잔량이 가장 적은 펜의 남은 용량">
+                            저장 잔량 최저 <span style={{ color: capacityToken(Math.min(...connectedPens.map(capacityOf))).color }}>{Math.min(...connectedPens.map(capacityOf))}%</span>
+                          </span>
                         </>
                       )}
                       {connectedPens.some((p) => p.needsUpdate) && (
@@ -1091,6 +1171,7 @@ const CradleGradingModal = ({
                                       <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 700 }}>펜 ID</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>연결</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>배터리</th>
+                                      <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>저장 잔량</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>펌웨어</th>
                                     </tr>
                                   </thead>
@@ -1104,6 +1185,13 @@ const CradleGradingModal = ({
                                             background: LINK_TOKEN[pen.link].bg, color: LINK_TOKEN[pen.link].color }}>{LINK_TOKEN[pen.link].label}</span>
                                         </td>
                                         <td style={{ padding: '7px 10px', textAlign: 'center', color: pen.battery < 30 ? '#DC2626' : '#475569' }}>{pen.battery}%</td>
+                                        {/* [SCR-07 v4.23] 저장 잔량 — 막대 + % */}
+                                        <td style={{ padding: '7px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                          <span style={{ display: 'inline-block', width: 34, height: 5, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle', marginRight: 6 }}>
+                                            <span style={{ display: 'block', width: `${capacityOf(pen)}%`, height: '100%', background: capacityToken(capacityOf(pen)).bar }} />
+                                          </span>
+                                          <span style={{ fontWeight: 700, color: capacityToken(capacityOf(pen)).color }}>{capacityOf(pen)}%</span>
+                                        </td>
                                         <td style={{ padding: '7px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                           <span style={{ color: pen.needsUpdate ? '#DC2626' : '#94A3B8' }}>{pen.firmware}</span>
                                           {pen.needsUpdate && fwUpdating[pen.id] == null && (
