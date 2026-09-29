@@ -132,22 +132,27 @@ export const makeCriterion = () => {
 // 교사가 이미 입력한 칸(비어있지 않은 name·desc)은 보존하고 빈 칸만 채운다.
 export const AI_CRITERIA_NAMES = ['내용 이해와 적용', '논리적 구성', '표현의 정확성', '근거의 타당성', '창의적 사고'];
 export const AI_QUALITIES = ['탁월하게', '충실히', '대체로', '부분적으로', '미흡하게'];
+/* [v3.86] 생성 단위 = 채점 기준 카드. 칸 단위로 섞어 채우지 않는다.
+ *   기준명·평가 내용이 하나라도 입력된 카드는 **통째로 제외**하고, 완전히 빈 카드만 AI가 설계한다.
+ *   예) 채점 1은 교사가 입력, [+ 채점 기준 추가]로 만든 채점 2는 비어 있음 → 채점 2만 생성된다.
+ *   (舊: 카드 안의 빈 칸까지 골라 채워, 교사가 일부만 쓴 채점 1에 AI 문장이 섞여 들어갔다)
+ *   반환: filled = 생성한 카드 수, skipped = 입력된 내용이 있어 제외한 카드 수 */
 export const aiFillCriteria = (criteria, area = '평가 영역') => {
   const qualityFor = (i, n) => (n <= 1 ? AI_QUALITIES[0] : AI_QUALITIES[Math.round((i / (n - 1)) * (AI_QUALITIES.length - 1))]);
   let filled = 0, skipped = 0;
   const next = criteria.map((c, ci) => {
-    const aiName = AI_CRITERIA_NAMES[ci % AI_CRITERIA_NAMES.length];
-    const name = (c.name && c.name.trim()) ? (skipped++, c.name) : (filled++, aiName);
+    if (criterionHasContent(c)) { skipped++; return c; }
+    filled++;
+    const name = AI_CRITERIA_NAMES[ci % AI_CRITERIA_NAMES.length];
     const n = c.rows.length;
-    const rows = c.rows.map((r, ri) => {
-      if (r.desc && r.desc.trim()) { skipped++; return r; }
-      filled++;
-      return { ...r, desc: `${area} 영역에서 '${name}'을(를) ${qualityFor(ri, n)} 충족함. (${LEVEL_WORDS[ri] || ''} 수준)` };
-    });
+    const rows = c.rows.map((r, ri) => ({ ...r, desc: `${area} 영역에서 '${name}'을(를) ${qualityFor(ri, n)} 충족함. (${LEVEL_WORDS[ri] || ''} 수준)` }));
     return { ...c, name, rows };
   });
   return { criteria: next, filled, skipped };
 };
+/** 채점 기준 카드 1개에 교사가 입력한 내용(기준명·평가 내용)이 있는지 — 배점·점수는 보지 않는다 */
+export const criterionHasContent = (c) =>
+  !!((c.name && c.name.trim()) || (c.rows || []).some((r) => r.desc && r.desc.trim()));
 // 평가 기준 단계 최초 진입 시 — 문항당 범주(채점 기준) 3개 × 평가 내용 3개(점수 구간)를 설계하고 빈 칸을 모두 채운다
 export const DEFAULT_CRITERIA_COUNT = 1; // [v3.82] 문항당 채점 기준 1개 · 평가 내용 3개 기본 (舊 3개)
 export const designRubric = (area) => {

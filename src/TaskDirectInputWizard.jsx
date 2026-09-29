@@ -5,21 +5,21 @@
  * 인과관계(입력 순서):
  *   문항 내용이 있어야 채점 기준을 만들 수 있으므로 문항 입력이 채점 기준 설정보다 선행한다.
  *   - [v3.74] 자동평가 폐기 — 평가 기준은 자율평가 루브릭 단일 체제.
- *   - Step 4 「평가 기준」 진입 시 성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계한다.
- *     문항별 범주(채점 기준) 3개 기본(1~5개 추가·삭제), 범주마다 평가 내용 3개(점수 구간 3개 고정, 배점 → 0점).
+ *   - [v3.85] Step 4 「평가 기준」 진입 시 루브릭 자동 설계 폐기 — 빈 채점 기준 1개(평가 내용 3칸)로 시작하고
+ *     교사가 직접 입력하거나 문항별 [🤖 AI 채점 기준 생성]으로 채운다. 채점 기준 1~5개 추가·삭제.
  *     채점 등급(3/4/5등급) 기본값은 학교급별(초등 3 / 중·고등 5).
  *   - 입력한 점수는 등급으로 환산되어 결과를 낸다.
  *
  * Step 1 기본 정보 → Step 2 문항 입력 → Step 3 성취기준 → Step 4 평가 기준 → Step 5 그룹 배포·출력
  *
- * 주의: 「AI 루브릭 자동 설계」는 현재 샘플(stub) 동작이며 실제 LLM 연동은 미구현이다.
+ * 주의: 「AI 채점 기준 생성」은 현재 샘플(stub) 동작이며 실제 LLM 연동은 미구현이다.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
   subjectsOf, gradesOf, competenciesOf, evalAreasOf,
   defaultGradeScale,
   defaultInterval, buildScoreRows, makeCriterion,
-  aiFillCriteria, designRubric, criteriaHaveContent,
+  aiFillCriteria, criteriaHaveContent,
 } from './lib/gradingShared';
 import { buildDirectInputTask } from './lib/taskSchema';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
@@ -93,7 +93,7 @@ const makeQuestion = (idx) => ({
   standards: [],        // [v2.31] 문항별 성취기준 다중 선택 (sid 배열)
   points: '',           // 문항 총 배점 (채점 기준 배점 합과 일치해야 함)
   modelAnswer: { html: '' }, // [v2.67] contenteditable HTML 단일 (텍스트+이미지 inline)
-  criteria: [makeCriterion()], // 채점 기준 1~5개 — Step 4 최초 진입 시 AI가 자동 설계로 교체
+  criteria: [makeCriterion()], // 채점 기준 1~5개 — [v3.85] 빈 기준 1개로 시작 (진입 시 자동 설계 폐기)
 });
 
 // 인라인 에디터 — 툴바가 붙은 편집 영역(textarea가 곧 에디터). 서식 버튼은 표시용.
@@ -151,7 +151,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   const [resultScale, setResultScale] = useState(3); // 등급 환산 체계
   const [resultMode, setResultMode] = useState('grade'); // [v3.82] 채점 결과 표시 — 'grade'(등급) | 'score'(점수)
   const [selfScale, setSelfScale] = useState(3);     // 채점 등급(3/4/5) — Step 4 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정. 점수 구간은 3개 고정
-  // [v3.74] Step 4 진입 시 AI 루브릭 자동 설계 완료 여부 { [qid]: true } — 문항당 1회만 설계, 이후는 교사 수정 보존
+  // Step 4 진입 처리 완료 여부 { [qid]: true } — [v3.85] 자동 설계 폐기 후에는 채점 등급 기본값 1회 적용 판별에만 쓴다
   const [rubricReady, setRubricReady] = useState({});
   const [worksheetPreviewOpen, setWorksheetPreviewOpen] = useState(false); // [TSK-05 v2.30] 평가 답안지 미리보기 모달
   const [stdOpen, setStdOpen] = useState({}); // 문항별 성취기준 목록 펼침 상태 { [qid]: bool }
@@ -218,28 +218,17 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
   // [v3.47] selfScale 변경 시 — resultScale(등급 환산 체계)만 동기화. 채점기준 c.levels(점수 행 수)는 채점기준별 자유 유지.
   useEffect(() => { setResultScale(selfScale); }, [selfScale]);
 
-  // [v3.74] Step 4 「평가 기준」 진입 시 — 아직 설계되지 않은 문항의 채점 루브릭을 AI가 자동 설계 (샘플 stub)
-  //   · 성취기준(핵심평가영역)·문항 내용을 근거로 범주(채점 기준) 3개 × 평가 내용 3개(점수 구간 3개 고정)
-  //   · 채점 등급 기본값 = 학교급별 (초등 3등급 / 중·고등 5등급). 최초 1회만 적용, 이후 교사 수정 보존
-  //   · 교사가 이미 채점 기준을 입력한 문항(복원 데이터 등)은 건드리지 않고 설계 완료로 간주
+  // [v3.85] 진입 시 루브릭 자동 설계 폐기 — 평가 기준 단계에 들어가도 AI가 채점 기준을 채우지 않는다.
+  //   문항은 빈 채점 기준 1개(평가 내용 3칸)로 시작하고, 교사가 직접 입력하거나 문항별 [🤖 AI 채점 기준 생성]으로 채운다.
+  //   (舊 v3.74: 진입 즉시 designRubric으로 기준명·평가 내용을 채우고 토스트로 알렸다)
+  //   채점 등급 기본값(학교급별 — 초등 3등급 / 중·고등 5등급)만 최초 진입 때 1회 적용한다.
   useEffect(() => {
     if (step !== 4) return;
     const pending = questions.filter((q) => !rubricReady[q.id]);
     if (pending.length === 0) return;
-    const scale = defaultGradeScale(basicInfo.schoolLevel);
-    if (Object.keys(rubricReady).length === 0) setSelfScale(scale);
-    const designed = {};
-    pending.filter((q) => !criteriaHaveContent(q.criteria)).forEach((q) => {
-      const std = MOCK_STANDARDS.find((x) => x.id === q.standard);
-      designed[q.id] = designRubric(std?.area || '평가 영역');
-    });
-    setQuestions((qs) => qs.map((q) => {
-      const criteria = designed[q.id];
-      if (!criteria) return q;
-      return { ...q, criteria }; // [v3.77] 배점·총 배점은 비워 둔다 (교사 입력)
-    }));
+    if (Object.keys(rubricReady).length === 0) setSelfScale(defaultGradeScale(basicInfo.schoolLevel));
     setRubricReady((p) => { const n = { ...p }; pending.forEach((q) => { n[q.id] = true; }); return n; });
-    if (Object.keys(designed).length > 0) toast(`성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. (${basicInfo.schoolLevel} 기본 ${scale}등급 · 채점 기준 1개 · 평가 내용 3개) 검토 후 수정하세요.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   // [v3.77] 舊 [v3.45] 브라우저 닫기 시 균등 재분배 자동 저장 폐기 — 총 배점은 범주 배점에 영향을 주지 않는다
@@ -636,8 +625,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
     const std = MOCK_STANDARDS.find((s) => s.id === q.standard);
     const { criteria, filled, skipped } = aiFillCriteria(q.criteria, std?.area || '평가 영역');
     updateQuestion(qid, { criteria });
-    if (filled === 0) toast('빈 칸이 없습니다. ✕ 버튼으로 칸을 비운 뒤 다시 실행하세요.');
-    else toast(`빈 칸 ${filled}개를 AI가 채웠습니다. 수동 수정한 ${skipped}개 칸은 보존됨. (성취기준 기반 — 검토·수정하세요)`);
+    if (filled === 0) toast('비어 있는 채점 기준이 없습니다. [+ 채점 기준 추가]로 새 기준을 만들거나, 기준명·평가 내용을 비운 뒤 다시 실행하세요.');
+    else toast(`비어 있는 채점 기준 ${filled}개를 AI가 설계했습니다.${skipped ? ` 내용이 입력된 ${skipped}개는 그대로 두었습니다.` : ''} (성취기준 기반 — 검토·수정하세요)`);
   };
 
   // ── 합계/환산 ──────────────────────────────────────────────────────
@@ -1167,8 +1156,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                     <span tabIndex={0} aria-label="성취기준의 활용 안내" style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #94A3B8', color: '#64748B', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help', lineHeight: 1 }}>i</span>
                     <span className="std-tip-body" style={{ position: 'absolute', left: 0, top: 22, zIndex: 20, width: 380, padding: '10px 12px', background: '#1E293B', color: 'white', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', lineHeight: 1.6, boxShadow: '0 8px 20px rgba(15,23,42,0.25)', display: 'none' }}>
                       <div style={{ fontWeight: 800, marginBottom: 4 }}>ℹ️ 성취기준의 활용</div>
-                      <div>• 평가 기준 단계 진입 시 성취기준·문항 내용을 분석해 채점 루브릭을 자동 설계합니다.</div>
-                      <div>• AI 채점 기준 생성 시에도 평가 내용의 참고 자료로 활용됩니다.</div>
+                      <div>• 평가 기준 단계에서 [🤖 AI 채점 기준 생성]을 누르면 성취기준·문항 내용을 분석해 채점 기준을 채웁니다.</div>
                       <div style={{ marginTop: 6, color: '#FDE68A' }}>⚠️ 1개 권장 — 여러 개를 고르면 모두 채점 기준에 반영되며, 평가 내용이 많아져 AI 응답이 느려지거나 실패할 수 있습니다.</div>
                     </span>
                     <style>{`.std-tip:hover .std-tip-body, .std-tip:focus-within .std-tip-body { display: block !important; }`}</style>
@@ -1288,7 +1276,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
           );
         })()}
 
-        {/* Step 4 — 평가 기준 ([v3.74] 자동평가 폐기 → 자율평가 루브릭 단일 체제. 진입 시 AI 자동 설계) */}
+        {/* Step 4 — 평가 기준 ([v3.74] 자동평가 폐기 → 자율평가 루브릭 단일 체제. [v3.85] 진입 시 자동 설계 폐기) */}
         {step === 4 && (
           <div>
             <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 16 }}>⚖️ Step 4. 평가 기준</h2>
@@ -1303,7 +1291,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
               return (
               <div>
                 <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '10px 12px', borderRadius: 8, marginBottom: 14, lineHeight: 1.6 }}>
-                  🤖 성취기준과 문항 내용을 분석해 채점 루브릭을 자동 설계했습니다. 문항마다 채점 기준 1개 · 평가 내용 3개를 기본으로 제공하며, 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다. 채점 결과(등급/점수)는 맨 아래에서 정합니다.
+                  ✍️ 문항마다 채점 기준을 직접 입력하거나, 문항의 [🤖 AI 채점 기준 생성]을 눌러 성취기준·문항 내용으로 채울 수 있습니다. 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다. 채점 결과(등급/점수)는 맨 아래에서 정합니다.
                 </div>
 
                 {/* 문항 탭 */}
