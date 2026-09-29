@@ -25,12 +25,18 @@ const recentDays = () => {
 
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
+/* [BRD-16 v2.9] 첨부 제한 — 개수 5개, 파일 하나당 10MB.
+ *   메일로 되돌려 보내는 자료라 한 통에 담기는 크기를 넘지 않게 한다. */
+const MAX_FILES = 5;
+const MAX_BYTES = 10 * 1024 * 1024;
+
 const IncidentReportDialog = ({ open, onClose, onSubmitted, context, taskOptions = [] }) => {
   const [symptom, setSymptom] = useState(SYMPTOMS[0].label);
   const [detail, setDetail] = useState('');
   const [days, setDays] = useState(recentDays());
   const [occurredAt, setOccurredAt] = useState('');   // [v2.7] 문제가 생긴 날 (최근 3일 중 1)
   const [files, setFiles] = useState([]);             // [v2.7] 선생님이 붙인 파일
+  const [fileError, setFileError] = useState('');     // [v2.9] 개수·용량 초과 안내
   const [pickedTask, setPickedTask] = useState('');   // [v2.8] 화면 밖에서 접수할 때 교사가 고르는 과제
   const [pickedGroup, setPickedGroup] = useState(''); // [v2.8] 〃 그룹
   const [submitting, setSubmitting] = useState(false);
@@ -40,7 +46,7 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context, taskOptions
     const d = recentDays();
     setDays(d); setOccurredAt(d[0].key);
     setSymptom(SYMPTOMS[0].label); setDetail(''); setFiles([]); setSubmitting(false);
-    setPickedTask(''); setPickedGroup('');
+    setPickedTask(''); setPickedGroup(''); setFileError('');
   }, [open]);
   if (!open) return null;
 
@@ -123,21 +129,15 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context, taskOptions
             )}
           </div>
 
-          {/* [v2.7] 언제 — 최근 3일 중 하루 */}
+          {/* [v2.9] 언제 — 최근 3일 중 하루. 칩 3개는 자리를 많이 쓰고 선택지가 늘면 줄바꿈이 생겨 셀렉트로 바꿨다 */}
           <div>
             <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B', marginBottom: 8 }}>언제 생긴 문제인가요?</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {days.map((d) => {
-                const on = occurredAt === d.key;
-                return (
-                  <button key={d.key} type="button" onClick={() => setOccurredAt(d.key)}
-                    style={{ flex: 1, padding: '8px 10px', borderRadius: 10, border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: on ? '#1D4ED8' : '#1E293B' }}>{d.name}</div>
-                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: on ? '#3B82F6' : '#94A3B8', marginTop: 2 }}>{d.key.slice(5).replace('-', '. ')}.</div>
-                  </button>
-                );
-              })}
-            </div>
+            <select value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', boxSizing: 'border-box' }}>
+              {days.map((d) => (
+                <option key={d.key} value={d.key}>{d.name} ({d.key})</option>
+              ))}
+            </select>
             <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 6 }}>고른 날짜의 진단 로그가 함께 전달됩니다. 더 이전 일은 상세 내용에 적어 주세요.</div>
           </div>
 
@@ -167,16 +167,32 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context, taskOptions
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, border: '1px dashed #CBD5E1', background: '#F8FAFC', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569' }}>
               📎 파일 선택
               <input type="file" multiple style={{ display: 'none' }}
-                onChange={(e) => { setFiles((prev) => [...prev, ...Array.from(e.target.files || [])].slice(0, 5)); e.target.value = ''; }} />
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files || []);
+                  e.target.value = '';
+                  const tooBig = picked.filter((f) => f.size > MAX_BYTES);
+                  const ok = picked.filter((f) => f.size <= MAX_BYTES);
+                  setFiles((prev) => {
+                    const merged = [...prev, ...ok];
+                    const over = merged.length > MAX_FILES;
+                    setFileError(
+                      tooBig.length ? `${tooBig.map((f) => f.name).join(', ')} — 파일 하나가 10MB를 넘어 첨부하지 못했습니다.`
+                        : over ? `첨부는 최대 ${MAX_FILES}개까지입니다. 앞의 ${MAX_FILES}개만 담았습니다.`
+                          : ''
+                    );
+                    return merged.slice(0, MAX_FILES);
+                  });
+                }} />
             </label>
-            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginLeft: 10 }}>화면 캡처·사진 등 최대 5개</span>
+            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginLeft: 10 }}>화면 캡처·사진 등 최대 {MAX_FILES}개 · 파일당 10MB 이하</span>
+            {fileError && <div style={{ marginTop: 6, fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ {fileError}</div>}
             {files.length > 0 && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {files.map((f, i) => (
                   <div key={`${f.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-xs)', color: '#475569', background: '#F1F5F9', borderRadius: 6, padding: '5px 8px' }}>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                     <span style={{ color: '#94A3B8' }}>{fmtBytes(f.size)}</span>
-                    <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} aria-label={`${f.name} 첨부 제거`}
+                    <button type="button" onClick={() => { setFiles((prev) => prev.filter((_, j) => j !== i)); setFileError(''); }} aria-label={`${f.name} 첨부 제거`}
                       style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>✕</button>
                   </div>
                 ))}
