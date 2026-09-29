@@ -187,23 +187,41 @@ const CradleStrip = ({ compact, docked, dotOf, labelOf, selectedSlots = [], onSl
 };
 
 /* 답안지 목(mock) — 미리보기·썸네일 공용 */
-const ANSWER_LINES = ['작품 속 인물은 처음에 현실을 받아들이지 못하지만', '사건을 겪으며 태도가 점점 달라진다.', '이 변화가 작품의 주제를 드러낸다고 생각한다.', '특히 마지막 장면의 선택이 가장 중요하다.'];
-const SheetMock = ({ studentLabel, question, sheetNo, small, answer }) => (
+/* 쓴 사람마다 답안 내용과 글씨가 다르다 — 같은 이름이 적힌 답안지(중복)도 내용·글씨로 가려낼 수 있게 */
+const ANSWER_SETS = [
+  ['작품 속 인물은 처음에 현실을 받아들이지 못하지만', '사건을 겪으며 태도가 점점 달라진다.', '이 변화가 작품의 주제를 드러낸다고 생각한다.', '특히 마지막 장면의 선택이 가장 중요하다.'],
+  ['주인공은 가족을 지키려고 끝까지 버틴다.', '처음엔 두려워하지만 점점 용기를 낸다.', '나라면 그렇게 하지 못했을 것 같다.', '작가는 희생의 의미를 말하고 싶었던 것 같다.'],
+  ['인물의 심리는 세 단계로 변한다.', '① 부정 ② 갈등 ③ 수용', '갈등 단계에서 친구와의 대화가 전환점이다.', '따라서 주제는 「관계 속의 성장」이다.'],
+  ['이 소설은 결국 선택에 대한 이야기다.', '인물은 쉬운 길 대신 어려운 길을 고른다.', '그 이유는 자존심 때문이라고 본다.', '마지막 문장이 여운을 남긴다.'],
+  ['처음 부분의 배경 묘사가 분위기를 만든다.', '비 오는 장면은 인물의 슬픔을 나타낸다.', '후반부에 날씨가 맑아지는 것도 의미가 있다.', '심리 변화를 날씨로 보여준 점이 좋았다.'],
+];
+const HAND_STYLES = [
+  { transform: 'skewX(-6deg)', color: '#1E293B', letterSpacing: 0 },
+  { transform: 'skewX(8deg)', color: '#1E3A8A', letterSpacing: '1.5px', fontWeight: 700 },
+  { transform: 'rotate(-1deg)', color: '#334155', letterSpacing: '-0.5px' },
+  { transform: 'skewX(-12deg)', color: '#0F172A', letterSpacing: '2px' },
+  { transform: 'none', color: '#1E40AF', letterSpacing: '0.5px', fontWeight: 600 },
+];
+const SheetMock = ({ studentLabel, question, sheetNo, small, answer, writer = 0 }) => {
+  const lines = ANSWER_SETS[writer % ANSWER_SETS.length];
+  const hand = HAND_STYLES[writer % HAND_STYLES.length];
+  return (
   <div style={{ background: 'white', borderRadius: 6, padding: small ? '8px 8px' : '18px 20px', boxShadow: small ? 'none' : '0 4px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', gap: small ? 3 : 8, height: small ? '100%' : 'auto', minHeight: small ? 0 : '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
     <div style={{ fontSize: small ? 9 : 14, fontWeight: 900, color: '#1E3A8A' }}>AiGLE</div>
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: small ? 8 : 12 }}>
       <tbody>
-        <tr><td style={{ border: '1px solid #CBD5E1', background: '#F8FAFC', padding: small ? 1 : '4px 6px', fontWeight: 700 }}>학생</td><td style={{ border: '1px solid #CBD5E1', padding: small ? 1 : '4px 6px', color: '#1E3A8A', fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: small ? 8 : 18 }}>{studentLabel || '(   )학년 (   )반 (   )번'}</td></tr>
+        <tr><td style={{ border: '1px solid #CBD5E1', background: '#F8FAFC', padding: small ? 1 : '4px 6px', fontWeight: 700 }}>학생</td><td style={{ border: '1px solid #CBD5E1', padding: small ? 1 : '4px 6px', color: '#1E3A8A', fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: small ? 8 : 18 }}><span style={{ display: 'inline-block', ...hand }}>{studentLabel || '(   )학년 (   )반 (   )번'}</span></td></tr>
         <tr><td style={{ border: '1px solid #CBD5E1', background: '#F8FAFC', padding: small ? 1 : '4px 6px', fontWeight: 700 }}>문항</td><td style={{ border: '1px solid #CBD5E1', padding: small ? 1 : '4px 6px' }}>{question ? `${question} · ${sheetNo}장` : '__'}</td></tr>
       </tbody>
     </table>
     {Array.from({ length: small ? 5 : 12 }, (_, i) => (
       <div key={i} style={{ borderBottom: '1px dashed #CBD5E1', height: small ? 6 : 32, flex: 'none', display: 'flex', alignItems: 'flex-end', paddingLeft: 8, overflow: 'hidden' }}>
-        {answer && !small && i < ANSWER_LINES.length && <span style={{ fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: 19, color: '#1E293B', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ANSWER_LINES[(i + (sheetNo || 0)) % ANSWER_LINES.length]}</span>}
+        {answer && !small && i < lines.length && <span style={{ fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: 19, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '100%', ...hand }}>{lines[(i + (sheetNo || 0) - 1 + lines.length) % lines.length]}</span>}
       </div>
     ))}
   </div>
-);
+  );
+};
 
 /* ════════════════════════════════════════════════════════════
  * 본 화면
@@ -1100,7 +1118,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
         {info.kind === 'dup' && (
           <div style={{ ...noteBox('warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div><strong>⚠ 같은 학생에 두 펜이 붙었습니다.</strong> 이 펜과 슬롯 {rivals.map((r) => slotShort(r.slot)).join(' · ')} 펜이 모두 {st.name}(으)로 읽혔습니다. 아래 답안을 보고 정해 주세요.</div>
+            <div><strong>⚠ 같은 학생에 두 펜이 붙었습니다.</strong> 이 펜과 슬롯 {rivals.map((r) => slotShort(r.slot)).join(' · ')} 펜이 모두 {st.name}(으)로 읽혔습니다. 답안지에 적힌 이름은 같아도 <strong>답안 내용과 글씨</strong>가 다릅니다 — 미리보기에서 두 펜을 번갈아 보고 정해 주세요.</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button type="button" style={{ ...primaryBtn(true), padding: '5px 14px' }} onClick={() => setDupPick((d) => ({ ...d, [info.sid]: pen.id }))}>이 펜이 {st.name}의 답안입니다</button>
               <span style={{ color: '#94A3B8' }}>또는</span>
@@ -1326,6 +1344,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         : (() => { const s = studentById(pen.identSid || pen.owner); return s ? `${s.grade} ${s.name}` : ''; })();
       const own = QUESTIONS.flatMap((q) => Array.from({ length: pen.pages[q.id] || 0 }, (_, i) => ({
         id: `${pen.id}-${q.id}-${i}`, label: `${q.title}-${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: handLabel, question: q.title, sheetNo: i + 1, kind: info.kind,
+        writer: pen.owner ? GROUP.findIndex((g) => g.id === pen.owner) : pen.slot, // 실제로 쓴 사람 — 답안지에 적힌 이름과 다를 수 있다
         warn: pen.scenario === 'other_task' ? '다른 과제 데이터' : pen.scenario === 'other_group' ? `${pen.detected} 답안지` : null,
       })));
       /* [SCR-07 v2.0] 비정상 펜은 이 과제의 다른 반 답안까지 열람한다(매칭은 불가) — 정상 펜은 선택 그룹 답안만 */
@@ -1338,7 +1357,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const s = scanModel.students.find((x) => x.id === sel.id);
     if (!s) return [];
     return s.qs.flatMap((x) => x.list.map((r, i) => ({ id: r.id, label: r.origin === 'existing' ? `${x.q.title} · 기존 답안` : `${x.q.title}-${i + 1}`, sub: r.name, url: files.find((f) => f.id === r.fid)?.url,
-      studentLabel: `${s.grade} ${s.name}`, question: x.q.title, sheetNo: i + 1, existing: r.origin === 'existing',
+      studentLabel: `${s.grade} ${s.name}`, question: x.q.title, sheetNo: i + 1, existing: r.origin === 'existing', writer: GROUP.findIndex((g) => g.id === (r.home?.sid || r.sid)),
       warn: i >= x.q.sheets && !x.hasExisting ? `${x.q.title} 기준 ${x.q.sheets}장 초과` : r.conf === 'medium' ? 'AI가 문항을 추정한 장' : null })));
   };
 
@@ -1375,7 +1394,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               <div style={{ borderRadius: 8, outline: k === i ? '3px solid #60A5FA' : 'none', outlineOffset: 2 }}>
                 {p.url
                   ? <img src={p.url} alt={p.label} style={{ display: 'block', width: '100%', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: 'white' }} />
-                  : <SheetMock studentLabel={p.studentLabel} question={p.question} sheetNo={p.sheetNo} answer={!p.existing} />}
+                  : <SheetMock studentLabel={p.studentLabel} question={p.question} sheetNo={p.sheetNo} answer={!p.existing} writer={Math.max(0, p.writer ?? 0)} />}
               </div>
             </div>
           ))}
