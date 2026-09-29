@@ -211,7 +211,23 @@ const SheetMock = ({ studentLabel, question, sheetNo, small, answer }) => (
 const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit, onCompleted } = {}) => {
   const TASK = task ? { ...BASE_TASK, ...task } : BASE_TASK; // 목록에서 고른 과제명을 그대로 쓴다
   /* 채점 관리와 같은 목록에서 [크래들 일괄 채점]/[스캔 채점] 버튼으로 들어온다 — 고른 학생만 대상 */
-  const ROSTER = React.useMemo(() => (targetIds ? GROUP.filter((s) => targetIds.includes(s.id)) : DEFAULT_ROSTER), [targetIds]);
+  /* 매핑 중 「선택하지 않은 학생」에게 답안을 매칭하면 그 학생도 채점 대상에 더한다 */
+  const [addedIds, setAddedIds] = useState([]);
+  const ROSTER = React.useMemo(() => {
+    const base = targetIds ? GROUP.filter((s) => targetIds.includes(s.id)) : DEFAULT_ROSTER;
+    return addedIds.length ? GROUP.filter((s) => base.includes(s) || addedIds.includes(s.id)) : base;
+  }, [targetIds, addedIds]);
+  const addTarget = (sid) => { if (!ROSTER.some((s) => s.id === sid)) setAddedIds((prev) => [...prev, sid]); };
+  /* 학생 선택 목록 — 선택 그룹 전체 명단. 미채점 목록에서 고르지 않은 학생은 따로 묶는다 */
+  const studentOptions = () => {
+    const others = GROUP.filter((s) => !ROSTER.includes(s));
+    return (
+      <>
+        <optgroup label="채점 대상 학생">{ROSTER.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}</optgroup>
+        {others.length > 0 && <optgroup label="선택하지 않은 학생 — 매칭하면 채점 대상에 추가">{others.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}</optgroup>}
+      </>
+    );
+  };
   const isTarget = (sid) => ROSTER.some((s) => s.id === sid);
   const fromList = !!onExit;
   const [source, setSource] = useState(initialSource); // 'cradle' | 'scan'
@@ -308,7 +324,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all');
     setProgress(0); setGradingDone(false); setGradedIds([]); setFailedIds([]); setRetrying(false); failedOnce.current = false;
     setDocked({}); setUnrecognized([]); failedDock.current = new Set(); setJudged([]); setManual({}); setDupPick({}); setAssignPick({}); setFwDone({}); setFwProg({}); setDeletedPens([]);
-    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false);
+    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false); setAddedIds([]);
     if (nextSource === 'cradle' && !connectorSessionReady) setConnector('checking');
     files.forEach((f) => f.url && URL.revokeObjectURL(f.url));
     splitJobs.forEach((j) => { splitCancel.current.add(j.id); j.pages.forEach((p) => p.url && URL.revokeObjectURL(p.url)); });
@@ -399,7 +415,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, docked, judged, manual, dupPick, deletedPens]);
+  }, [source, docked, judged, manual, dupPick, deletedPens, ROSTER]);
 
   /* ════════════ 스캔 — 1단계 업로드 · 페이지 분리 ════════════ */
   const appendFiles = (entries) => setFiles((prev) => {
@@ -556,7 +572,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         : `⚠ ${parts.join(' · ')}을(를) 먼저 정리해 주세요. 모든 문항이 기준 장수를 채우고 확인이 끝나야 채점을 시작할 수 있습니다.`,
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 올린 파일에서 이 학생들의 답안지를 찾지 못했습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안지만 서버로 올라갑니다.${unc.length ? ` 미분류 ${unc.length}장은 올리지 않습니다.` : ''}` };
-  }, [source, rows]);
+  }, [source, rows, ROSTER]);
   const patchRow = (id, patch) => setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const unlinkRow = (r) => patchRow(r.id, { sid: null, q: null, sheet: null, conf: 'low', reason: r.origin === 'existing' ? '기존 답안 — 스캔본이 자리를 대신하고 있습니다' : '미연결 — 연결을 해제한 답안지입니다' });
   const restoreExisting = (r) => setRows((prev) => prev.map((x) => {
@@ -1042,11 +1058,11 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         이 답안을
         <select value={pick} onChange={(e) => setAssignPick((p) => ({ ...p, [penId]: e.target.value }))} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', minWidth: 170 }}>
           <option value="">학생 선택</option>
-          {ROSTER.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}
+          {studentOptions()}
         </select>
         의 답안으로
         <button type="button" disabled={!pick} style={{ ...primaryBtn(!!pick), padding: '5px 14px' }}
-          onClick={() => { setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
+          onClick={() => { addTarget(pick); setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
       </div>
     );
   };
@@ -1113,6 +1129,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const assignUncRow = (r) => {
     const sid = assignPick[`${r.id}:s`]; const q = Number(assignPick[`${r.id}:q`]);
     if (!sid || !q) return;
+    addTarget(sid);
     const n = rows.filter((x) => x.sid === sid && x.q === q).length;
     patchRow(r.id, { sid, q, sheet: n + 1, conf: 'high', reason: null });
     setAssignPick((p) => ({ ...p, [`${r.id}:s`]: '', [`${r.id}:q`]: '' }));
@@ -1153,7 +1170,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                 <select value={assignPick[`${r.id}:s`] || ''} onChange={(e) => setAssignPick((p) => ({ ...p, [`${r.id}:s`]: e.target.value }))}
                   style={{ flex: '1 1 140px', padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
                   <option value="">학생 선택</option>
-                  {ROSTER.map((st) => <option key={st.id} value={st.id}>{st.no} {st.name}</option>)}
+                  {studentOptions()}
                 </select>
                 <select value={assignPick[`${r.id}:q`] || ''} onChange={(e) => setAssignPick((p) => ({ ...p, [`${r.id}:q`]: e.target.value }))}
                   style={{ flex: '0 1 100px', padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
