@@ -49,7 +49,6 @@ import NoticePopupDemo from './NoticePopupDemo';
 import TaskDetail from './TaskDetail';
 import TaskDeleteDialog from './TaskDeleteDialog';
 import MyInfo from './MyInfo';
-import BatchGradingUnified from './BatchGradingUnified'; // 채점 관리 › 일괄 채점 통합 (크래들·스캔 통합 구조 시안)
 
 // ─────────────────────────────────────────────
 // 해시 기반 딥링크 라우트 맵
@@ -668,7 +667,7 @@ function Setting() {
             <GradingManagement activeSubMenu={activeSubMenu} variant="v2" />
           ) : activeSubMenu === '일괄 채점 통합' ? (
             /* 크래들·스캔 일괄 채점을 한 구조로 묶은 시안 — 1단계만 입력 방식별, 데이터 매핑부터 공통 구조 */
-            <BatchGradingUnified />
+            <GradingManagement activeSubMenu={activeSubMenu} variant="unified" />
           ) : (
             <GradingManagement activeSubMenu="채점 관리" />
           )

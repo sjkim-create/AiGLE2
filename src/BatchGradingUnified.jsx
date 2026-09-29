@@ -19,7 +19,7 @@ import { recordGradingSession } from './lib/penRawStore'; // [BRD-16] 펜 원본
 import { openPdf, renderPages, splitErrorReason } from './lib/pdfSplit';
 
 /* ─────────────── 공통 목 데이터 ─────────────── */
-const TASK = { team: '미래혁신융합인재육성 프로젝트팀', title: '[국어] 작품의 주제와 인물의 심리 변화 분석하기', group: '1학년 1반', groupShort: '1-1반' };
+const BASE_TASK = { team: '미래혁신융합인재육성 프로젝트팀', title: '[국어] 작품의 주제와 인물의 심리 변화 분석하기', group: '1학년 1반', groupShort: '1-1반' };
 const QUESTIONS = [
   { id: 1, title: '문항 1', sheets: 2 },
   { id: 2, title: '문항 2', sheets: 1 },
@@ -29,8 +29,10 @@ const NAMES = ['김민지', '이서준', '박하은', '최도윤', '정서연', 
 /* 그룹 명단(GROUP)과 채점 대상(ROSTER)을 나눈다 — 교사는 미채점 탭에서 그룹을 고르고 학생을 선택해 들어온다.
  *   시연: 서예린(1-1-13)은 선택하지 않은 학생 → 그 학생의 답안은 「채점 목록에서 선택하지 않은 학생」(판정 #8)으로 미분류 */
 const GROUP = NAMES.map((name, i) => ({ id: `s${i + 1}`, name, no: `1-1-${i + 1}`, grade: `1학년 1반 ${i + 1}번`, hasAnswer: i === 3 || i === 10 }));
-const ROSTER = GROUP.filter((s) => s.id !== 's13');
-const isTarget = (sid) => ROSTER.some((s) => s.id === sid);
+/* 채점 관리형 목록에서 들어오면 거기서 고른 학생이 ROSTER가 된다(컴포넌트 안에서 다시 정의). 아래는 단독 실행 기본값 */
+const DEFAULT_ROSTER = GROUP.filter((s) => s.id !== 's13');
+/** 목록 화면(GradingManagement unified)에 쓰는 학생 행 — 같은 목 명단을 그대로 공유한다 */
+export const UNIFIED_GROUP_STUDENTS = GROUP.map((s) => ({ id: s.id, name: s.name, grade: s.grade, submitType: s.hasAnswer ? 'ocr' : 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: `A-${String(GROUP.indexOf(s) + 1).padStart(4, '0')}` }));
 const studentById = (id) => GROUP.find((s) => s.id === id);
 
 const IDENT_UNREAD = '학생 미매칭 — 답안지 학생정보를 읽을 수 없습니다';
@@ -86,7 +88,7 @@ const buildPens = () => {
   GROUP.forEach((s, i) => {
     if (i === 5) return;                                                      // 결석 — 펜 없음
     if (i === 1) return add({ scenario: 'no_ident', owner: s.id, pages: fullPages(), extraBooks: otherClasses });
-    if (i === 3) return add({ scenario: 'ok', owner: s.id, identSid: ROSTER[4].id, pages: fullPages() }); // 친구 답안지에 씀 → 중복
+    if (i === 3) return add({ scenario: 'ok', owner: s.id, identSid: GROUP[4].id, pages: fullPages() }); // 친구 답안지에 씀 → 중복
     if (i === 8) return add({ scenario: 'no_answer', owner: s.id, identSid: s.id, pages: {} });
     return add({ scenario: 'ok', owner: s.id, identSid: s.id, pages: fullPages() });
   });
@@ -205,8 +207,13 @@ const SheetMock = ({ studentLabel, question, sheetNo, small, answer }) => (
 /* ════════════════════════════════════════════════════════════
  * 본 화면
  * ════════════════════════════════════════════════════════════ */
-const BatchGradingUnified = () => {
-  const [source, setSource] = useState('cradle'); // 'cradle' | 'scan'
+const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit, onCompleted } = {}) => {
+  const TASK = task ? { ...BASE_TASK, ...task } : BASE_TASK; // 목록에서 고른 과제명을 그대로 쓴다
+  /* 채점 관리와 같은 목록에서 [크래들 일괄 채점]/[스캔 채점] 버튼으로 들어온다 — 고른 학생만 대상 */
+  const ROSTER = React.useMemo(() => (targetIds ? GROUP.filter((s) => targetIds.includes(s.id)) : DEFAULT_ROSTER), [targetIds]);
+  const isTarget = (sid) => ROSTER.some((s) => s.id === sid);
+  const fromList = !!onExit;
+  const [source, setSource] = useState(initialSource); // 'cradle' | 'scan'
   const [step, setStep] = useState('import');
   const [reading, setReading] = useState(false);
   const [readTick, setReadTick] = useState(0);
@@ -246,6 +253,7 @@ const BatchGradingUnified = () => {
   // AiGLE Connect — 'checking' | 'ready' | 'blocked'
   const [connector, setConnector] = useState(connectorSessionReady ? 'ready' : 'checking');
   const [programOpen, setProgramOpen] = useState(false);
+  const [capHelp, setCapHelp] = useState(false); // 저장 잔량 안내 — 「?」를 눌러야 보인다
   // 채점 대상 스냅숏 — 채점 중·완료 목록용 { sid, slot?, penId? }
   const [gradedList, setGradedList] = useState([]);
   // 확인창 — { kind: 'switch' | 'replace' | 'overwrite', next? }
@@ -284,6 +292,16 @@ const BatchGradingUnified = () => {
     }, 1200);
     return () => clearTimeout(t);
   }, [source, step, connector]);
+
+  /* [확인] — 목록에서 들어왔으면 채점된 학생을 「채점 확인」으로 넘기고 목록으로 돌아간다 */
+  const finishDone = () => {
+    if (!fromList) { resetAll(source); return; }
+    const done = source === 'scan'
+      ? gradedList.filter((g) => g.full && !failedIds.includes(g.sid)).map((g) => g.sid)
+      : gradedIds.filter((id) => !failedIds.includes(id));
+    onCompleted?.(done);
+    onExit();
+  };
 
   const resetAll = (nextSource = source) => {
     setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all');
@@ -619,6 +637,10 @@ const BatchGradingUnified = () => {
   const renderCradleImport = () => {
     const needFw = connected.filter((p) => p.needsUpdate && !fwDone[p.id]);
     const lowCap = connected.filter((p) => capacityOf(p) < 20);
+    const capQ = (
+      <button type="button" onClick={() => setCapHelp((v) => !v)} title="저장 잔량 안내" aria-expanded={capHelp}
+        style={{ width: 16, height: 16, padding: 0, borderRadius: '50%', border: `1px solid ${capHelp ? '#F59E0B' : '#CBD5E1'}`, background: capHelp ? '#FEF3C7' : 'white', color: capHelp ? '#B45309' : '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, lineHeight: '14px', cursor: 'pointer', fontFamily: 'inherit', verticalAlign: 'middle' }}>?</button>
+    );
     if (connector === 'checking') {
       return (
         <div style={{ ...card, padding: '40px 24px', textAlign: 'center' }}>
@@ -641,16 +663,20 @@ const BatchGradingUnified = () => {
     }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {lowCap.length > 0 && (
-          <div style={{ color: '#B45309', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
-            ⚠ 저장 잔량이 20% 미만인 펜 {lowCap.length}자루
-            <span style={{ fontWeight: 600 }}> — 이전 필기가 남아 있는 펜입니다. 채점이 정상 완료되면 그 펜의 데이터가 지워져 잔량이 회복됩니다.</span>
+        {/* 저장 잔량 안내는 기본으로 숨긴다 — 「저장 잔량 ?」를 눌러야 펼쳐진다 */}
+        {capHelp && (
+          <div style={{ ...noteBox('warn'), background: '#FFFBEB', color: '#92400E', borderColor: '#FDE68A', fontSize: 'var(--neo-font-size-sm)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div><strong>저장 잔량이 20% 미만인 펜</strong> — 이전 필기가 남아 있는 펜으로 채점이 정상 완료되면 펜의 데이터가 지워져 잔량이 회복됩니다.{lowCap.length > 0 && <strong> (지금 {lowCap.length}자루)</strong>}</div>
+              <div style={{ marginTop: 4, fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>슬롯 아래 숫자가 펜의 저장 잔량입니다 — 20% 미만 노랑 · 10% 미만 빨강</div>
+            </div>
+            <button type="button" onClick={() => setCapHelp(false)} aria-label="저장 잔량 안내 닫기" style={{ border: 'none', background: 'transparent', color: '#B45309', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✕</button>
           </div>
         )}
         {unrecognized.length > 0 && (
           <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
-            ⚠ 펜 {unrecognized.length}자루가 크래들에 표시되지 않습니다 — 펜 오류로 인식되지 않은 상태입니다.
-            <span style={{ fontWeight: 600, color: '#B45309' }}> 꽂혀 있는데 빈 자리로 보이는 펜을 뺐다가 다시 꽂아 주세요. 계속 표시되지 않으면 [🚨 이용불편 접수]로 알려 주세요.</span>
+            ⚠ 펜이 화면에 표시되지 않는 경우
+            <span style={{ fontWeight: 600, color: '#B45309' }}> — 펜을 다시 뺐다가 꽂아주세요. 계속 표시되지 않으면 [🚨 이용불편 접수]로 알려 주세요.</span>
           </div>
         )}
         <div style={{ ...card, padding: '18px 16px 0' }}>
@@ -658,11 +684,10 @@ const BatchGradingUnified = () => {
             labelOf={(pen) => (pen.link === 'linking' ? { text: '연결 중', bg: '#FEF3C7', color: '#B45309' }
               : { text: `${capacityOf(pen)}%`, bg: capacityOf(pen) < 10 ? '#FEE2E2' : capacityOf(pen) < 20 ? '#FEF3C7' : '#DCFCE7', color: capTone(capacityOf(pen)).color })} />
         </div>
-        {connected.length > 0 && <div style={{ marginTop: -8, fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700 }}>슬롯 아래 숫자는 펜의 <span style={{ color: '#475569' }}>저장 잔량</span>입니다 — 20% 미만 노랑 · 10% 미만 빨강</div>}
         <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <strong style={{ fontSize: 'var(--neo-font-size-base)' }}>연결된 펜 <span style={{ color: '#2A75F3' }}>{connected.length}</span>자루</strong>
           {unrecognized.length > 0 && <span style={{ color: '#DC2626', fontWeight: 700 }}>· 인식 안 됨 {unrecognized.length}</span>}
-          {connected.length > 0 && <span style={{ fontWeight: 700 }}>· 저장 잔량 최저 <span style={{ color: capTone(Math.min(...connected.map(capacityOf))).color }}>{Math.min(...connected.map(capacityOf))}%</span></span>}
+          {connected.length > 0 && <span style={{ fontWeight: 700 }}>· 저장 잔량 {capQ} 최저 <span style={{ color: capTone(Math.min(...connected.map(capacityOf))).color }}>{Math.min(...connected.map(capacityOf))}%</span></span>}
           {needFw.length > 0 && <span style={{ color: '#DC2626', fontWeight: 700 }}>· 펌웨어 업데이트 {needFw.length}</span>}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button type="button" style={ghostBtn} onClick={() => PEN_POOL.forEach((p) => !docked[p.slot] && dockPen(p.slot))}>🧪 전체 거치</button>
@@ -677,7 +702,7 @@ const BatchGradingUnified = () => {
               <div key={cn} style={{ ...card, overflow: 'hidden' }}>
                 <div style={{ padding: '8px 12px', background: '#F1F5F9', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>크래들 {cn}</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
-                  <thead><tr style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}><th style={{ textAlign: 'left', padding: '6px 10px' }}>슬롯</th><th>연결</th><th>배터리</th><th>저장 잔량</th><th>펌웨어</th></tr></thead>
+                  <thead><tr style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}><th style={{ textAlign: 'left', padding: '6px 10px' }}>슬롯</th><th>연결</th><th>배터리</th><th style={{ whiteSpace: 'nowrap' }}>저장 잔량 {capQ}</th><th>펌웨어</th></tr></thead>
                   <tbody>
                     {connected.filter((p) => cradleOf(p.slot) === cn).map((p) => (
                       <tr key={p.id} style={{ borderTop: '1px solid #F1F5F9' }}>
@@ -1341,13 +1366,16 @@ const BatchGradingUnified = () => {
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
       {/* 헤더 — 공통 */}
       <div style={{ ...card, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        {fromList && (
+          <button type="button" onClick={() => (step === 'grading' ? setToast('채점 중에는 목록으로 나갈 수 없습니다.') : onExit())} style={{ ...ghostBtn, padding: '6px 12px' }} title="미채점 목록으로 돌아갑니다 — 진행 중인 매핑은 지워집니다">← 목록</button>
+        )}
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{T}</h2>
             <span style={{ padding: '1px 8px', borderRadius: 999, background: '#F5F3FF', color: '#6D28D9', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>통합 구조 시안</span>
           </div>
           <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span>{TASK.team} / {TASK.title} · 그룹 <strong>{TASK.group}</strong> · 대상 학생 <strong>{ROSTER.length}명</strong> <span style={{ color: '#94A3B8' }}>(미채점 탭에서 선택)</span></span>
+            <span>{TASK.team} / {TASK.title} · 그룹 <strong>{TASK.group}</strong> · 대상 학생 <strong>{ROSTER.length}명</strong> <span style={{ color: '#94A3B8' }}>(미채점 목록에서 선택)</span></span>
             {source === 'scan' && (
               <span style={{ position: 'relative' }}>
                 <button type="button" onClick={() => setShowCodes((v) => !v)} style={{ padding: '1px 8px', borderRadius: 999, border: `1px solid ${showCodes ? '#2A75F3' : '#CBD5E1'}`, background: showCodes ? '#EFF6FF' : 'white', color: showCodes ? '#1D4ED8' : '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>🏷 답안지 코드 {SHEET_CODES.length}개</button>
@@ -1367,13 +1395,13 @@ const BatchGradingUnified = () => {
           </div>
         </div>
         {/* 입력 방식 — 바꾸면 처음부터 */}
-        <div role="tablist" style={{ marginLeft: 'auto', display: 'flex', background: '#F1F5F9', borderRadius: 10, padding: 3 }}>
+        {!fromList && <div role="tablist" style={{ marginLeft: 'auto', display: 'flex', background: '#F1F5F9', borderRadius: 10, padding: 3 }}>
           {[['cradle', '🖊 크래들'], ['scan', '📷 스캔']].map(([k, l]) => (
             <button key={k} role="tab" aria-selected={source === k} type="button" onClick={() => requestSwitch(k)} disabled={step === 'grading'} title={step === 'grading' ? '채점 중에는 바꿀 수 없습니다' : undefined}
               style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: source === k ? 'white' : 'transparent', boxShadow: source === k ? '0 1px 3px rgba(15,23,42,0.15)' : 'none', fontWeight: 800, color: source === k ? '#1E293B' : '#64748B', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>{l}</button>
           ))}
-        </div>
-        <button type="button" onClick={() => setIncidentOpen(true)} style={{ ...ghostBtn, color: '#B91C1C', borderColor: '#FCA5A5' }}>🚨 이용불편 접수</button>
+        </div>}
+        <button type="button" onClick={() => setIncidentOpen(true)} style={{ ...ghostBtn, ...(fromList ? { marginLeft: 'auto' } : {}), color: '#B91C1C', borderColor: '#FCA5A5' }}>🚨 이용불편 접수</button>
       </div>
 
       {/* 단계 — 공통. 1단계 이름만 입력 방식에 따라 다르다 */}
@@ -1547,7 +1575,7 @@ const BatchGradingUnified = () => {
             <button type="button" disabled={model?.blocked} onClick={requestGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
           </>
         )}
-        {step === 'done' && <button type="button" onClick={() => resetAll(source)} style={{ ...primaryBtn(true), background: '#10B981' }}>✓ 확인</button>}
+        {step === 'done' && <button type="button" onClick={finishDone} style={{ ...primaryBtn(true), background: '#10B981' }}>✓ 확인</button>}
       </div>
 
       {confirm && (() => {

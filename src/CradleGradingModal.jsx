@@ -347,6 +347,12 @@ const CradleGradingModal = ({
   const [connectorState, setConnectorState] = useState('checking');
   // [POP-30] 필수 프로그램 확인 모달
   const [programModalOpen, setProgramModalOpen] = useState(false);
+  /* [SCR-07 v4.31] 저장 잔량 안내 — 기본 숨김, 「저장 잔량 ?」를 눌러야 보인다 */
+  const [capHelp, setCapHelp] = useState(false);
+  const capQ = (
+    <button type="button" onClick={() => setCapHelp((v) => !v)} title="저장 잔량 안내" aria-expanded={capHelp}
+      style={{ width: 16, height: 16, padding: 0, borderRadius: '50%', border: `1px solid ${capHelp ? '#F59E0B' : '#CBD5E1'}`, background: capHelp ? '#FEF3C7' : 'white', color: capHelp ? '#B45309' : '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, lineHeight: '14px', cursor: 'pointer', fontFamily: 'inherit', verticalAlign: 'middle' }}>?</button>
+  );
   /** 슬롯별 거치 펜 — { [slot]: { ...pen, link: 'linking'|'connected' } }. 비어 있으면 미거치 */
   const [docked, setDocked] = useState({});
   const [fwUpdating, setFwUpdating] = useState({}); // { [penId]: percent }
@@ -1076,25 +1082,22 @@ const CradleGradingModal = ({
                   {/* [SCR-07 v4.23] 펜 오류 = 거치 미표시. 슬롯이 비어 보이는 이유를 여기서만 말한다 */}
                   {unrecognized.length > 0 && (
                     <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px', lineHeight: 1.7 }}>
-                      ⚠ 펜 {unrecognized.length}자루가 크래들에 표시되지 않습니다 — 펜 오류로 인식되지 않은 상태입니다.
-                      <span style={{ fontWeight: 600, color: '#B45309' }}> 꽂혀 있는데 빈 자리로 보이는 펜을 뺐다가 다시 꽂아 주세요. 계속 표시되지 않으면 [🚨 이용불편 접수]로 알려 주세요.</span>
+                      ⚠ 펜이 화면에 표시되지 않는 경우
+                      <span style={{ fontWeight: 600, color: '#B45309' }}> — 펜을 다시 뺐다가 꽂아주세요. 계속 표시되지 않으면 [🚨 이용불편 접수]로 알려 주세요.</span>
                     </div>
                   )}
-                  {/* 저장 잔량 부족 — 다음 답안을 더 쓰지 못한다 */}
-                  {connectedPens.some((p) => capacityOf(p) < CAPACITY_LOW) && (
-                    <div style={{ color: '#B45309', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px', lineHeight: 1.7 }}>
-                      ⚠ 저장 잔량이 {CAPACITY_LOW}% 미만인 펜 {connectedPens.filter((p) => capacityOf(p) < CAPACITY_LOW).length}자루
-                      <span style={{ fontWeight: 600 }}> — 이전 필기가 남아 있는 펜입니다. 채점이 정상 완료되면 그 펜의 데이터가 지워져 잔량이 회복됩니다.</span>
+                  {/* [SCR-07 v4.31] 저장 잔량 안내는 기본으로 숨긴다 — 「저장 잔량 ?」를 눌러야 펼쳐진다 */}
+                  {capHelp && (
+                    <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', color: '#92400E', fontSize: 'var(--neo-font-size-sm)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div><strong>저장 잔량이 {CAPACITY_LOW}% 미만인 펜</strong> — 이전 필기가 남아 있는 펜으로 채점이 정상 완료되면 펜의 데이터가 지워져 잔량이 회복됩니다.{connectedPens.some((p) => capacityOf(p) < CAPACITY_LOW) && <strong> (지금 {connectedPens.filter((p) => capacityOf(p) < CAPACITY_LOW).length}자루)</strong>}</div>
+                        <div style={{ marginTop: 4, fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>슬롯 아래 숫자가 펜의 저장 잔량입니다 — 20% 미만 노랑 · 10% 미만 빨강</div>
+                      </div>
+                      <button type="button" onClick={() => setCapHelp(false)} aria-label="저장 잔량 안내 닫기" style={{ border: 'none', background: 'transparent', color: '#B45309', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✕</button>
                     </div>
                   )}
 
                   {renderCradle()}
-                  {/* [SCR-07 v4.24] 슬롯 아래 숫자의 뜻은 크래들 밖에서 한 번만 말한다 */}
-                  {connectedPens.length > 0 && (
-                    <div style={{ marginTop: -14, fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, padding: '0 4px' }}>
-                      슬롯 아래 숫자는 펜의 <span style={{ color: '#475569' }}>저장 잔량</span>입니다 — 20% 미만 노랑 · 10% 미만 빨강
-                    </div>
-                  )}
 
                   <div style={{ ...sectionCard, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>
@@ -1113,7 +1116,7 @@ const CradleGradingModal = ({
                         <>
                           <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
                           <span title="거치된 펜 중 저장 잔량이 가장 적은 펜의 남은 용량">
-                            저장 잔량 최저 <span style={{ color: capacityToken(Math.min(...connectedPens.map(capacityOf))).color }}>{Math.min(...connectedPens.map(capacityOf))}%</span>
+                            저장 잔량 {capQ} 최저 <span style={{ color: capacityToken(Math.min(...connectedPens.map(capacityOf))).color }}>{Math.min(...connectedPens.map(capacityOf))}%</span>
                           </span>
                         </>
                       )}
@@ -1169,7 +1172,7 @@ const CradleGradingModal = ({
                                       <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 700 }}>슬롯</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>연결</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>배터리</th>
-                                      <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>저장 잔량</th>
+                                      <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700, whiteSpace: 'nowrap' }}>저장 잔량 {capQ}</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>펌웨어</th>
                                     </tr>
                                   </thead>

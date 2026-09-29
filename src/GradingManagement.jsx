@@ -19,6 +19,7 @@ import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
+import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS } from './BatchGradingUnified'; // 일괄 채점 통합 시안 — 목록에서 버튼으로 분기
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
 
 // ─────────────────────────────────────────────
@@ -42,10 +43,19 @@ const getTrend = (fromGrade, toGrade) => {
 /** 차수별 AI 채점 최대 횟수 — 1차/2차 각각 독립 카운터 (v2 정책) */
 const AI_GRADING_LIMIT_PER_ROUND = 2;
 
+/* 일괄 채점 통합 — 1학년 1반 미채점 학생을 통합 시안의 목 명단(14명)으로 바꿔 끼운다.
+ * 크래들·스캔 시나리오(중복·결석·미식별 등)가 이 명단에 맞춰 짜여 있기 때문이다. */
+const withUnifiedGroup = (on, base) => (on
+  ? [...UNIFIED_GROUP_STUDENTS, ...base.filter((s) => !(s.status === '미채점' && s.grade.startsWith('1학년 1반')))]
+  : base);
+
 const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // [SCR-06] v2(채점 관리 2) 여부 — 퇴고 관련 UI/로직 전체의 게이트
   const isV2 = variant === 'v2';
-  const screenTitle = isV2 ? '채점 관리 2' : '채점 관리';
+  // 일괄 채점 통합 시안 — 목록·검증은 채점 관리와 같고, 크래들/스캔 버튼이 통합 흐름으로 분기한다
+  const isUnified = variant === 'unified';
+  const screenTitle = isV2 ? '채점 관리 2' : isUnified ? '일괄 채점 통합' : '채점 관리';
+  const [unifiedSource, setUnifiedSource] = useState(null); // null(목록) | 'cradle' | 'scan'
   // ── 채점 관리 상태 ──
   const [selectedTask, setSelectedTask] = useState(1);
   // [v3.18] '전체' 탭 폐기 — 기본값 '미채점'
@@ -146,7 +156,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   //   history    : 이전 차수 결과 스냅샷 배열 [{ round, aiGrade, teacherGrade, sheetNo, sentAt }]
   //   aiCount    : 차수별 AI 채점 실행 횟수 { 1: n, 2: n } — 차수별 독립 카운터(최대 2회)
   //   sheetNo    : 현재 차수 답안지 번호표 (2차는 재배부된 새 번호표)
-  const [students, setStudents] = useState([
+  const [students, setStudents] = useState(() => withUnifiedGroup(isUnified, [
     // [SCR-03 v5.0] penStats — 과정 분석 최소 조건(80획·30초) 판정용. 정지훈은 충분, 일반테스트는 부족(분석불가-필기부족)
     { id: 11, name: '정지훈', grade: '5학년 2반 3번', submitType: 'pen', aiGrade: '우수', teacherGrade: '보통', status: '채점 확인', round: 1, history: [], aiCount: { 1: 1, 2: 0 }, sheetNo: 'A-0011', penStats: { strokes: 312, durationSec: 252 } },
     { id: 1, name: '김순정', grade: '1학년 1반 1번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 1, history: [], aiCount: { 1: 0, 2: 0 }, sheetNo: 'A-0001' },
@@ -162,7 +172,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     // [SCR-06] v2 데모용 — 퇴고 요청 후 2차 답안 채점 대기 (1차 미채점 학생과 동일한 상태)
     { id: 13, name: '오세림', grade: '1학년 1반 9번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 2, sheetNo: 'B-0009', aiCount: { 1: 1, 2: 0 }, v2Only: true,
       history: [{ round: 1, aiGrade: '보통', teacherGrade: '보통', sheetNo: 'A-0009', sentAt: '2026.08.13' }] }
-  ]);
+  ]));
 
   // [SCR-06] 화면에 노출할 학생 명단 — v2 전용 데모 학생(`v2Only`)은 v1(기존 채점 관리)에서 숨긴다.
   //   개별 id 조회(`students.find`)는 v1에서 해당 id가 선택될 일이 없으므로 그대로 둔다.
@@ -262,6 +272,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
       alert('크래들 일괄 채점 대상 학생을 먼저 선택해 주세요.');
       return;
     }
+    if (isUnified) { setUnifiedSource('cradle'); return; }
     setCradleMinimized(false);
     setIsCradleModalOpen(true);
   };
@@ -276,6 +287,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
       alert('스캔 채점 대상 학생을 먼저 선택해 주세요.');
       return;
     }
+    if (isUnified) { setUnifiedSource('scan'); return; }
     setIsScanModalOpen(true);
   };
 
@@ -685,9 +697,22 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   };
 
   // ── 렌더 ──
+  // 일괄 채점 통합 — 버튼으로 분기하면 목록 자리에 통합 흐름을 띄운다. [확인] 시 채점 확인 탭으로 복귀
+  if (isUnified && unifiedSource) {
+    return (
+      <BatchGradingUnified
+        key={unifiedSource}
+        initialSource={unifiedSource}
+        targetIds={selectedIds}
+        task={{ title: currentTask?.title || '과제', team: '미래혁신융합인재육성 프로젝트팀' }}
+        onExit={() => setUnifiedSource(null)}
+        onCompleted={(ids) => (unifiedSource === 'scan' ? handleScanCompleted(ids) : handleCradleCompleted(ids))}
+      />
+    );
+  }
   return (
     <>
-      {(activeSubMenu === '채점 관리' || activeSubMenu === '채점 관리 2') ? (
+      {(activeSubMenu === '채점 관리' || activeSubMenu === '채점 관리 2' || isUnified) ? (
         <>
           <header className="content-header">
             {/* [v3.23] 페이지 타이틀과 개인정보 보호 안내를 같은 행에 배치 — 타이틀 옆 인라인 */}
