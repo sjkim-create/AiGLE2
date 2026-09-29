@@ -20,7 +20,8 @@ const Sidebar = ({
     setShowAnalysis,
     taskCount,
     settingsBadgeCount = 0,  // [v4.6] 환경설정 「설정 필요」 배지 카운트 (0이면 미노출)
-    incidentOpenCount = 0    // [BRD-16] 장애신고 미처리 건수 (메일 발송 전)
+    incidentOpenCount = 0,   // [BRD-16] 장애신고 미처리 건수 (메일 발송 전)
+    onOpenIncident           // [BRD-16 v2.8] 좌측 하단 [🚨 이용불편 접수] — 어느 화면에서나 같은 모달을 연다
 }) => {
   const handleMenuChange = (menu) => {
     setActiveMenu(menu);
@@ -291,6 +292,17 @@ const Sidebar = ({
             </nav>
 
             <div className="sidebar-footer">
+                {/* [BRD-16 v2.8] 이용불편 접수 — 舊 환경설정 카드 안 버튼을 여기로 옮겼다.
+                    불편은 환경설정에서 생기지 않는다. 어느 화면에서 막히든 눈에 보이는 자리에 있어야 한다. */}
+                {onOpenIncident && (
+                    <button type="button" onClick={onOpenIncident}
+                        title="화면에서 겪은 불편을 접수합니다. 진단 로그와 펜 원본 진단 파일이 함께 전달됩니다."
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', marginBottom: '0.5rem',
+                            padding: '9px 12px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2',
+                            color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🚨 이용불편 접수
+                    </button>
+                )}
                 <a href="#" className="footer-link">교사 이용 가이드 <span>›</span></a>
                 <a href="#" className="footer-link">학생 이용 가이드 <span>›</span></a>
                 <a href="#" className="footer-link">개인정보수집 이용 동의서<span>›</span></a>

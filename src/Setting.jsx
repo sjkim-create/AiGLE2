@@ -29,7 +29,16 @@ import TeacherManagement from './TeacherManagement';
 import SchoolTeacherManagement from './SchoolTeacherManagement';
 import SchoolManagement from './SchoolManagement';
 import { markConnectDownloaded } from './RequiredProgramModal';
-import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 환경설정 AiGLE Connect 카드 [로그]·[펜 데이터] → [🚨 장애신고]
+import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16 v2.8] 좌측 하단 [🚨 이용불편 접수]
+
+/* [BRD-16 v2.8] 사이드바에서 접수할 때 고를 수 있는 과제·그룹.
+ *   채점 화면에서 접수하면 화면이 값을 넘겨 주지만, 밖에서 누르면 알 길이 없어 교사가 직접 고른다.
+ *   실서비스는 「내가 맡은 과제」 목록을 서버에서 받아 채운다 (프로토타입은 목). */
+const INCIDENT_TASK_OPTIONS = [
+  { title: '과제테스트', groups: ['1학년 1반', '1학년 2반'] },
+  { title: '오늘 테스트 과제', groups: ['1학년 1반'] },
+  { title: '세계 시민으로서의 역할 에세이', groups: ['2학년 1반', '2학년 2반', '2학년 3반'] },
+];
 import { listSessions as listPenRawSessions, subscribe as subscribePenRaw, PEN_RAW_KEEP } from './lib/penRawStore'; // [BRD-16 v1.7] 펜 원본 진단 파일 보관 현황
 import IncidentBoard from './IncidentBoard'; // [BRD-16] 시스템 관리자 > 게시판 > 장애신고
 import { openCount as incidentOpenCount, subscribeIncidents } from './lib/incidentStore';
@@ -461,10 +470,12 @@ function Setting() {
   return (
     <div className="app-container">
       <TaskDeleteDialog task={taskToDelete} onCancel={() => setTaskToDelete(null)} onConfirm={handleDeleteTask} />
-      {/* [BRD-16] 장애신고 — 환경설정에서 접수 (과제·그룹 없음, 진단 로그·펜 원본 진단 파일 zip 자동 첨부) */}
+      {/* [BRD-16 v2.8] 이용불편 접수 — 좌측 하단 버튼에서 연다.
+          채점 화면 밖이라 과제·그룹을 알 수 없으므로 다이얼로그에서 **직접 고르게** 한다(taskOptions). */}
       <IncidentReportDialog open={isIncidentOpen} onClose={() => setIsIncidentOpen(false)}
         onSubmitted={(r) => showToast(`이용불편 접수가 완료되었습니다 — ${r.id} (Jira ${r.jira?.key})${r.attachments?.penRaw ? ` · 펜 원본 ${r.attachments.penRaw.sessions}회분 전송 후 로컬 삭제` : ''}. 운영팀 답변은 메일로 보내 드립니다.`, 'success')}
-        context={{ source: '환경설정', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr' }} />
+        taskOptions={INCIDENT_TASK_OPTIONS}
+        context={{ source: '사이드바', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr' }} />
       <Sidebar
         activeMenu={activeMenu}
         setActiveMenu={setActiveMenu}
@@ -477,6 +488,7 @@ function Setting() {
         isProfileDropdownOpen={isProfileDropdownOpen}
         setIsProfileDropdownOpen={setIsProfileDropdownOpen}
         setShowAnalysis={setShowAnalysis}
+        onOpenIncident={() => setIsIncidentOpen(true)}
         taskCount={BASE_TASKS.length + copiedTasks.length + registeredTasks.length}
         settingsBadgeCount={settingsBadgeCount}
         incidentOpenCount={incidentBadge}
@@ -537,14 +549,9 @@ function Setting() {
                       {/* ① AiGLE Connect 관리 + 진단 로그 */}
                       <div style={row}>
                         {head('📦', 'AiGLE Connect 관리', null, chip('업데이트 있음', 'info'))}
-                        <div style={desc}>펜 연결·크래들 채점용 프로그램. 현재 2.0.5 → 최신 2.1.0<br />문제가 반복되면 [🚨 이용불편 접수]로 알려 주세요 — 진단 로그와 채점 시 저장된 펜 원본 진단 파일이 zip으로 함께 전달됩니다.<br /><span style={{ color: '#94A3B8' }}>펜 원본 보관 {penRawCount}/{PEN_RAW_KEEP}회 (채점 시 자동 저장 · 전송 후 삭제)</span></div>
-                        {foot((
-                          <>
-                            {/* [BRD-16] 舊 [⬇ 로그]·[⬇ 펜 데이터] → [🚨 장애 신고] */}
-                            {ghost('🚨 이용불편 접수', () => setIsIncidentOpen(true), { title: '학교·교사 정보와 진단 로그·펜 원본 진단 파일(최근 5회 채점분 zip)을 함께 시스템 관리자에게 접수합니다. 운영팀 답변은 메일로 받습니다.' })}
-                            {primary('최신 버전 다운로드', handleDownloadConnect)}
-                          </>
-                        ))}
+                        {/* [BRD-16 v2.8] 이용불편 접수 버튼은 **좌측 하단**으로 옮겼다 — 불편은 환경설정에서 생기지 않는다 */}
+                        <div style={desc}>펜 연결·크래들 채점용 프로그램. 현재 2.0.5 → 최신 2.1.0<br />문제가 반복되면 왼쪽 아래 [🚨 이용불편 접수]로 알려 주세요 — 진단 로그와 채점 시 저장된 펜 원본 진단 파일이 zip으로 함께 전달됩니다.<br /><span style={{ color: '#94A3B8' }}>펜 원본 보관 {penRawCount}/{PEN_RAW_KEEP}회 (채점 시 자동 저장 · 전송 후 삭제)</span></div>
+                        {foot(primary('최신 버전 다운로드', handleDownloadConnect))}
                       </div>
 
                       {/* ② 펜 펌웨어 업데이트 */}

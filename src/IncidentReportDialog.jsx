@@ -25,12 +25,14 @@ const recentDays = () => {
 
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
-const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
+const IncidentReportDialog = ({ open, onClose, onSubmitted, context, taskOptions = [] }) => {
   const [symptom, setSymptom] = useState(SYMPTOMS[0].label);
   const [detail, setDetail] = useState('');
   const [days, setDays] = useState(recentDays());
   const [occurredAt, setOccurredAt] = useState('');   // [v2.7] 문제가 생긴 날 (최근 3일 중 1)
   const [files, setFiles] = useState([]);             // [v2.7] 선생님이 붙인 파일
+  const [pickedTask, setPickedTask] = useState('');   // [v2.8] 화면 밖에서 접수할 때 교사가 고르는 과제
+  const [pickedGroup, setPickedGroup] = useState(''); // [v2.8] 〃 그룹
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -38,12 +40,20 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
     const d = recentDays();
     setDays(d); setOccurredAt(d[0].key);
     setSymptom(SYMPTOMS[0].label); setDetail(''); setFiles([]); setSubmitting(false);
+    setPickedTask(''); setPickedGroup('');
   }, [open]);
   if (!open) return null;
 
   const { source = '환경설정', school = '공주 고등학교', teacher = '김 b', teacherId = 'tch20261zim', teacherEmail = 'tch20261zim@gjhs.kr', task = null, group = null, studentCount = null } = context || {};
 
   const manifest = buildZipManifest(teacherId);
+
+  /* [v2.8] 화면이 과제를 넘겨 주지 않았고 고를 목록이 있으면 교사가 직접 고른다.
+   *   채점 화면 밖(사이드바)에서 접수하면 어느 과제에서 막혔는지 시스템이 알 수 없기 때문이다. */
+  const needsPick = !task && taskOptions.length > 0;
+  const groupsOfPicked = taskOptions.find((t) => t.title === pickedTask)?.groups || [];
+  const finalTask = task || pickedTask || null;
+  const finalGroup = group || pickedGroup || null;
 
   const submit = () => {
     if (submitting) return;
@@ -52,7 +62,7 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
     const penRaw = manifest.files.length ? { zipName: manifest.zipName, sessions: manifest.sessions, pens: manifest.pens, bytes: manifest.bytes } : null;
     /* 진단 로그는 «문제가 생긴 날»분을 담는다 — 그 날 로그가 없으면 보관 전체로 되돌린다 */
     const hasLog = days.find((d) => d.key === occurredAt)?.hasLog;
-    const report = addIncident({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail,
+    const report = addIncident({ source, school, teacher, teacherId, teacherEmail, task: finalTask, group: finalGroup, studentCount, symptom, detail,
       penFiles: manifest.files, penRaw, logDate: hasLog ? occurredAt : 'all', occurredAt,
       userFiles: files.map((f) => ({ name: f.name, size: f.size })) });
     if (penRaw) clearPenRaw();
@@ -87,6 +97,30 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
             {row('교사', `${teacher} (${teacherEmail})`)}
             {task && row('과제', task)}
             {group && row('그룹', group)}
+            {/* [v2.8] 과제·그룹 직접 선택 — 채점 화면에서 열면 이 줄은 나오지 않는다(이미 자동 입력) */}
+            {needsPick && (
+              <>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span style={{ width: 64, color: '#94A3B8', fontWeight: 700, flexShrink: 0, fontSize: 'var(--neo-font-size-sm)' }}>과제</span>
+                  <select value={pickedTask} onChange={(e) => { setPickedTask(e.target.value); setPickedGroup(''); }}
+                    style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>
+                    <option value="">선택 안 함</option>
+                    {taskOptions.map((t) => <option key={t.title} value={t.title}>{t.title}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span style={{ width: 64, color: '#94A3B8', fontWeight: 700, flexShrink: 0, fontSize: 'var(--neo-font-size-sm)' }}>그룹</span>
+                  <select value={pickedGroup} onChange={(e) => setPickedGroup(e.target.value)} disabled={!pickedTask}
+                    style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid #CBD5E1', background: pickedTask ? 'white' : '#F1F5F9', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', color: pickedTask ? '#1E293B' : '#94A3B8' }}>
+                    <option value="">{pickedTask ? '선택 안 함' : '과제를 먼저 고르세요'}</option>
+                    {groupsOfPicked.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 2 }}>
+                  어떤 과제에서 겪은 일인지 골라 주시면 확인이 빨라집니다. 과제와 상관없는 문제라면 비워 두세요.
+                </div>
+              </>
+            )}
           </div>
 
           {/* [v2.7] 언제 — 최근 3일 중 하루 */}
