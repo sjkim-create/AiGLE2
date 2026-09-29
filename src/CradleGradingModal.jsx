@@ -62,6 +62,10 @@ const cradleOf = (slot) => Math.ceil(slot / SLOTS_PER_CRADLE);
  *   통번호(1~30)는 내부 키로만 쓴다. */
 const slotInCradle = (slot) => ((slot - 1) % SLOTS_PER_CRADLE) + 1;
 const slotLabel = (slot) => `크래들 ${cradleOf(slot)} · ${slotInCradle(slot)}번`;
+/* [SCR-07 v4.27] 목록용 짧은 표기 — 「크래들-슬롯」 (예: 1-2).
+ *   학생을 「1-1-12」로 읽는 것과 같은 결이라 교사가 자리를 숫자로 바로 짚는다.
+ *   전체 표기(`크래들 1 · 2번`)는 툴팁·aria로 남긴다. */
+const slotShort = (slot) => `${cradleOf(slot)}-${slotInCradle(slot)}`;
 
 /** [SCR-07 v2.1] 학생 표기 — 「학년-반-번호 이름」 (예: 1-1-12 김민지). grade가 서식에 안 맞으면 이름만 */
 const studentTag = (st) => {
@@ -1316,7 +1320,7 @@ const CradleGradingModal = ({
                       {/* [SCR-07 v4.25] 열 재구성 — 펜 ID 폐기, 학생과 학년·반·번호를 나눠 읽는다.
                           「배지」·「채점 진행」은 UI 용어라 교사가 무엇을 보는지 말해 주지 않아 이름을 바꿨다:
                           배지 → **펜 데이터 상태**(이 펜의 데이터가 어떤 상태인가), 채점 진행 → **상세 내용**(왜 그런가 · 지금 무엇을 하는가) */}
-                      <span style={{ width: 100 }}>슬롯</span>
+                      <span style={{ width: 60 }} title="크래들 번호 - 슬롯 번호">슬롯</span>
                       <span style={{ width: 76 }}>학생</span>
                       <span style={{ width: 82 }}>학년·반·번호</span>
                       <span style={{ width: 92 }}>펜 데이터 상태</span>
@@ -1341,8 +1345,8 @@ const CradleGradingModal = ({
                               background: picked ? '#EFF6FF' : 'white',
                               boxShadow: picked ? 'inset 3px 0 0 #2A75F3' : 'none',
                             }}>
-                            <span style={{ width: 100, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', whiteSpace: 'nowrap' }}>
-                              {slotLabel(p.slot)}
+                            <span title={slotLabel(p.slot)} style={{ width: 60, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', whiteSpace: 'nowrap' }}>
+                              {slotShort(p.slot)}
                             </span>
                             {/* [POP-28 #9] 중복이면 학생 이름도 빨강 */}
                             <span style={{ width: 76, fontSize: 'var(--neo-font-size-sm)', color: v?.type === 'duplicate' ? '#991B1B' : '#475569', fontWeight: v?.type === 'duplicate' ? 800 : 400, whiteSpace: 'nowrap' }}>
@@ -1590,7 +1594,7 @@ const CradleGradingModal = ({
               <div style={{ maxWidth: 720, margin: '22px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
                 <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
                   {/* [SCR-07 v4.25] 2단계 목록과 같은 열 이름을 쓴다 — 같은 펜을 두 화면에서 다른 말로 부르지 않는다 */}
-                  <span style={{ width: 150 }}>슬롯</span>
+                  <span style={{ width: 70 }} title="크래들 번호 - 슬롯 번호">슬롯</span>
                   <span style={{ width: 150 }}>학생</span>
                   <span style={{ width: 110 }}>펜 데이터 상태</span>
                   <span style={{ flex: 1 }}>상세 내용</span>
@@ -1602,7 +1606,7 @@ const CradleGradingModal = ({
                     const st = selectedStudents.find((x) => x.id === v.studentId);
                     return (
                       <div key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
-                        <span style={{ width: 150, color: '#1E293B', fontWeight: 700 }}>{slotLabel(p.slot)}</span>
+                        <span title={slotLabel(p.slot)} style={{ width: 70, color: '#1E293B', fontWeight: 700 }}>{slotShort(p.slot)}</span>
                         <span style={{ width: 150, color: '#475569' }}>{studentTag(st)}</span>
                         <span style={{ width: 110 }}>
                           <span style={{ padding: '1px 8px', borderRadius: 999, background: vt.bg, border: `1px solid ${vt.border}`, color: vt.color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{vt.label}</span>
