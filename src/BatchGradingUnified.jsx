@@ -159,16 +159,21 @@ const CradleStrip = ({ compact, docked, dotOf, selectedSlots = [], onSlot, pool 
 };
 
 /* 답안지 목(mock) — 미리보기·썸네일 공용 */
-const SheetMock = ({ studentLabel, question, sheetNo, small }) => (
+const ANSWER_LINES = ['작품 속 인물은 처음에 현실을 받아들이지 못하지만', '사건을 겪으며 태도가 점점 달라진다.', '이 변화가 작품의 주제를 드러낸다고 생각한다.', '특히 마지막 장면의 선택이 가장 중요하다.'];
+const SheetMock = ({ studentLabel, question, sheetNo, small, answer }) => (
   <div style={{ background: 'white', borderRadius: 6, padding: small ? '8px 8px' : '18px 20px', boxShadow: small ? 'none' : '0 4px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', gap: small ? 3 : 8, height: '100%', boxSizing: 'border-box' }}>
     <div style={{ fontSize: small ? 9 : 14, fontWeight: 900, color: '#1E3A8A' }}>AiGLE</div>
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: small ? 8 : 12 }}>
       <tbody>
-        <tr><td style={{ border: '1px solid #CBD5E1', background: '#F8FAFC', padding: small ? 1 : '4px 6px', fontWeight: 700 }}>학생</td><td style={{ border: '1px solid #CBD5E1', padding: small ? 1 : '4px 6px', color: '#1E3A8A', fontFamily: '"Nanum Pen Script", cursive' }}>{studentLabel || '(   )학년 (   )반 (   )번'}</td></tr>
+        <tr><td style={{ border: '1px solid #CBD5E1', background: '#F8FAFC', padding: small ? 1 : '4px 6px', fontWeight: 700 }}>학생</td><td style={{ border: '1px solid #CBD5E1', padding: small ? 1 : '4px 6px', color: '#1E3A8A', fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: small ? 8 : 18 }}>{studentLabel || '(   )학년 (   )반 (   )번'}</td></tr>
         <tr><td style={{ border: '1px solid #CBD5E1', background: '#F8FAFC', padding: small ? 1 : '4px 6px', fontWeight: 700 }}>문항</td><td style={{ border: '1px solid #CBD5E1', padding: small ? 1 : '4px 6px' }}>{question ? `${question} · ${sheetNo}장` : '__'}</td></tr>
       </tbody>
     </table>
-    {Array.from({ length: small ? 5 : 12 }, (_, i) => <div key={i} style={{ borderBottom: '1px solid #E2E8F0', height: small ? 6 : 18 }} />)}
+    {Array.from({ length: small ? 5 : 12 }, (_, i) => (
+      <div key={i} style={{ borderBottom: '1px dashed #CBD5E1', minHeight: small ? 6 : 30, display: 'flex', alignItems: 'flex-end', paddingLeft: 8 }}>
+        {answer && !small && i < ANSWER_LINES.length && <span style={{ fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: 22, color: '#1E293B', lineHeight: 1.2 }}>{ANSWER_LINES[(i + (sheetNo || 0)) % ANSWER_LINES.length]}</span>}
+      </div>
+    ))}
   </div>
 );
 
@@ -182,7 +187,7 @@ const BatchGradingUnified = () => {
   const [readTick, setReadTick] = useState(0);
   const [sel, setSel] = useState(null);         // { type: 'student' | 'unc', id }
   const [tab, setTab] = useState('all');
-  const [preview, setPreview] = useState(null); // { title, sub, studentLabel, question, sheetNo, url }
+  const [pageIdx, setPageIdx] = useState(0);    // 우측 큰 미리보기의 장 번호 — 선택이 바뀌면 0
   const [toast, setToast] = useState('');
   const [incidentOpen, setIncidentOpen] = useState(false);
   // 채점
@@ -227,7 +232,7 @@ const BatchGradingUnified = () => {
   }, [step, gradingDone]);
 
   const resetAll = (nextSource = source) => {
-    setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all'); setPreview(null);
+    setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all');
     setProgress(0); setGradingDone(false); setGradedIds([]); setFailedIds([]); setRetrying(false); failedOnce.current = false;
     setDocked({}); setUnrecognized([]); failedDock.current = new Set(); setJudged([]); setManual({}); setDupPick({}); setAssignPick({}); setFwDone({});
     files.forEach((f) => f.url && URL.revokeObjectURL(f.url));
@@ -294,23 +299,18 @@ const BatchGradingUnified = () => {
     const blockReason = dups.length ? `⚠ 중복 데이터 ${dups.length}건을 먼저 풀어 주세요. 답안을 보고 이 학생의 답안을 고르면 풀립니다.`
       : '⚠ 채점할 수 있는 펜이 없습니다. 펜을 거치한 뒤 [다시 매칭]을 누르거나, 미분류 답안을 학생에게 직접 매칭해 주세요.';
     const excluded = students.filter((s) => s.badge === 'none').length;
-    return { students, unc, empty, unread, gradable, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — [↻ 다시 매칭]을 눌러 주세요.` : blockReason,
+    /* [v2] 목록이 펜(슬롯) 단위라 펜마다 상태를 둔다 — 중복은 두 행, 미분류는 자기 크래들 자리에 보인다 */
+    const penInfo = {};
+    unread.forEach((p) => { penInfo[p.id] = { kind: 'unread' }; });
+    empty.forEach((p) => { penInfo[p.id] = { kind: 'empty' }; });
+    unc.forEach((u) => { penInfo[u.id] = { kind: 'unc', reason: u.reason, noAssign: u.noAssign }; });
+    students.forEach((s) => s.pens.forEach((x) => { penInfo[x.pen.id] = { kind: s.dup ? 'dup' : s.badge === 'none' ? 'noans' : 'ok', sid: s.id, manual: !!x.manual }; }));
+    const absent = students.filter((s) => s.pens.length === 0);
+    return { students, unc, empty, unread, gradable, penInfo, absent, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — [↻ 다시 매칭]을 눌러 주세요.` : blockReason,
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, docked, judged, manual, dupPick]);
-
-  /** 미니 크래들 점 색 — 펜이 지금 어떤 상태인지 */
-  const cradleDot = (pen) => {
-    if (!cradleModel) return null;
-    if (pen.link !== 'connected') return { color: '#FBBF24', label: '연결 중' };
-    if (!judged.includes(pen.id)) return { color: '#60A5FA', label: '아직 읽지 않음 — [다시 매칭] 필요' };
-    if (cradleModel.empty.some((p) => p.id === pen.id)) return { color: '#CBD5E1', label: '필기 없음 · 대상 아님' };
-    const u = cradleModel.unc.find((x) => x.id === pen.id);
-    if (u) return { color: '#F97316', label: `미분류 — ${u.reason}` };
-    const st = cradleModel.students.find((s) => s.pens.some((x) => x.pen.id === pen.id));
-    return st ? { color: BADGE[st.badge].dot, label: `${st.name} · ${st.detail}` } : null;
-  };
 
   /* ════════════ 스캔 — 1단계 업로드 · 페이지 분리 ════════════ */
   const appendFiles = (entries) => setFiles((prev) => {
@@ -443,7 +443,7 @@ const BatchGradingUnified = () => {
 
   /* ════════════ 공통 흐름 ════════════ */
   const startReading = () => {
-    setStep('mapping'); setReading(true); setSel(null); setPreview(null);
+    setStep('mapping'); setReading(true); setSel(null);
     setTimeout(() => {
       if (source === 'cradle') setJudged(Object.values(docked).filter((p) => p.link === 'connected').map((p) => p.id));
       else readScan();
@@ -455,6 +455,12 @@ const BatchGradingUnified = () => {
   // 기본 선택 — 확인 필요 학생 → 미분류 → 첫 학생
   useEffect(() => {
     if (step !== 'mapping' || reading || !model || sel) return;
+    if (source === 'cradle') {
+      const pens = connected.filter((p) => cradleModel.penInfo[p.id]);
+      const first = pens.find((p) => ['dup', 'unc'].includes(cradleModel.penInfo[p.id].kind)) || pens[0];
+      if (first) setSel({ type: 'pen', penId: first.id });
+      return;
+    }
     const first = model.students.find((s) => s.badge === 'check');
     setSel(first ? { type: 'student', id: first.id } : model.unc.length ? { type: 'unc' } : { type: 'student', id: model.students[0].id });
   }, [step, reading, model, sel]);
@@ -605,61 +611,173 @@ const BatchGradingUnified = () => {
     </div>
   );
 
-  /* ── 데이터 매핑 · 상단 띠 — 크래들만 에뮬레이터 ── */
-  const renderMappingBand = () => {
-    const counts = model ? {
+  /* ════════════════════════════════════════════════════════════
+   * 데이터 매핑 — 2단 구조 (v2)
+   *   좌: 목록 — 크래들은 **크래들별 묶음 + 묶음 머리의 10구 슬롯 띠(에뮬레이터)**, 스캔은 학생 목록
+   *   우: 매핑(조치) + **큰 미리보기**
+   *   舊 v1: 상단 가로 띠(에뮬레이터) + 3단(목록/상세/미리보기) — 노트북에서 세로 공간을 잡아먹고,
+   *          에뮬레이터가 목록과 떨어져 슬롯↔학생을 눈으로 이어야 했다
+   * ════════════════════════════════════════════════════════════ */
+
+  /** 한 줄 요약 — 카운트 · 업로드 범위 · (크래들) 다시 매칭 */
+  const renderSummaryBar = () => {
+    const changed = source === 'cradle' && (cradleModel?.unread.length > 0 || judged.some((id) => !connected.some((p) => p.id === id)));
+    const counts = {
       ok: model.gradable.length,
-      check: model.students.filter((s) => s.badge === 'check').length,
+      check: source === 'cradle' ? Object.values(cradleModel.penInfo).filter((x) => x.kind === 'dup' || x.kind === 'unc').length : model.students.filter((s) => s.badge === 'check').length,
       none: model.students.filter((s) => s.badge === 'none').length,
       unc: model.unc.length,
-    } : null;
-    const selSlots = source === 'cradle' && sel ? (sel.type === 'student' ? (cradleModel.students.find((s) => s.id === sel.id)?.pens || []).map((x) => x.pen.slot)
-      : sel.penId ? [PEN_POOL.find((p) => p.id === sel.penId)?.slot] : []) : [];
-    const changed = source === 'cradle' && (cradleModel?.unread.length > 0 || judged.some((id) => !connected.some((p) => p.id === id)));
+    };
     return (
-      <div style={{ ...card, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ ...card, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
+        <span style={{ color: '#166534' }}>🟢 채점 대상 {counts.ok}명</span>
+        <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}{source === 'cradle' ? '자루' : '명'}</span>
+        <span style={{ color: '#94A3B8' }}>제외 {counts.none}명</span>
+        <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '자루'}</span>
+        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500, flex: 1, minWidth: 200 }}>{model.manifest}</span>
         {source === 'cradle' && (
-          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <CradleStrip compact docked={docked} pool={PEN_POOL} dotOf={cradleDot} selectedSlots={selSlots}
-              onSlot={(slot) => {
-                const pen = docked[slot];
-                if (!pen) { dockPen(slot); return; }
-                const st = cradleModel.students.find((s) => s.pens.some((x) => x.pen.id === pen.id));
-                if (st) setSel({ type: 'student', id: st.id });
-                else if (cradleModel.unc.some((u) => u.id === pen.id)) setSel({ type: 'unc', penId: pen.id });
-                else setToast(cradleDot(pen)?.label || '');
-              }} />
-            <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, minWidth: 220 }}>
-              <button type="button" onClick={reread}
-                style={{ ...ghostBtn, padding: '6px 12px', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1' }}>↻ 다시 매칭</button>
-              <div style={{ fontSize: 'var(--neo-font-size-xs)', color: changed ? '#C2410C' : '#94A3B8', textAlign: 'right', lineHeight: 1.5, fontWeight: changed ? 700 : 400 }}>
-                {changed ? <>🔄 크래들 구성이 바뀌었습니다{cradleModel.unread.length > 0 && <> — 아직 읽지 않은 펜 {cradleModel.unread.length}자루</>}.<br />펜을 다시 거치했다면 [↻ 다시 매칭]을 눌러 주세요.</>
-                  : <>슬롯을 누르면 그 펜의 학생이 선택됩니다.<br />빈 슬롯을 누르면 펜을 거치합니다 (에뮬레이터).</>}
-              </div>
-              <div style={{ fontSize: 10, color: '#B45309' }}>다시 매칭할 때마다 읽은 펜 수만큼 AI OCR이 차감됩니다.</div>
-            </div>
-          </div>
-        )}
-        {counts && (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, borderTop: source === 'cradle' ? '1px solid #F1F5F9' : 'none', paddingTop: source === 'cradle' ? 8 : 0 }}>
-            <span style={{ color: '#166534' }}>🟢 채점 대상 {counts.ok}</span>
-            <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}</span>
-            <span style={{ color: '#94A3B8' }}>제외 {counts.none}</span>
-            <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '건'}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500 }}>{model.manifest}</span>
-          </div>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {changed && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#C2410C' }}>🔄 크래들 구성이 바뀌었습니다{cradleModel.unread.length > 0 && ` — 읽지 않은 펜 ${cradleModel.unread.length}자루`}</span>}
+            <button type="button" onClick={reread} title="판정을 다시 돌립니다. 직접 매칭 기록은 유지됩니다. 읽은 펜 수만큼 AI OCR이 차감됩니다."
+              style={{ ...ghostBtn, padding: '5px 12px', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1' }}>↻ 다시 매칭</button>
+          </span>
         )}
       </div>
     );
   };
 
-  /* ── 데이터 매핑 · 좌측 학생 목록 (공통) ── */
+  /* ── 크래들 펜 한 자루의 상태 → 배지·문구 ── */
+  const PEN_KIND = {
+    ok: { ...BADGE.ok, label: '정상' },
+    dup: { ...BADGE.check, label: '확인 필요' },
+    unc: { label: '미분류', bg: '#FFF7ED', border: '#FDBA74', color: '#C2410C', dot: '#F97316' },
+    noans: { ...BADGE.none, label: '답안 없음' },
+    empty: { ...BADGE.none, label: '필기 없음' },
+    unread: { label: '읽지 않음', bg: '#EFF6FF', border: '#BFDBFE', color: '#1D4ED8', dot: '#60A5FA' },
+  };
+  const penText = (info) => ({
+    ok: info.manual ? '펜 연결 · 직접 매칭' : '펜 연결',
+    dup: '중복 데이터 — 같은 학생에 펜이 2자루 이상',
+    unc: info.reason,
+    noans: '답안 없음 — 답안지 미작성',
+    empty: '필기 데이터가 없습니다',
+    unread: '아직 읽지 않음 — [↻ 다시 매칭] 필요',
+  }[info.kind]);
+  const penTab = (info) => (info.kind === 'dup' || info.kind === 'unc' ? 'check' : info.kind === 'ok' ? 'ok' : 'none');
+
+  /** 크래들 1대의 10구 띠 — 목록 묶음 머리에 붙는 에뮬레이터 */
+  const renderRail = (cn) => (
+    <div style={{ display: 'flex', gap: 3, background: 'linear-gradient(180deg,#6B7176,#4C5257)', borderRadius: 7, padding: '5px 6px 4px' }}>
+      {Array.from({ length: SLOTS }, (_, i) => (cn - 1) * SLOTS + i + 1).map((slot) => {
+        const pen = docked[slot];
+        const avail = PEN_POOL.some((p) => p.slot === slot);
+        const info = pen && pen.link === 'connected' ? cradleModel.penInfo[pen.id] : null;
+        const k = info ? PEN_KIND[info.kind] : null;
+        const picked = pen && sel?.type === 'pen' && (sel.penId === pen.id || (cradleModel.penInfo[sel.penId]?.sid && cradleModel.penInfo[sel.penId]?.sid === info?.sid && info?.kind === 'dup'));
+        return (
+          <button key={slot} type="button" disabled={!pen && !avail}
+            onClick={() => {
+              if (!pen) { dockPen(slot); return; }
+              if (pen.link !== 'connected') return;
+              setSel({ type: 'pen', penId: pen.id }); setPageIdx(0);
+              document.getElementById(`pen-row-${pen.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }}
+            title={pen ? `${slotShort(slot)} · ${k ? `${k.label} — ${penText(info)}` : '연결 중'}` : avail ? `${slotShort(slot)} — 빈 슬롯 (눌러서 거치)` : `${slotShort(slot)} — 빈 슬롯`}
+            aria-label={`슬롯 ${slotShort(slot)}${pen ? '' : ' 비어 있음'}`}
+            style={{ flex: 1, minWidth: 0, height: 38, padding: 0, position: 'relative', borderRadius: '4px 4px 2px 2px', cursor: (pen || avail) ? 'pointer' : 'default',
+              background: '#2F3438', border: picked ? '2px solid #60A5FA' : '1px solid rgba(0,0,0,0.4)', boxShadow: picked ? '0 0 0 2px rgba(96,165,250,0.35)' : 'inset 0 2px 4px rgba(0,0,0,0.5)' }}>
+            {pen && <span style={{ position: 'absolute', left: '50%', top: 2, transform: 'translateX(-50%)', width: 8, height: 24, borderRadius: 4, background: 'linear-gradient(90deg,#121417,#2B3035 40%,#16191C)' }} />}
+            {pen && <span style={{ position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)', width: 8, height: 8, borderRadius: '50%', background: k ? k.dot : '#FBBF24', border: '1.5px solid #2F3438' }} />}
+            {!pen && avail && <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>＋</span>}
+            <span style={{ position: 'absolute', left: 0, right: 0, top: -1, textAlign: 'center', fontSize: 8, color: 'rgba(255,255,255,0.45)', fontWeight: 700, pointerEvents: 'none' }}>{pen ? '' : slotIn(slot)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  /** 크래들 — 좌측 목록: 크래들별 묶음(머리 = 10구 띠) + 펜 행. 펜 없는 학생은 맨 아래 */
+  const renderPenList = () => {
+    const infos = cradleModel.penInfo;
+    const pens = connected;
+    const nCheck = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'check').length;
+    const nNone = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'none').length + cradleModel.absent.length;
+    const show = (p) => tab === 'all' || (infos[p.id] && penTab(infos[p.id]) === tab);
+    return (
+      <div style={{ ...card, width: 340, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', gap: 6, padding: 10, borderBottom: '1px solid #F1F5F9' }}>
+          {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['none', '제외', nNone]].map(([k, l, n]) => (
+            <button key={k} type="button" onClick={() => setTab(k)}
+              style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
+          ))}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => {
+            const rowsIn = pens.filter((p) => cradleOf(p.slot) === cn && show(p));
+            return (
+              <div key={cn}>
+                {/* 묶음 머리 — 스크롤해도 붙어 있어, 지금 보는 행이 어느 크래들의 몇 번인지 늘 보인다 */}
+                <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', padding: '8px 12px 8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 5 }}>
+                    <span>크래들 {cn}</span><span style={{ color: '#94A3B8' }}>{Object.values(docked).filter((p) => cradleOf(p.slot) === cn).length}/{SLOTS}</span>
+                  </div>
+                  {renderRail(cn)}
+                </div>
+                {rowsIn.length === 0 && <div style={{ padding: '8px 14px', fontSize: 'var(--neo-font-size-xs)', color: '#CBD5E1' }}>{tab === 'all' ? '거치된 펜 없음' : '해당 펜 없음'}</div>}
+                {rowsIn.map((p) => {
+                  const info = infos[p.id] || { kind: 'unread' };
+                  const k = PEN_KIND[info.kind];
+                  const st = info.sid ? studentById(info.sid) : null;
+                  const on = sel?.type === 'pen' && sel.penId === p.id;
+                  return (
+                    <button key={p.id} id={`pen-row-${p.id}`} type="button" onClick={() => { setSel({ type: 'pen', penId: p.id }); setPageIdx(0); }}
+                      style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <span style={{ flex: 'none', width: 34, padding: '2px 0', textAlign: 'center', borderRadius: 6, background: '#1E293B', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{slotShort(p.slot)}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <strong style={{ fontSize: 'var(--neo-font-size-sm)', color: st ? '#1E293B' : '#94A3B8' }}>{st ? st.name : '학생 미지정'}</strong>
+                          {st && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{st.no}</span>}
+                          <span style={{ marginLeft: 'auto', ...pill(k) }}>{k.label}</span>
+                        </span>
+                        <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: info.kind === 'ok' ? '#166534' : k.color, lineHeight: 1.45 }}>{penText(info)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {(tab === 'all' || tab === 'none') && cradleModel.absent.length > 0 && (
+            <div>
+              <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
+                펜 없음 · 채점 제외 {cradleModel.absent.length}명
+              </div>
+              {cradleModel.absent.map((s) => {
+                const on = sel?.type === 'absent' && sel.sid === s.id;
+                return (
+                  <button key={s.id} type="button" onClick={() => setSel({ type: 'absent', sid: s.id })}
+                    style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'center', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span style={{ flex: 'none', width: 34, textAlign: 'center', color: '#CBD5E1', fontWeight: 800 }}>—</span>
+                    <strong style={{ fontSize: 'var(--neo-font-size-sm)' }}>{s.name}</strong>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{s.no}</span>
+                    <span style={{ marginLeft: 'auto', ...pill(BADGE.none) }}>제외</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  /** 스캔 — 좌측 학생 목록 (+ 미분류 바) */
   const renderStudentList = () => {
     const list = model.students.filter((s) => tab === 'all' || s.badge === tab);
     const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length],
-      ...(source === 'scan' ? [['answer', '답안 있음', model.students.filter((s) => s.badge === 'answer').length]] : []), ['none', '제외', model.students.filter((s) => s.badge === 'none').length]];
+      ['answer', '답안 있음', model.students.filter((s) => s.badge === 'answer').length], ['none', '제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
-      <div style={{ ...card, width: 300, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, width: 340, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', gap: 6, padding: 10, flexWrap: 'wrap', borderBottom: '1px solid #F1F5F9' }}>
           {tabs.map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
@@ -671,7 +789,7 @@ const BatchGradingUnified = () => {
             const on = sel?.type === 'student' && sel.id === s.id;
             const b = BADGE[s.badge];
             return (
-              <button key={s.id} type="button" onClick={() => { setSel({ type: 'student', id: s.id }); setPreview(null); }}
+              <button key={s.id} type="button" onClick={() => { setSel({ type: 'student', id: s.id }); setPageIdx(0); }}
                 style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #F1F5F9', background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <strong style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>{s.name}</strong>
@@ -683,170 +801,145 @@ const BatchGradingUnified = () => {
             );
           })}
         </div>
-        <button type="button" onClick={() => { setSel({ type: 'unc' }); setPreview(null); }}
+        <button type="button" onClick={() => { setSel({ type: 'unc' }); setPageIdx(0); }}
           style={{ padding: '12px 14px', border: 'none', background: sel?.type === 'unc' ? '#1E293B' : '#475569', color: 'white', display: 'flex', justifyContent: 'space-between', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>
-          <span>{source === 'scan' ? '미분류 파일' : '미분류 답안'}</span><span>{model.unc.length}{source === 'scan' ? '장' : '건'} ›</span>
+          <span>미분류 파일</span><span>{model.unc.length}장 ›</span>
         </button>
       </div>
     );
   };
 
-  /* ── 데이터 매핑 · 가운데 상세 — 입력 방식별 ── */
-  const pagePreview = (title, sub, sid, q, sheetNo, url) => setPreview({ title, sub, studentLabel: sid ? `${studentById(sid).no} ${studentById(sid).name}` : '', question: q ? `문항 ${q}` : '', sheetNo, url });
+  /* ── 우측: 매핑(조치) 영역 — 입력 방식별 ── */
+  const assignRow = (penId, noAssign, detected) => {
+    if (noAssign) return <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{detected} 답안지입니다. {TASK.group} 학생에게는 매칭할 수 없습니다 — 그 반 채점 때 처리됩니다. 우리 반 학생이면 {TASK.group} 답안지에 다시 쓰게 해 주세요.</div>;
+    const pick = assignPick[penId] || '';
+    return (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)' }}>
+        이 답안을
+        <select value={pick} onChange={(e) => setAssignPick((p) => ({ ...p, [penId]: e.target.value }))} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', minWidth: 170 }}>
+          <option value="">학생 선택</option>
+          {ROSTER.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}
+        </select>
+        의 답안으로
+        <button type="button" disabled={!pick} style={{ ...primaryBtn(!!pick), padding: '5px 14px' }}
+          onClick={() => { setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
+      </div>
+    );
+  };
 
-  const renderCradleDetail = () => {
-    if (sel?.type === 'unc') {
+  const renderCradleAction = () => {
+    if (sel?.type === 'absent') {
+      const s = studentById(sel.sid);
       return (
         <>
-          <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>미분류 답안 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{cradleModel.unc.length}건</span></div>
-          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>학생을 판별하지 못한 펜 데이터입니다. 답안을 보고 학생을 지정하세요. 미분류 답안은 채점하지 않습니다. 매칭은 <strong>반(북코드) 답안 묶음</strong> 단위입니다.</div>
-          {cradleModel.unc.length === 0 && <div style={noteBox('muted')}>미분류 답안이 없습니다.</div>}
-          {cradleModel.unc.map((u) => {
-            const pick = assignPick[u.id] || '';
-            return (
-              <div key={u.id} style={{ border: `1px solid ${sel.penId === u.id ? '#2A75F3' : '#E2E8F0'}`, borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <strong>슬롯 {slotShort(u.pen.slot)}</strong><span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-xs)' }}>필기 {penPageCount(u.pen)}쪽</span>
-                  <button type="button" style={{ ...ghostBtn, padding: '3px 10px', marginLeft: 'auto' }} onClick={() => pagePreview(`슬롯 ${slotShort(u.pen.slot)}`, '1쪽', u.pen.scenario === 'no_ident' ? null : u.pen.owner, 1, 1)}>👁 답안 보기</button>
-                  <button type="button" style={{ ...ghostBtn, padding: '3px 10px' }} title="크래들에서 이 펜을 뺍니다 (에뮬레이터)" onClick={() => { undockPen(u.pen.slot); setSel({ type: 'unc' }); }}>⏏ 펜 빼기</button>
-                </div>
-                <div style={{ color: '#B91C1C', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700 }}>⚠ {u.reason}</div>
-                {u.noAssign ? (
-                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{u.pen.detected} 답안지입니다. {TASK.group} 학생에게는 매칭할 수 없습니다 — 그 반 채점 때 처리됩니다. 우리 반 학생이면 {TASK.group} 답안지에 다시 쓰게 해 주세요.</div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--neo-font-size-xs)' }}>
-                    이 답안을
-                    <select value={pick} onChange={(e) => setAssignPick((p) => ({ ...p, [u.id]: e.target.value }))} style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit' }}>
-                      <option value="">학생 선택</option>
-                      {ROSTER.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}
-                    </select>
-                    의 답안으로 채점
-                    <button type="button" disabled={!pick} style={{ ...primaryBtn(!!pick), padding: '4px 12px' }}
-                      onClick={() => { setManual((m) => ({ ...m, [u.id]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setSel({ type: 'student', id: pick }); }}>✓ 매칭</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span><span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE.none)}>제외</span></div>
+          <div style={noteBox('muted')}>거치된 펜에서 이 학생의 답안을 찾지 못해 채점에서 제외됩니다(미채점에 남습니다). 펜을 찾았다면 크래들에 꽂고 [↻ 다시 매칭]을 누르거나, 미분류 펜을 이 학생에게 매칭하세요.</div>
         </>
       );
     }
-    const s = cradleModel.students.find((x) => x.id === sel?.id);
-    if (!s) return null;
+    const pen = connected.find((p) => p.id === sel?.penId);
+    if (!pen) return <div style={{ color: '#94A3B8' }}>왼쪽 목록이나 크래들 슬롯에서 펜을 선택하세요.</div>;
+    const info = cradleModel.penInfo[pen.id] || { kind: 'unread' };
+    const k = PEN_KIND[info.kind];
+    const st = info.sid ? studentById(info.sid) : null;
+    const rivals = info.kind === 'dup' ? connected.filter((p) => p.id !== pen.id && cradleModel.penInfo[p.id]?.sid === info.sid && cradleModel.penInfo[p.id]?.kind === 'dup') : [];
     return (
       <>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span>
-          <span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE[s.badge])}>{BADGE[s.badge].label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ padding: '2px 8px', borderRadius: 6, background: '#1E293B', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>슬롯 {slotShort(pen.slot)}</span>
+          <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{st ? st.name : '학생 미지정'}</span>
+          {st && <span style={{ color: '#94A3B8' }}>{st.grade}</span>}
+          <span style={pill(k)}>{k.label}{info.kind === 'dup' ? ' — 중복 데이터' : ''}</span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {info.manual && <button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} onClick={() => setManual((m) => { const n = { ...m }; delete n[pen.id]; return n; })}>매칭 해제</button>}
+            <button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} title="크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 목록 위 크래들의 빈 슬롯을 누르세요." onClick={() => { undockPen(pen.slot); setSel(null); }}>⏏ 펜 빼기</button>
+          </span>
         </div>
-        {s.dup && (
-          <>
-            <div style={noteBox('warn')}><strong>같은 학생에 두 펜이 붙었습니다.</strong> 답안을 보고 이 학생의 답안을 고르세요. 고르지 않은 펜은 미분류로 이동해 진짜 주인에게 매칭할 수 있습니다.</div>
-            {s.pens.map((x, i) => (
-              <div key={x.pen.id} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <strong>답안 {i + 1}</strong><span style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}>슬롯 {slotShort(x.pen.slot)} · 필기 {penPageCount(x.pen)}쪽</span>
-                <button type="button" style={{ ...ghostBtn, padding: '3px 10px', marginLeft: 'auto' }} onClick={() => pagePreview(`답안 ${i + 1} · 슬롯 ${slotShort(x.pen.slot)}`, '1쪽', x.pen.owner, 1, 1)}>👁 답안 보기</button>
-                <button type="button" style={{ ...primaryBtn(true), padding: '5px 12px' }} onClick={() => setDupPick((d) => ({ ...d, [s.id]: x.pen.id }))}>이 답안으로 채점</button>
-              </div>
-            ))}
-          </>
-        )}
-        {s.badge === 'none' && <div style={noteBox('muted')}>{s.detail}. 채점에서 제외되며 미채점에 남습니다. 펜을 찾았다면 크래들에 거치하고 [↻ 다시 매칭]을 누르거나, 미분류 답안에서 이 학생에게 매칭하세요.</div>}
-        {!s.dup && s.pens.map((x) => (
-          <div key={x.pen.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)' }}>
-              <span>🖊 슬롯 <strong>{slotShort(x.pen.slot)}</strong></span>
-              {x.manual && <span style={pill(BADGE.ok)}>직접 매칭</span>}
-              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                {x.manual && <button type="button" style={{ ...ghostBtn, padding: '3px 10px' }} onClick={() => setManual((m) => { const n = { ...m }; delete n[x.pen.id]; return n; })}>매칭 해제</button>}
-                <button type="button" style={{ ...ghostBtn, padding: '3px 10px' }} title="크래들에서 이 펜을 뺍니다 (에뮬레이터)" onClick={() => undockPen(x.pen.slot)}>⏏ 펜 빼기</button>
-              </span>
-            </div>
-            {/* 문항 열 — 스캔과 같은 구조. 크래들은 조작 없이 읽기만 한다(매칭 단위가 반 답안 묶음이라 장을 고르지 않는다) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
-              {QUESTIONS.map((q) => (
-                <div key={q.id} style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
-                  <div style={{ padding: '6px 10px', background: '#F8FAFC', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>{q.title} <span style={{ color: '#94A3B8', fontWeight: 600 }}>({q.sheets}장)</span></div>
-                  {Array.from({ length: x.pen.pages[q.id] || 0 }, (_, i) => (
-                    <button key={i} type="button" onClick={() => pagePreview(`슬롯 ${slotShort(x.pen.slot)}`, `${q.title}-${i + 1}`, x.pen.owner, q.id, i + 1)}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderTop: '1px solid #F1F5F9', background: 'white', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
-                      📄 {q.title}-{i + 1} <span style={{ color: '#94A3B8' }}>필기</span>
-                    </button>
-                  ))}
-                  {!x.pen.pages[q.id] && <div style={{ padding: '6px 10px', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>답안 없음</div>}
-                </div>
-              ))}
+        {info.kind === 'dup' && (
+          <div style={{ ...noteBox('warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div><strong>⚠ 같은 학생에 두 펜이 붙었습니다.</strong> 이 펜과 슬롯 {rivals.map((r) => slotShort(r.slot)).join(' · ')} 펜이 모두 {st.name}(으)로 읽혔습니다. 아래 답안을 보고 정해 주세요.</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" style={{ ...primaryBtn(true), padding: '5px 14px' }} onClick={() => setDupPick((d) => ({ ...d, [info.sid]: pen.id }))}>이 펜이 {st.name}의 답안입니다</button>
+              <span style={{ color: '#94A3B8' }}>또는</span>
+              {assignRow(pen.id)}
             </div>
           </div>
-        ))}
+        )}
+        {info.kind === 'unc' && (
+          <div style={{ ...noteBox(info.noAssign ? 'muted' : 'warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div><strong>⚠ {info.reason}</strong></div>
+            {assignRow(pen.id, info.noAssign, pen.detected)}
+          </div>
+        )}
+        {info.kind === 'noans' && <div style={noteBox('muted')}>답안지 학생정보는 읽혔지만 답안이 없습니다. 채점에서 제외됩니다.</div>}
+        {info.kind === 'empty' && <div style={noteBox('muted')}>이 펜에는 필기가 없습니다. 채점 대상이 아닙니다.</div>}
+        {info.kind === 'unread' && <div style={noteBox('info')}>판정 이후에 꽂은 펜이라 아직 읽지 않았습니다. 위의 [↻ 다시 매칭]을 눌러 주세요.</div>}
+        {info.kind === 'ok' && <div style={noteBox('ok')}>✓ {st.name}의 답안으로 채점됩니다.{info.manual ? ' (직접 매칭)' : ''}</div>}
       </>
     );
   };
 
-  const renderScanDetail = () => {
-    const uncRow = (r) => (
-      <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-xs)' }}>
-        <span style={{ fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={r.name}>{r.origin === 'existing' ? '📄 ' : '🖼 '}{r.name}</span>
-        <span style={{ color: '#B91C1C', flex: 1.4 }}>{r.reason}</span>
-        {r.origin === 'existing'
-          ? <button type="button" style={{ ...ghostBtn, padding: '3px 10px', color: '#2A75F3', borderColor: '#2A75F3' }} title="원래 문항으로 되돌립니다 — 그 자리의 스캔본은 미분류로 내려갑니다" onClick={() => restoreExisting(r)}>↩ 되돌리기</button>
-          : <button type="button" style={{ ...ghostBtn, padding: '3px 10px' }} onClick={() => pagePreview(r.name, '미분류', null, null, null, files.find((f) => f.id === r.fid)?.url)}>👁</button>}
-      </div>
-    );
+  const renderScanAction = () => {
     if (sel?.type === 'unc') {
       const scans = scanModel.unc.filter((r) => r.origin !== 'existing');
       const ex = scanModel.unc.filter((r) => r.origin === 'existing');
+      const row = (r, i) => (
+        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-xs)', background: previewPages()[pageIdx]?.id === r.id ? '#EFF6FF' : 'white' }}>
+          <button type="button" onClick={() => setPageIdx(i)} style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.origin === 'existing' ? '📄 ' : '🖼 '}{r.name}</button>
+          <span style={{ color: '#B91C1C', flex: 1.3 }}>{r.reason}</span>
+          {r.origin === 'existing' && <button type="button" style={{ ...ghostBtn, padding: '2px 8px', color: '#2A75F3', borderColor: '#2A75F3' }} title="원래 문항으로 되돌립니다 — 그 자리의 스캔본은 미분류로 내려갑니다" onClick={() => restoreExisting(r)}>↩ 되돌리기</button>}
+        </div>
+      );
       return (
         <>
           <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>미분류 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{scanModel.unc.length}장</span></div>
-          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>어느 문항에도 붙지 않아 채점되지 않습니다. 확인한 뒤 학생의 빈 자리에서 [답안지 선택]으로 지정하세요.</div>
-          {scans.length > 0 && <div style={{ border: '1px solid #E2E8F0', borderRadius: 10 }}><div style={{ padding: '8px 10px', fontWeight: 800, color: '#991B1B' }}>미연결 스캔 {scans.length}장</div>{scans.map(uncRow)}</div>}
-          {ex.length > 0 && <div style={{ border: '1px solid #E2E8F0', borderRadius: 10 }}><div style={{ padding: '8px 10px', fontWeight: 800, color: '#0E7490' }}>교체된 기존 답안 {ex.length}건</div>{ex.map(uncRow)}</div>}
-          {!scanModel.unc.length && <div style={noteBox('muted')}>미분류 파일이 없습니다.</div>}
+          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>어느 문항에도 붙지 않아 채점되지 않습니다. 파일을 눌러 아래에서 확인한 뒤, 학생의 빈 자리에서 [답안지 선택]으로 지정하세요.</div>
+          <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, maxHeight: 190, overflowY: 'auto' }}>
+            {scans.length > 0 && <div style={{ padding: '6px 10px', fontWeight: 800, color: '#991B1B', fontSize: 'var(--neo-font-size-xs)' }}>미연결 스캔 {scans.length}장</div>}
+            {scans.map((r) => row(r, scanModel.unc.indexOf(r)))}
+            {ex.length > 0 && <div style={{ padding: '6px 10px', fontWeight: 800, color: '#0E7490', fontSize: 'var(--neo-font-size-xs)', borderTop: '1px solid #E2E8F0' }}>교체된 기존 답안 {ex.length}건</div>}
+            {ex.map((r) => row(r, scanModel.unc.indexOf(r)))}
+            {!scanModel.unc.length && <div style={{ padding: 10, color: '#94A3B8' }}>미분류 파일이 없습니다.</div>}
+          </div>
         </>
       );
     }
     const s = scanModel.students.find((x) => x.id === sel?.id);
-    if (!s) return null;
+    if (!s) return <div style={{ color: '#94A3B8' }}>왼쪽에서 학생을 선택하세요.</div>;
     const pool = scanModel.unc.filter((r) => r.origin !== 'existing');
+    const flat = s.qs.flatMap((x) => x.list);
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span>
           <span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE[s.badge])}>{s.badge === 'answer' ? '답안 있음' : BADGE[s.badge].label}</span>
         </div>
-        {s.badge === 'none' && <div style={noteBox('muted')}>이 학생은 채점에서 제외됩니다 — 올린 파일에서 답안지를 한 장도 찾지 못했습니다. 채점하려면 아래 빈 자리에서 미분류 답안지를 지정하세요. 한 장이라도 붙이면 나머지 문항도 채워야 합니다.</div>}
-        {s.badge === 'check' && <div style={noteBox('warn')}>{s.detail}. 빈 자리의 [답안지 선택]으로 채우고, 남는 장은 [연결 해제]로 내려 주세요. AI가 문항을 추정한 장은 [확인]을 눌러 주세요.</div>}
-        {s.badge === 'answer' && s.detail.startsWith('기존 답안 교체') && <div style={noteBox('info')}>🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 기존 답안으로 채점하려면 [미분류]에서 [↩ 되돌리기]를 누르세요.</div>}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
+        {s.badge === 'none' && <div style={noteBox('muted')}>채점에서 제외됩니다 — 올린 파일에서 답안지를 한 장도 찾지 못했습니다. 채점하려면 빈 자리에서 미분류 답안지를 지정하세요.</div>}
+        {s.badge === 'check' && <div style={noteBox('warn')}>⚠ {s.detail}. 빈 자리는 [답안지 선택]으로 채우고, 남는 장은 [✕]로 내려 주세요. AI가 문항을 추정한 장은 [확인]을 눌러 주세요.</div>}
+        {s.badge === 'answer' && s.detail.startsWith('기존 답안 교체') && <div style={noteBox('info')}>🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 기존 답안으로 채점하려면 [미분류 파일]에서 [↩ 되돌리기]를 누르세요.</div>}
+        {/* 문항 칩 — 한 줄로 압축. 누르면 아래 미리보기가 그 장으로 간다 */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {s.qs.map((x) => {
-            const tone = x.st === 'ok' ? '#F8FAFC' : '#FEF2F2';
             const empties = x.hasExisting ? 0 : Math.max(0, x.q.sheets - x.list.length);
+            const bad = !s.absent && x.st !== 'ok';
             return (
-              <div key={x.q.id} style={{ border: `1px solid ${x.st === 'ok' || s.absent ? '#E2E8F0' : '#FCA5A5'}`, borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ padding: '6px 10px', background: s.absent ? '#F8FAFC' : tone, fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
-                  {x.q.title} <span style={{ color: '#94A3B8', fontWeight: 600 }}>({x.q.sheets}장)</span>
-                  {!s.absent && x.st === 'over' && <span style={{ color: '#B91C1C', marginLeft: 6 }}>{x.list.length - x.q.sheets}장 초과</span>}
-                  {!s.absent && x.st === 'short' && <span style={{ color: '#B91C1C', marginLeft: 6 }}>{x.q.sheets - x.list.length}장 부족</span>}
-                </div>
+              <div key={x.q.id} style={{ border: `1px solid ${bad ? '#FCA5A5' : '#E2E8F0'}`, borderRadius: 8, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', background: bad ? '#FEF2F2' : '#F8FAFC' }}>
+                <strong style={{ fontSize: 'var(--neo-font-size-xs)' }}>{x.q.title}</strong>
+                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: bad ? '#B91C1C' : '#94A3B8', fontWeight: 700 }}>{x.hasExisting ? '기존 답안' : `${x.list.length}/${x.q.sheets}장`}</span>
                 {x.list.map((r, i) => (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-xs)', background: i >= x.q.sheets ? '#FEF2F2' : 'white' }}>
-                    <span style={{ color: '#94A3B8', flex: 'none' }}>{r.origin === 'existing' ? '기존' : `${x.q.title.replace(' ', '')}-${i + 1}`}</span>
-                    <button type="button" onClick={() => pagePreview(r.name, `${x.q.title}-${i + 1}`, s.id, x.q.id, i + 1, files.find((f) => f.id === r.fid)?.url)}
-                      style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'inherit' }}>{r.name}</button>
-                    {r.conf === 'medium' && <button type="button" title="AI가 문항을 추정한 답안지입니다. 확인했으면 누르세요" onClick={() => patchRow(r.id, { conf: 'high' })} style={{ ...ghostBtn, padding: '1px 6px', color: '#92400E', borderColor: '#FDE68A', background: '#FFFBEB' }}>확인</button>}
-                    <button type="button" title="연결 해제 — 미분류로 내립니다" onClick={() => unlinkRow(r)} style={{ ...ghostBtn, padding: '1px 6px' }}>✕</button>
-                  </div>
+                  <span key={r.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 4px 1px 6px', borderRadius: 6, background: previewPages()[pageIdx]?.id === r.id ? '#DBEAFE' : 'white', border: `1px solid ${i >= x.q.sheets ? '#FCA5A5' : '#CBD5E1'}` }}>
+                    <button type="button" onClick={() => setPageIdx(flat.indexOf(r))} title={r.name} style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', padding: 0 }}>{r.origin === 'existing' ? '📄' : `${x.q.id}-${i + 1}`}</button>
+                    {r.conf === 'medium' && <button type="button" title="AI가 문항을 추정했습니다. 확인했으면 누르세요" onClick={() => patchRow(r.id, { conf: 'high' })} style={{ border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 4px' }}>확인</button>}
+                    <button type="button" title="연결 해제 — 미분류로 내립니다" onClick={() => unlinkRow(r)} style={{ border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>✕</button>
+                  </span>
                 ))}
                 {Array.from({ length: empties }, (_, i) => (
-                  <div key={`e${i}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-xs)' }}>
-                    <span style={{ color: '#B91C1C', flex: 1 }}>답안지 없음</span>
-                    <select value="" disabled={!pool.length} onChange={(e) => { const r = pool.find((p) => p.id === e.target.value); if (r) patchRow(r.id, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1, conf: 'high', reason: null }); }}
-                      style={{ padding: '2px 4px', borderRadius: 6, border: '1px solid #93C5FD', background: '#EFF6FF', fontFamily: 'inherit', fontSize: 'inherit', maxWidth: 130 }}>
-                      <option value="">답안지 선택{pool.length ? '' : ' (미분류 없음)'}</option>
-                      {pool.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
+                  <select key={`e${i}`} value="" disabled={!pool.length}
+                    onChange={(e) => { const r = pool.find((p) => p.id === e.target.value); if (r) patchRow(r.id, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1, conf: 'high', reason: null }); }}
+                    style={{ padding: '1px 4px', borderRadius: 6, border: '1px dashed #F87171', background: 'white', color: '#B91C1C', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', maxWidth: 120 }}>
+                    <option value="">＋ 답안지 선택</option>
+                    {pool.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 ))}
               </div>
             );
@@ -856,20 +949,53 @@ const BatchGradingUnified = () => {
     );
   };
 
-  /* ── 우측 미리보기 (공통) ── */
-  const renderPreview = () => (
-    <div style={{ ...card, width: 260, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid #F1F5F9', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
-        {source === 'scan' ? '선택한 파일 미리보기' : '선택한 답안 미리보기'}
-        {preview && <div style={{ fontWeight: 500, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>{preview.title} · {preview.sub}</div>}
+  /* ── 미리보기 페이지 목록 — 선택에 따라 ── */
+  const previewPages = () => {
+    if (!model || !sel) return [];
+    if (source === 'cradle') {
+      const pen = sel.type === 'pen' ? connected.find((p) => p.id === sel.penId) : null;
+      if (!pen) return [];
+      const info = cradleModel.penInfo[pen.id] || {};
+      const handLabel = pen.scenario === 'no_ident' ? '' : pen.scenario === 'other_group' ? pen.ownerLabel : pen.scenario === 'not_in_roster' ? pen.read
+        : (() => { const s = studentById(pen.identSid || pen.owner); return s ? `${s.grade} ${s.name}` : ''; })();
+      return QUESTIONS.flatMap((q) => Array.from({ length: pen.pages[q.id] || 0 }, (_, i) => ({
+        id: `${pen.id}-${q.id}-${i}`, label: `${q.title}-${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: handLabel, question: q.title, sheetNo: i + 1, kind: info.kind,
+      })));
+    }
+    if (sel.type === 'unc') return scanModel.unc.map((r) => ({ id: r.id, label: r.name, sub: '미분류', url: files.find((f) => f.id === r.fid)?.url, studentLabel: r.origin === 'existing' ? `${studentById(r.home.sid).grade} ${studentById(r.home.sid).name}` : '', existing: r.origin === 'existing' }));
+    const s = scanModel.students.find((x) => x.id === sel.id);
+    if (!s) return [];
+    return s.qs.flatMap((x) => x.list.map((r, i) => ({ id: r.id, label: r.origin === 'existing' ? `${x.q.title} · 기존 답안` : `${x.q.title}-${i + 1}`, sub: r.name, url: files.find((f) => f.id === r.fid)?.url,
+      studentLabel: `${s.grade} ${s.name}`, question: x.q.title, sheetNo: i + 1, existing: r.origin === 'existing' })));
+  };
+
+  /** 큰 미리보기 — 매핑 영역 바로 아래. 선택하면 첫 장이 바로 뜬다 */
+  const renderPreviewPane = () => {
+    const pages = previewPages();
+    const i = Math.min(pageIdx, Math.max(0, pages.length - 1));
+    const pg = pages[i];
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #E2E8F0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)' }}>
+          <strong>{source === 'scan' ? '파일 미리보기' : '답안 미리보기'}</strong>
+          {pg && <span style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{pg.label} · {pg.sub}</span>}
+          {pages.length > 1 && (
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
+              <button type="button" disabled={i === 0} onClick={() => setPageIdx(i - 1)} style={{ ...ghostBtn, padding: '2px 10px', opacity: i === 0 ? 0.4 : 1 }}>◀</button>
+              <strong style={{ fontSize: 'var(--neo-font-size-xs)' }}>{i + 1} / {pages.length}</strong>
+              <button type="button" disabled={i >= pages.length - 1} onClick={() => setPageIdx(i + 1)} style={{ ...ghostBtn, padding: '2px 10px', opacity: i >= pages.length - 1 ? 0.4 : 1 }}>▶</button>
+            </span>
+          )}
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#E2E8F0', padding: 16, display: 'flex', justifyContent: 'center' }}>
+          {!pg && <div style={{ alignSelf: 'center', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>{sel ? '미리볼 답안이 없습니다.' : '왼쪽에서 선택하면 답안을 크게 볼 수 있습니다.'}</div>}
+          {pg && (pg.url
+            ? <img src={pg.url} alt={pg.label} style={{ maxWidth: '100%', alignSelf: 'flex-start', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: 'white' }} />
+            : <div style={{ width: '100%', maxWidth: 720, aspectRatio: '1 / 1.2', alignSelf: 'flex-start' }}><SheetMock studentLabel={pg.studentLabel} question={pg.question} sheetNo={pg.sheetNo} answer={!pg.existing} /></div>)}
+        </div>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 12, background: preview ? '#0F172A' : 'white' }}>
-        {!preview && <div style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)', textAlign: 'center', marginTop: 80, lineHeight: 1.7 }}>{source === 'scan' ? '미리볼 파일을' : '미리볼 답안을'}<br />선택해 주세요.</div>}
-        {preview && (preview.url ? <img src={preview.url} alt="" style={{ width: '100%', borderRadius: 6, background: 'white' }} />
-          : <div style={{ aspectRatio: '1 / 1.414' }}><SheetMock studentLabel={preview.studentLabel} question={preview.question} sheetNo={preview.sheetNo} /></div>)}
-      </div>
-    </div>
-  );
+    );
+  };
 
   /* ════════════ 렌더 ════════════ */
   const T = { cradle: '🖊 크래들 일괄 채점', scan: '📷 스캔 일괄 채점' }[source];
@@ -924,14 +1050,16 @@ const BatchGradingUnified = () => {
 
         {step === 'mapping' && !reading && model && (
           <>
-            {renderMappingBand()}
-            {/* 3단 — 좁은 화면에서도 목록·상세가 충분히 보이도록 높이 하한을 둔다 (페이지가 스크롤) */}
-            <div style={{ height: 'max(560px, calc(100vh - 360px))', display: 'flex', gap: 10 }}>
-              {renderStudentList()}
-              <div style={{ ...card, flex: 1, minWidth: 0, padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {source === 'cradle' ? renderCradleDetail() : renderScanDetail()}
+            {renderSummaryBar()}
+            {/* 2단 — 좌: 목록(크래들은 묶음 머리에 10구 띠) / 우: 매핑 + 큰 미리보기. 높이 하한을 둬 노트북에서도 미리보기가 충분히 크다 */}
+            <div style={{ height: 'max(600px, calc(100vh - 300px))', display: 'flex', gap: 10 }}>
+              {source === 'cradle' ? renderPenList() : renderStudentList()}
+              <div style={{ ...card, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, flex: 'none', maxHeight: '48%', overflowY: 'auto' }}>
+                  {source === 'cradle' ? renderCradleAction() : renderScanAction()}
+                </div>
+                {renderPreviewPane()}
               </div>
-              {renderPreview()}
             </div>
           </>
         )}
