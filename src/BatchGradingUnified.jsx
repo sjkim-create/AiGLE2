@@ -13,6 +13,9 @@
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import IncidentReportDialog from './IncidentReportDialog';
+import RequiredProgramModal, { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal'; // [SCR-07] AiGLE Connect 실행 확인
+import appLogger from './appLogger';
+import { recordGradingSession } from './lib/penRawStore'; // [BRD-16] 펜 원본 진단 파일 (이용불편 접수 zip 첨부용)
 import { openPdf, renderPages, splitErrorReason } from './lib/pdfSplit';
 
 /* ─────────────── 공통 목 데이터 ─────────────── */
@@ -23,11 +26,22 @@ const QUESTIONS = [
   { id: 3, title: '문항 3', sheets: 1 },
 ];
 const NAMES = ['김민지', '이서준', '박하은', '최도윤', '정서연', '강지호', '조유나', '윤시우', '장하린', '임준서', '한지아', '오건우', '서예린', '신도현'];
-const ROSTER = NAMES.map((name, i) => ({ id: `s${i + 1}`, name, no: `1-1-${i + 1}`, grade: `1학년 1반 ${i + 1}번`, hasAnswer: i === 3 || i === 10 }));
-const studentById = (id) => ROSTER.find((s) => s.id === id);
+/* 그룹 명단(GROUP)과 채점 대상(ROSTER)을 나눈다 — 교사는 미채점 탭에서 그룹을 고르고 학생을 선택해 들어온다.
+ *   시연: 서예린(1-1-13)은 선택하지 않은 학생 → 그 학생의 답안은 「채점 목록에서 선택하지 않은 학생」(판정 #8)으로 미분류 */
+const GROUP = NAMES.map((name, i) => ({ id: `s${i + 1}`, name, no: `1-1-${i + 1}`, grade: `1학년 1반 ${i + 1}번`, hasAnswer: i === 3 || i === 10 }));
+const ROSTER = GROUP.filter((s) => s.id !== 's13');
+const isTarget = (sid) => ROSTER.some((s) => s.id === sid);
+const studentById = (id) => GROUP.find((s) => s.id === id);
 
 const IDENT_UNREAD = '학생 미매칭 — 답안지 학생정보를 읽을 수 없습니다';
 const NOT_IN_ROSTER = (read) => `학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: ${read}]`;
+const NOT_SELECTED = '학생 미매칭 — 채점 목록에서 선택하지 않은 학생입니다'; // 판정 #8
+const OTHER_TASK_PEN = '학생 미매칭 — 이 과제 데이터가 아닙니다';        // 판정 #3
+const REPLACED = '기존 답안 — 스캔본이 자리를 대신하고 있습니다';
+/* 스캔 답안지 코드 — 과제당 1개가 아니라 장마다 1개 (SCR-05 v4.4) */
+const SHEET_CODES = (() => { let n = 594; return QUESTIONS.flatMap((q) => Array.from({ length: q.sheets }, (_, i) => ({ q: q.id, page: i + 1, code: String(n++).padStart(8, '0') }))); })();
+/* AiGLE Connect 실행 여부 — 한 번 확인되면 이 창을 다시 열어도 확인 창을 띄우지 않는다 (세션 기억) */
+let connectorSessionReady = false;
 
 const BADGE = {
   ok: { label: '정상', bg: '#F0FDF4', border: '#86EFAC', color: '#166534', dot: '#22C55E' },
@@ -62,16 +76,22 @@ const buildPens = () => {
     id: `PEN-${String(pens.length + 1).padStart(3, '0')}`, slot: pens.length + 1,
     battery: [92, 85, 74, 61, 88, 57, 96, 43, 79, 68][pens.length % 10],
     firmware: pens.length === 2 ? '2.0.5' : '2.1.0', needsUpdate: pens.length === 2,
-    flaky: pens.length === 7, pages: {}, ...p,
+    flaky: pens.length === 7, pages: {},
+    /* [SCR-07 v4.23] 저장 잔량(%) — 20% 미만 주의 · 10% 미만 위험. 채점 성공으로 데이터가 지워지면 회복 */
+    capacity: Math.min(96, [88, 62, 36, 79, 17, 53, 7, 29, 45, 70][pens.length % 10] + (pens.length >= 10 ? 15 : 0)),
+    extraBooks: [], ...p,
   });
-  ROSTER.forEach((s, i) => {
+  /* 한 펜에는 1~5반 답안이 함께 들어 있다 — 비정상 펜은 다른 반 답안까지 열람한다(매칭은 못 함) */
+  const otherClasses = [{ label: '1학년 3반', owner: '1학년 3반 6번 김서준', pages: 2 }, { label: '1학년 4반', owner: '1학년 4반 3번 이도윤', pages: 1 }];
+  GROUP.forEach((s, i) => {
     if (i === 5) return;                                                      // 결석 — 펜 없음
-    if (i === 1) return add({ scenario: 'no_ident', owner: s.id, pages: fullPages() });
+    if (i === 1) return add({ scenario: 'no_ident', owner: s.id, pages: fullPages(), extraBooks: otherClasses });
     if (i === 3) return add({ scenario: 'ok', owner: s.id, identSid: ROSTER[4].id, pages: fullPages() }); // 친구 답안지에 씀 → 중복
     if (i === 8) return add({ scenario: 'no_answer', owner: s.id, identSid: s.id, pages: {} });
     return add({ scenario: 'ok', owner: s.id, identSid: s.id, pages: fullPages() });
   });
-  add({ scenario: 'other_group', pages: fullPages(), detected: '1-2반', ownerLabel: '1학년 2반 4번 한서윤' });
+  add({ scenario: 'other_group', pages: fullPages(), detected: '1-2반', ownerLabel: '1학년 2반 4번 한서윤', extraBooks: otherClasses });
+  add({ scenario: 'other_task', pages: fullPages(), ownerLabel: '1학년 1반 7번 조유나' });   // 판정 #3 — 다른 과제에 쓴 펜
   add({ scenario: 'not_in_roster', pages: fullPages(), read: '1학년 1반 31번 오세훈' });
   add({ scenario: 'empty', pages: {} });
   add({ scenario: 'empty', pages: {} });
@@ -79,11 +99,12 @@ const buildPens = () => {
 };
 const PEN_POOL = buildPens();
 const penPageCount = (p) => Object.values(p.pages).reduce((a, n) => a + n, 0);
+const capTone = (pct) => (pct < 10 ? { color: '#991B1B', bar: '#DC2626' } : pct < 20 ? { color: '#B45309', bar: '#F59E0B' } : { color: '#166534', bar: '#10B981' });
 
 /* ─────────────── 스캔 목 데이터 ─────────────── */
 const buildScanPlan = () => {
   const plan = [];
-  ROSTER.forEach((s, i) => {
+  GROUP.forEach((s, i) => {
     if (i === 5) return;                           // 결석생 — 한 장도 없음 → 제외
     QUESTIONS.forEach((q) => {
       let need = q.sheets;
@@ -109,12 +130,12 @@ const noteBox = (tone) => {
 /* ════════════════════════════════════════════════════════════
  * 미니·대형 크래들 — 1단계(대형)와 데이터 매핑 상단(미니 에뮬레이터)이 같은 컴포넌트를 쓴다
  * ════════════════════════════════════════════════════════════ */
-const CradleStrip = ({ compact, docked, dotOf, selectedSlots = [], onSlot, pool }) => {
+const CradleStrip = ({ compact, docked, dotOf, labelOf, selectedSlots = [], onSlot, pool }) => {
   const wellH = compact ? 34 : 110;
   const penH = compact ? 42 : 150;
-  const slotW = compact ? 18 : 34;
+  const slotW = compact ? 18 : 28; // 3대가 노트북 폭에서 한 줄에 들어가게
   return (
-    <div style={{ display: 'flex', gap: compact ? 10 : 16, flexWrap: 'wrap', justifyContent: compact ? 'flex-start' : 'center', paddingBottom: compact ? 14 : 48 }}>
+    <div style={{ display: 'flex', columnGap: compact ? 10 : 14, rowGap: compact ? 10 : 80, flexWrap: 'wrap', justifyContent: compact ? 'flex-start' : 'center', paddingBottom: compact ? 14 : 56 }}>
       {Array.from({ length: CRADLES }, (_, ci) => ci + 1).map((cn) => (
         <div key={cn} style={{ background: 'linear-gradient(180deg,#7A8085 0%,#5C6267 55%,#4C5257 100%)', borderRadius: compact ? 9 : 14, padding: compact ? '4px 8px 0' : '14px 14px 0', boxShadow: '0 8px 18px rgba(15,23,42,0.18)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.7)', fontSize: compact ? 9 : 'var(--neo-font-size-xs)', fontWeight: 800, marginBottom: compact ? 2 : 10, letterSpacing: 0.5 }}>
@@ -147,6 +168,10 @@ const CradleStrip = ({ compact, docked, dotOf, selectedSlots = [], onSlot, pool 
                   {dot && (
                     <span style={{ position: 'absolute', left: '50%', top: wellH + (compact ? 16 : 52), transform: 'translateX(-50%)', width: compact ? 7 : 10, height: compact ? 7 : 10, borderRadius: '50%', background: dot.color, border: '1.5px solid white' }} />
                   )}
+                  {/* [SCR-07 v4.23] 슬롯 아래 라벨 — 1단계는 연결 중 → 저장 잔량 % */}
+                  {pen && labelOf && (() => { const lb = labelOf(pen); return lb ? (
+                    <div style={{ position: 'absolute', left: '50%', top: wellH + 50, transform: 'translateX(-50%)', whiteSpace: 'nowrap', padding: '1px 6px', borderRadius: 999, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, background: lb.bg, color: lb.color }}>{lb.text}</div>
+                  ) : null; })()}
                   {compact && <div style={{ position: 'absolute', left: 0, right: 0, top: wellH + 26, textAlign: 'center', fontSize: 8, color: '#94A3B8', fontWeight: 700 }}>{slotIn(slot)}</div>}
                 </div>
               );
@@ -216,6 +241,17 @@ const BatchGradingUnified = () => {
   const [dupPick, setDupPick] = useState({});    // { sid: penId } 중복 해소 — 고른 펜
   const [assignPick, setAssignPick] = useState({});
   const [fwDone, setFwDone] = useState({});
+  const [fwProg, setFwProg] = useState({});      // 펌웨어 업데이트 진행률 { penId: % }
+  const [deletedPens, setDeletedPens] = useState([]); // 채점 성공으로 데이터가 지워진 펜 — 배지 「데이터 삭제」 · 잔량 회복
+  // AiGLE Connect — 'checking' | 'ready' | 'blocked'
+  const [connector, setConnector] = useState(connectorSessionReady ? 'ready' : 'checking');
+  const [programOpen, setProgramOpen] = useState(false);
+  // 채점 대상 스냅숏 — 채점 중·완료 목록용 { sid, slot?, penId? }
+  const [gradedList, setGradedList] = useState([]);
+  // 확인창 — { kind: 'switch' | 'replace' | 'overwrite', next? }
+  const [confirm, setConfirm] = useState(null);
+  const [rowMenu, setRowMenu] = useState(null);  // 스캔 — 펼친 장 메뉴(행 id)
+  const [showCodes, setShowCodes] = useState(false);
 
   /* ── 스캔 상태 ── */
   const [files, setFiles] = useState([]);        // { id, name, size, kind, url, plan }
@@ -239,10 +275,22 @@ const BatchGradingUnified = () => {
     return () => clearInterval(iv);
   }, [step, gradingDone]);
 
+  useEffect(() => {
+    if (source !== 'cradle' || step !== 'import' || connector !== 'checking') return undefined;
+    const t = setTimeout(() => {
+      if (connectorSessionReady) { setConnector('ready'); return; }
+      setConnector('blocked'); setProgramOpen(true);
+      appLogger.warn('aigle-connect-socket', 'AiGLE Connect 미실행 — 필수 프로그램 확인 창');
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [source, step, connector]);
+
   const resetAll = (nextSource = source) => {
     setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all');
     setProgress(0); setGradingDone(false); setGradedIds([]); setFailedIds([]); setRetrying(false); failedOnce.current = false;
-    setDocked({}); setUnrecognized([]); failedDock.current = new Set(); setJudged([]); setManual({}); setDupPick({}); setAssignPick({}); setFwDone({});
+    setDocked({}); setUnrecognized([]); failedDock.current = new Set(); setJudged([]); setManual({}); setDupPick({}); setAssignPick({}); setFwDone({}); setFwProg({}); setDeletedPens([]);
+    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false);
+    if (nextSource === 'cradle' && !connectorSessionReady) setConnector('checking');
     files.forEach((f) => f.url && URL.revokeObjectURL(f.url));
     splitJobs.forEach((j) => { splitCancel.current.add(j.id); j.pages.forEach((p) => p.url && URL.revokeObjectURL(p.url)); });
     setFiles([]); setSplitJobs([]); setUploadErrors([]); setRows([]);
@@ -268,6 +316,18 @@ const BatchGradingUnified = () => {
   };
   const undockPen = (slot) => setDocked((prev) => { const n = { ...prev }; delete n[slot]; return n; });
   const connected = Object.values(docked).filter((p) => p.link === 'connected').sort((a, b) => a.slot - b.slot);
+  const capacityOf = (p) => (deletedPens.includes(p.id) ? 99 : p.capacity);
+  /* 펌웨어 업데이트 — 진행 막대. 채점의 필수 요건은 아니다 */
+  const runFirmware = (penId) => {
+    if (fwProg[penId] != null || fwDone[penId]) return;
+    let v = 0;
+    setFwProg((x) => ({ ...x, [penId]: 0 }));
+    const iv = setInterval(() => {
+      v += 10;
+      setFwProg((x) => ({ ...x, [penId]: v }));
+      if (v >= 100) { clearInterval(iv); setFwProg((x) => { const n = { ...x }; delete n[penId]; return n; }); setFwDone((x) => ({ ...x, [penId]: true })); }
+    }, 120);
+  };
 
   /* ════════════ 크래들 — 판정 모델 ════════════ */
   const cradleModel = useMemo(() => {
@@ -281,9 +341,11 @@ const BatchGradingUnified = () => {
       const m = manual[p.id];
       if (m) { (bySid[m] = bySid[m] || []).push({ pen: p, manual: true }); return; }
       if (p.scenario === 'empty') { empty.push(p); return; }
-      if (p.scenario === 'other_group') { unc.push({ id: p.id, pen: p, reason: `그룹 불일치 [감지: ${p.detected} → 선택: ${TASK.groupShort}]`, noAssign: true }); return; }
+      if (p.scenario === 'other_group') { unc.push({ id: p.id, pen: p, reason: `그룹 불일치 [감지: ${p.detected} → 선택: ${TASK.groupShort}]`, noAssign: `${p.detected} 답안지입니다. ${TASK.group} 학생에게는 매칭할 수 없습니다 — 그 반 채점 때 처리됩니다. 우리 반 학생이면 ${TASK.group} 답안지에 다시 쓰게 해 주세요.` }); return; }
+      if (p.scenario === 'other_task') { unc.push({ id: p.id, pen: p, reason: OTHER_TASK_PEN, noAssign: '다른 과제에 쓴 데이터라 이 과제에 매칭할 수 없습니다. 해당 과제에서 채점하세요.' }); return; }
       if (p.scenario === 'no_ident') { unc.push({ id: p.id, pen: p, reason: IDENT_UNREAD }); return; }
       if (p.scenario === 'not_in_roster') { unc.push({ id: p.id, pen: p, reason: NOT_IN_ROSTER(p.read) }); return; }
+      if (!isTarget(p.identSid)) { unc.push({ id: p.id, pen: p, reason: NOT_SELECTED }); return; } // 판정 #8
       (bySid[p.identSid] = bySid[p.identSid] || []).push({ pen: p });
     });
     // 중복 해소 — 교사가 고른 펜만 남기고 나머지는 미분류로
@@ -318,7 +380,7 @@ const BatchGradingUnified = () => {
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, docked, judged, manual, dupPick]);
+  }, [source, docked, judged, manual, dupPick, deletedPens]);
 
   /* ════════════ 스캔 — 1단계 업로드 · 페이지 분리 ════════════ */
   const appendFiles = (entries) => setFiles((prev) => {
@@ -389,6 +451,7 @@ const BatchGradingUnified = () => {
         const reason = p.fault === 'other_task' ? '학생 미매칭 — 이 과제 답안지가 아닙니다' : p.fault === 'not_in_roster' ? NOT_IN_ROSTER('1학년 1반 31번 오세훈') : IDENT_UNREAD;
         return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason, noAssign: p.fault === 'other_task' };
       }
+      if (!isTarget(p.sid)) return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason: NOT_SELECTED, readAs: p.sid };
       taken.add(`${p.sid}:${p.q}`);
       return { id: `r${f.id}`, fid: f.id, name: f.name, sid: p.sid, q: p.q, sheet: p.page, conf: (i === 3 || i === 30) ? 'medium' : 'high' }; // AI가 문항을 추정한 답안지 2장 (시연)
     });
@@ -397,6 +460,42 @@ const BatchGradingUnified = () => {
       return { id: `e${s.id}${q.id}`, name: `${s.name} 기존 답안 · ${q.title}`, origin: 'existing', home: { sid: s.id, q: q.id }, sid: attach ? s.id : null, q: attach ? q.id : null, conf: 'high', reason: attach ? null : '기존 답안 — 스캔본이 자리를 대신하고 있습니다' };
     }));
     setRows([...out, ...existing]);
+    // [SCR-05 v4.12] 판별 직후 교체 의사 1회 확인 — 전체 스캔으로 기존 답안이 밀려났을 때
+    if (existing.some((r) => r.sid == null)) setConfirm({ kind: 'replace' });
+    appLogger.info('scan-ocr', '답안지 판별 완료', { files: out.length, unassigned: out.filter((r) => r.sid == null).length });
+  };
+  /* 스캔 — 자리 조작 (SCR-05 §4.4): 맞교환 · 새 파일로 교체 · 빈 자리에 업로드 · 옮기기 · 삭제 */
+  const swapRow = (oldR, newId) => setRows((prev) => prev.map((x) => {
+    if (x.id === newId) return { ...x, sid: oldR.sid, q: oldR.q, sheet: oldR.sheet, conf: 'high', reason: null };
+    if (x.id === oldR.id) return { ...x, sid: null, q: null, sheet: null, conf: 'low', reason: x.origin === 'existing' ? REPLACED : '미연결 — 맞교환으로 자리에서 내려온 답안지입니다' };
+    return x;
+  }));
+  const uploadIntoSlot = (fileList, { sid, q, sheet, replaceRow }) => {
+    const f = fileList && fileList[0];
+    if (!f) return;
+    if (!/\.(pdf|png|jpe?g)$/i.test(f.name)) { setToast('PDF · PNG · JPG만 올릴 수 있습니다.'); return; }
+    const fid = Math.max(0, ...files.map((x) => x.id)) + 1;
+    const isPdf = /\.pdf$/i.test(f.name);
+    setFiles((prev) => [...prev.filter((x) => !(replaceRow && replaceRow.origin !== 'existing' && x.id === replaceRow.fid)), { id: fid, name: f.name, size: f.size, kind: isPdf ? 'pdf' : 'image', url: isPdf ? null : URL.createObjectURL(f) }]);
+    setRows((prev) => [
+      ...prev.flatMap((x) => {
+        if (!replaceRow || x.id !== replaceRow.id) return [x];
+        return x.origin === 'existing' ? [{ ...x, sid: null, q: null, sheet: null, reason: REPLACED }] : []; // 밀려난 스캔본은 목록에서 제거, 기존 답안은 미분류로
+      }),
+      { id: `r${fid}`, fid, name: f.name, sid, q, sheet, conf: 'high', manual: true },
+    ]);
+    setToast(`${f.name}을(를) ${studentById(sid).name} · 문항 ${q} 자리에 붙였습니다.`);
+  };
+  const moveRow = (r, sid, q) => {
+    const n = rows.filter((x) => x.sid === sid && x.q === q).length;
+    patchRow(r.id, { sid, q, sheet: n + 1, conf: 'high', reason: null });
+    setToast(`${r.name}을(를) ${studentById(sid).name} · 문항 ${q}(으)로 옮겼습니다.`);
+  };
+  const deleteRow = (r) => {
+    const f = files.find((x) => x.id === r.fid);
+    if (f?.url) URL.revokeObjectURL(f.url);
+    setFiles((prev) => prev.filter((x) => x.id !== r.fid));
+    setRows((prev) => prev.filter((x) => x.id !== r.id));
   };
   const scanModel = useMemo(() => {
     if (source !== 'scan') return null;
@@ -451,6 +550,7 @@ const BatchGradingUnified = () => {
 
   /* ════════════ 공통 흐름 ════════════ */
   const startReading = () => {
+    appLogger.info(source === 'cradle' ? 'usePenDataBatchUploadModalController' : 'scan-ocr', source === 'cradle' ? '펜 데이터 읽기 시작' : '답안지 판별 시작', { count: source === 'cradle' ? connected.length : files.length });
     setStep('mapping'); setReading(true); setSel(null);
     setTimeout(() => {
       if (source === 'cradle') setJudged(Object.values(docked).filter((p) => p.link === 'connected').map((p) => p.id));
@@ -473,8 +573,21 @@ const BatchGradingUnified = () => {
     setSel(first ? { type: 'student', id: first.id } : model.unc.length ? { type: 'unc' } : { type: 'student', id: model.students[0].id });
   }, [step, reading, model, sel]);
 
+  /** 채점 시작 — 스캔은 기존 답안을 교체하는 건이 있으면 한 번 더 확인 (SCR-05 S11) */
+  const requestGrading = () => {
+    if (source === 'scan' && replacedSlots().length) { setConfirm({ kind: 'overwrite' }); return; }
+    startGrading();
+  };
+  const replacedSlots = () => (scanModel ? scanModel.students.flatMap((s) => (s.hasAnswer ? s.qs.filter((x) => !x.hasExisting && x.list.length).map((x) => `${s.name} ${x.q.title}`) : [])) : []);
   const startGrading = () => {
+    setConfirm(null);
     const ids = model.gradable.map((s) => s.id);
+    const list = model.gradable.map((s) => (source === 'cradle' ? { sid: s.id, slot: s.pens[0].pen.slot, penId: s.pens[0].pen.id } : { sid: s.id, sheets: s.qs.reduce((a, x) => a + x.list.length, 0), full: s.qs.every((x) => x.list.length) }));
+    setGradedList(list);
+    if (source === 'cradle') {
+      recordGradingSession({ source: '크래들 일괄 채점(통합)', task: TASK.title, group: TASK.group, pens: connected.map((p) => ({ mac: p.id, books: [{ code: '334212', pages: penPageCount(p) }] })) });
+    }
+    appLogger.info('useBatchUploadPipeline', '일괄 업로드 시작', { source, collectedCount: ids.length });
     setGradedIds(ids); setFailedIds([]); setProgress(0); setGradingDone(false); setElapsed(0); setStep('grading');
     const failId = !failedOnce.current && ids.length >= 2 ? ids[ids.length - 1] : null;
     let v = 0;
@@ -482,39 +595,79 @@ const BatchGradingUnified = () => {
       v += 2; setProgress(Math.min(100, v));
       if (v >= 100) {
         clearInterval(iv);
-        if (failId) { failedOnce.current = true; setFailedIds([failId]); }
+        if (failId) { failedOnce.current = true; setFailedIds([failId]); appLogger.error('useBatchUploadPipeline', 'AI 채점 실패', { studentId: failId, error: { message: 'context length exceeded', code: 'E-AI-TOKEN-LIMIT' } }); }
+        // 채점이 정상 완료된 펜만 데이터를 지운다 (SCR-07 §4.6) — 실패 펜은 남겨 다시 채점
+        if (source === 'cradle') setDeletedPens(list.filter((x) => x.sid !== failId).map((x) => x.penId));
         setGradingDone(true);
         setTimeout(() => setStep('done'), 500);
       }
     }, 120);
   };
-  const retry = () => { setRetrying(true); setTimeout(() => { setFailedIds([]); setRetrying(false); setToast(source === 'cradle' ? '실패했던 답안의 채점이 완료되었습니다. 해당 펜의 데이터도 삭제되었습니다.' : '실패했던 답안의 채점이 완료되었습니다.'); }, 2000); };
+  const retry = () => { setRetrying(true); setTimeout(() => { if (source === 'cradle') setDeletedPens((d) => [...d, ...gradedList.filter((x) => failedIds.includes(x.sid)).map((x) => x.penId)]); setFailedIds([]); setRetrying(false); setToast(source === 'cradle' ? '실패했던 답안의 채점이 완료되었습니다. 해당 펜의 데이터도 삭제되었습니다.' : '실패했던 답안의 채점이 완료되었습니다.'); }, 2000); };
 
   const stepIdx = STEPS.findIndex((s) => s.key === step);
-  const canStartMapping = source === 'cradle' ? connected.length > 0 : files.length > 0 && !pendingSplit.length;
+  const canStartMapping = source === 'cradle' ? connector === 'ready' && connected.length > 0 : files.length > 0 && !pendingSplit.length;
+  /** 입력 방식 전환 — 진행한 작업이 있으면 확인 (SCR-05·07 「매핑을 취소하고 닫을까요?」) */
+  const requestSwitch = (next) => {
+    if (next === source) return;
+    const dirty = step === 'mapping' || (step === 'import' && (files.length || splitJobs.length || Object.keys(docked).length));
+    if (dirty) { setConfirm({ kind: 'switch', next }); return; }
+    resetAll(next);
+  };
 
   /* ════════════ 렌더 조각 ════════════ */
   const renderCradleImport = () => {
     const needFw = connected.filter((p) => p.needsUpdate && !fwDone[p.id]);
+    const lowCap = connected.filter((p) => capacityOf(p) < 20);
+    if (connector === 'checking') {
+      return (
+        <div style={{ ...card, padding: '40px 24px', textAlign: 'center' }}>
+          <style>{'@keyframes bguSpin { to { transform: rotate(360deg); } }'}</style>
+          <div style={{ width: 36, height: 36, margin: '0 auto 12px', border: '4px solid #DBEAFE', borderTopColor: '#2A75F3', borderRadius: '50%', animation: 'bguSpin 1s linear infinite' }} />
+          <div style={{ fontWeight: 800 }}>AiGLE Connect 실행 상태를 확인하는 중입니다.</div>
+          <div style={{ color: '#64748B', fontSize: 'var(--neo-font-size-sm)', marginTop: 4 }}>잠시만 기다려 주세요.</div>
+        </div>
+      );
+    }
+    if (connector === 'blocked') {
+      return (
+        <div style={{ ...card, padding: '32px 24px', textAlign: 'center', background: '#FEF2F2', borderColor: '#FCA5A5' }}>
+          <div style={{ fontSize: '2rem' }}>⚠️</div>
+          <div style={{ fontWeight: 800, color: '#991B1B' }}>AiGLE Connect가 준비되지 않았습니다.</div>
+          <div style={{ color: '#B91C1C', fontSize: 'var(--neo-font-size-sm)', margin: '6px 0 14px' }}>크래들의 펜 데이터를 읽으려면 <strong>AiGLE Connect</strong>가 설치되어 있고 실행 중이어야 합니다.</div>
+          <button type="button" style={primaryBtn(true)} onClick={() => setProgramOpen(true)}>필수 프로그램 확인</button>
+        </div>
+      );
+    }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {lowCap.length > 0 && (
+          <div style={{ color: '#B45309', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
+            ⚠ 저장 잔량이 20% 미만인 펜 {lowCap.length}자루
+            <span style={{ fontWeight: 600 }}> — 이전 필기가 남아 있는 펜입니다. 채점이 정상 완료되면 그 펜의 데이터가 지워져 잔량이 회복됩니다.</span>
+          </div>
+        )}
         {unrecognized.length > 0 && (
           <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
             ⚠ 펜 {unrecognized.length}자루가 크래들에 표시되지 않습니다 — 펜 오류로 인식되지 않은 상태입니다.
-            <span style={{ fontWeight: 600, color: '#B45309' }}> 꽂혀 있는데 빈 자리로 보이는 펜을 뺐다가 다시 꽂아 주세요.</span>
+            <span style={{ fontWeight: 600, color: '#B45309' }}> 꽂혀 있는데 빈 자리로 보이는 펜을 뺐다가 다시 꽂아 주세요. 계속 표시되지 않으면 [🚨 이용불편 접수]로 알려 주세요.</span>
           </div>
         )}
         <div style={{ ...card, padding: '18px 16px 0' }}>
-          <CradleStrip docked={docked} pool={PEN_POOL} dotOf={() => null} onSlot={(slot) => (docked[slot] ? undockPen(slot) : dockPen(slot))} />
+          <CradleStrip docked={docked} pool={PEN_POOL} dotOf={() => null} onSlot={(slot) => (docked[slot] ? undockPen(slot) : dockPen(slot))}
+            labelOf={(pen) => (pen.link === 'linking' ? { text: '연결 중', bg: '#FEF3C7', color: '#B45309' }
+              : { text: `${capacityOf(pen)}%`, bg: capacityOf(pen) < 10 ? '#FEE2E2' : capacityOf(pen) < 20 ? '#FEF3C7' : '#DCFCE7', color: capTone(capacityOf(pen)).color })} />
         </div>
+        {connected.length > 0 && <div style={{ marginTop: -8, fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700 }}>슬롯 아래 숫자는 펜의 <span style={{ color: '#475569' }}>저장 잔량</span>입니다 — 20% 미만 노랑 · 10% 미만 빨강</div>}
         <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <strong style={{ fontSize: 'var(--neo-font-size-base)' }}>연결된 펜 <span style={{ color: '#2A75F3' }}>{connected.length}</span>자루</strong>
           {unrecognized.length > 0 && <span style={{ color: '#DC2626', fontWeight: 700 }}>· 인식 안 됨 {unrecognized.length}</span>}
+          {connected.length > 0 && <span style={{ fontWeight: 700 }}>· 저장 잔량 최저 <span style={{ color: capTone(Math.min(...connected.map(capacityOf))).color }}>{Math.min(...connected.map(capacityOf))}%</span></span>}
           {needFw.length > 0 && <span style={{ color: '#DC2626', fontWeight: 700 }}>· 펌웨어 업데이트 {needFw.length}</span>}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button type="button" style={ghostBtn} onClick={() => PEN_POOL.forEach((p) => !docked[p.slot] && dockPen(p.slot))}>🧪 전체 거치</button>
             <button type="button" style={ghostBtn} onClick={() => { setDocked({}); setUnrecognized([]); }}>전체 제거</button>
-            <button type="button" disabled={!needFw.length} onClick={() => setFwDone((p) => ({ ...p, ...Object.fromEntries(needFw.map((x) => [x.id, true])) }))}
+            <button type="button" disabled={!needFw.length} title="펌웨어 업데이트는 채점의 필수 요건이 아닙니다." onClick={() => needFw.forEach((x) => runFirmware(x.id))}
               style={{ ...ghostBtn, background: '#EBF2FF', border: 'none', color: '#2A75F3', opacity: needFw.length ? 1 : 0.45 }}>↺ 펌웨어 일괄 업데이트 (선택)</button>
           </span>
         </div>
@@ -524,17 +677,25 @@ const BatchGradingUnified = () => {
               <div key={cn} style={{ ...card, overflow: 'hidden' }}>
                 <div style={{ padding: '8px 12px', background: '#F1F5F9', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>크래들 {cn}</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
-                  <thead><tr style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}><th style={{ textAlign: 'left', padding: '6px 10px' }}>슬롯</th><th>연결</th><th>배터리</th><th>펌웨어</th></tr></thead>
+                  <thead><tr style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}><th style={{ textAlign: 'left', padding: '6px 10px' }}>슬롯</th><th>연결</th><th>배터리</th><th>저장 잔량</th><th>펌웨어</th></tr></thead>
                   <tbody>
                     {connected.filter((p) => cradleOf(p.slot) === cn).map((p) => (
                       <tr key={p.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                         <td style={{ padding: '6px 10px', fontWeight: 800 }}>{slotIn(p.slot)}번</td>
                         <td style={{ textAlign: 'center' }}><span style={pill(BADGE.ok)}>연결됨</span></td>
                         <td style={{ textAlign: 'center', color: p.battery < 50 ? '#DC2626' : '#475569' }}>{p.battery}%</td>
-                        <td style={{ textAlign: 'center' }}>
-                          {p.needsUpdate && !fwDone[p.id]
-                            ? <><span style={{ color: '#DC2626' }}>{p.firmware}</span> <button type="button" onClick={() => setFwDone((x) => ({ ...x, [p.id]: true }))} style={{ marginLeft: 4, background: '#EF4444', color: 'white', border: 'none', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>업데이트</button></>
-                            : <span style={{ color: '#94A3B8' }}>2.1.0</span>}
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-block', width: 30, height: 5, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle', marginRight: 4 }}>
+                            <span style={{ display: 'block', width: `${capacityOf(p)}%`, height: '100%', background: capTone(capacityOf(p)).bar }} />
+                          </span>
+                          <span style={{ fontWeight: 700, color: capTone(capacityOf(p)).color }}>{capacityOf(p)}%</span>
+                        </td>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {fwProg[p.id] != null
+                            ? <span style={{ display: 'inline-block', width: 48, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle' }}><span style={{ display: 'block', width: `${fwProg[p.id]}%`, height: '100%', background: '#2A75F3' }} /></span>
+                            : p.needsUpdate && !fwDone[p.id]
+                              ? <><span style={{ color: '#DC2626' }}>{p.firmware}</span> <button type="button" onClick={() => runFirmware(p.id)} style={{ marginLeft: 4, background: '#EF4444', color: 'white', border: 'none', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>업데이트</button></>
+                              : <span style={{ color: '#94A3B8' }}>2.1.0</span>}
                         </td>
                       </tr>
                     ))}
@@ -613,7 +774,21 @@ const BatchGradingUnified = () => {
       </div>
       {files.length > 0 && (
         <div style={{ ...card, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
-          {files.map((f) => <div key={f.id} style={{ fontSize: 'var(--neo-font-size-xs)', padding: '4px 8px', background: '#F8FAFC', borderRadius: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.kind === 'pdf' ? '📕' : '🖼'} {f.name}</div>)}
+          {files.map((f) => (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--neo-font-size-xs)', padding: '4px 8px', background: '#F8FAFC', borderRadius: 6, minWidth: 0 }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.kind === 'pdf' ? '📕' : '🖼'} {f.name}</span>
+              <button type="button" title="이 파일을 목록에서 뺍니다" aria-label={`${f.name} 삭제`} onClick={() => { if (f.url) URL.revokeObjectURL(f.url); setFiles((prev) => prev.filter((x) => x.id !== f.id)); }}
+                style={{ border: 'none', background: 'none', color: '#EF4444', cursor: 'pointer', padding: 0 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* [SCR-05 v4.12] 답안 있음 학생 고지 — 선택 컨트롤 없이 알리기만 */}
+      {ROSTER.some((st) => st.hasAnswer) && (
+        <div style={{ ...card, padding: '12px 16px', borderColor: '#FDBA74', background: '#FFF7ED' }}>
+          <div style={{ fontWeight: 800, color: '#9A3412' }}>📄 이미 답안이 있는 학생 {ROSTER.filter((st) => st.hasAnswer).length}명이 포함되어 있습니다</div>
+          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', lineHeight: 1.6, margin: '4px 0 8px' }}>스캔본이 있으면 스캔본으로 채점하고, 기존 답안은 미분류에 남아 채점 전까지 되돌릴 수 있습니다. 교체한 건에 한해 채점 시작 시 한 번 더 확인하며, 기존 답안은 이력에 보관됩니다.</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{ROSTER.filter((st) => st.hasAnswer).map((st) => <span key={st.id} style={{ padding: '3px 10px', borderRadius: 8, background: 'white', border: '1px solid #FED7AA', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700 }}>{st.name} <span style={{ color: '#94A3B8' }}>{st.no}</span></span>)}</div>
         </div>
       )}
     </div>
@@ -688,7 +863,7 @@ const BatchGradingUnified = () => {
         const led = pen ? (k ? k.dot : '#FBBF24') : null;
         return (
           <button key={slot} type="button" disabled={!pen && !avail} onClick={() => onSlotClick(slot)}
-            title={pen ? `${slotShort(slot)} · ${k ? `${k.label} — ${penText(info)}` : '연결 중'}` : avail ? `${slotShort(slot)} — 빈 슬롯 (눌러서 거치)` : `${slotShort(slot)} — 빈 슬롯`}
+            title={pen ? `${slotShort(slot)} · ${k ? `${k.label} — ${penText(info)}` : '연결 중'} · 저장 잔량 ${capacityOf(pen)}%` : avail ? `${slotShort(slot)} — 빈 슬롯 (눌러서 거치)` : `${slotShort(slot)} — 빈 슬롯`}
             aria-label={`슬롯 ${slotShort(slot)}${pen ? '' : ' 비어 있음'}`}
             style={{ flex: 1, minWidth: 0, height: 20, padding: 0, position: 'relative', borderRadius: 3, cursor: (pen || avail) ? 'pointer' : 'default',
               background: '#2F3438', border: picked ? '2px solid #60A5FA' : '1px solid rgba(0,0,0,0.45)', boxShadow: picked ? '0 0 0 2px rgba(96,165,250,0.4)' : 'inset 0 1px 3px rgba(0,0,0,0.5)' }}>
@@ -846,8 +1021,8 @@ const BatchGradingUnified = () => {
   };
 
   /* ── 우측: 매핑(조치) 영역 — 입력 방식별 ── */
-  const assignRow = (penId, noAssign, detected) => {
-    if (noAssign) return <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{detected} 답안지입니다. {TASK.group} 학생에게는 매칭할 수 없습니다 — 그 반 채점 때 처리됩니다. 우리 반 학생이면 {TASK.group} 답안지에 다시 쓰게 해 주세요.</div>;
+  const assignRow = (penId, noAssign) => {
+    if (noAssign) return <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{noAssign}</div>;
     const pick = assignPick[penId] || '';
     return (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)' }}>
@@ -904,7 +1079,7 @@ const BatchGradingUnified = () => {
         {info.kind === 'unc' && (
           <div style={{ ...noteBox(info.noAssign ? 'muted' : 'warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div><strong>⚠ {info.reason}</strong></div>
-            {assignRow(pen.id, info.noAssign, pen.detected)}
+            {assignRow(pen.id, info.noAssign)}
           </div>
         )}
         {info.kind === 'noans' && <div style={noteBox('muted')}>답안지 학생정보는 읽혔지만 답안이 없습니다. 채점에서 제외됩니다.</div>}
@@ -953,7 +1128,10 @@ const BatchGradingUnified = () => {
           {scans.map((r) => (
             <div key={r.id} style={{ border: `1px solid ${curId === r.id ? '#2A75F3' : '#E2E8F0'}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, background: curId === r.id ? '#F8FBFF' : 'white' }}>
               {fileHead(r)}
-              <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', lineHeight: 1.5 }}>⚠ {r.reason}</div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', lineHeight: 1.5 }}>⚠ {r.reason}</div>
+                <button type="button" title="이 파일을 지웁니다 — 채점에 쓰지 않을 답안지" onClick={() => deleteRow(r)} style={{ ...smallBtn, color: '#DC2626', borderColor: '#FCA5A5' }}>🗑 삭제</button>
+              </div>
               {/* 다른 과제 답안지는 이 과제에 붙이지 않는다 — 크래들의 「그룹 불일치」와 같은 취급 */}
               {r.noAssign ? (
                 <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>다른 과제의 답안지라 이 과제에 지정할 수 없습니다. 해당 과제에서 채점하세요.</div>
@@ -1026,8 +1204,45 @@ const BatchGradingUnified = () => {
                       style={{ ...smallBtn, background: '#FFFBEB', borderColor: '#FCD34D', color: '#92400E' }}>⚠ AI 추정 · 확인</button>
                   )}
                   <button type="button" title="이 장을 미분류로 내립니다" onClick={() => unlinkRow(r)} style={{ ...smallBtn, color: '#64748B' }}>연결 해제</button>
+                  <button type="button" title="맞교환 · 새 파일로 교체 · 다른 자리로 옮기기" aria-expanded={rowMenu === r.id} onClick={() => setRowMenu(rowMenu === r.id ? null : r.id)}
+                    style={{ ...smallBtn, padding: '3px 8px', background: rowMenu === r.id ? '#EFF6FF' : 'white' }}>⋯</button>
                 </div>
-              ))}
+              )).flatMap((el, i) => {
+                const r = x.list[i];
+                if (rowMenu !== r.id) return [el];
+                const pick = (k) => assignPick[`${r.id}:${k}`] || '';
+                const setPick = (k, v) => setAssignPick((prev) => ({ ...prev, [`${r.id}:${k}`]: v }));
+                return [el, (
+                  <div key={`${r.id}-menu`} style={{ padding: '10px 12px 12px 56px', background: '#F8FAFC', borderTop: '1px dashed #CBD5E1', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 'var(--neo-font-size-xs)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>미분류와 맞교환</span>
+                      <select value="" disabled={!pool.length} onChange={(e) => { if (e.target.value) { swapRow(r, e.target.value); setRowMenu(null); } }}
+                        style={{ flex: 1, minWidth: 140, padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
+                        <option value="">{pool.length ? '미분류 답안지 선택 — 이 장은 미분류로' : '미분류 답안지 없음'}</option>
+                        {pool.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>새 파일로 교체</span>
+                      <label style={{ ...smallBtn, cursor: 'pointer' }}>⬆ 파일 선택
+                        <input type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }} onChange={(e) => { uploadIntoSlot(e.target.files, { sid: s.id, q: x.q.id, sheet: r.sheet, replaceRow: r }); e.target.value = ''; setRowMenu(null); }} />
+                      </label>
+                      <span style={{ color: '#94A3B8' }}>{r.origin === 'existing' ? '기존 답안은 미분류로 내려갑니다' : '밀려난 스캔본은 목록에서 빠집니다'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>다른 자리로</span>
+                      <select value={pick('ms')} onChange={(e) => setPick('ms', e.target.value)} style={{ flex: '1 1 120px', padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
+                        <option value="">학생</option>{ROSTER.map((st) => <option key={st.id} value={st.id}>{st.no} {st.name}</option>)}
+                      </select>
+                      <select value={pick('mq')} onChange={(e) => setPick('mq', e.target.value)} style={{ flex: '0 1 90px', padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
+                        <option value="">문항</option>{QUESTIONS.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
+                      </select>
+                      <button type="button" disabled={!pick('ms') || !pick('mq') || r.origin === 'existing'} title={r.origin === 'existing' ? '기존 답안은 제 자리로만 돌아갑니다' : undefined}
+                        onClick={() => { moveRow(r, pick('ms'), Number(pick('mq'))); setRowMenu(null); }} style={{ ...primaryBtn(!!(pick('ms') && pick('mq')) && r.origin !== 'existing'), padding: '4px 12px' }}>옮기기</button>
+                    </div>
+                  </div>
+                )];
+              })}
               {Array.from({ length: empties }, (_, i) => (
                 <div key={`e${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: (x.list.length || i) ? '1px solid #F1F5F9' : 'none', background: '#FFFBFB' }}>
                   <span style={{ flex: 'none', width: 34, textAlign: 'center', padding: '1px 0', borderRadius: 5, border: '1px dashed #F87171', color: '#B91C1C', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{x.q.id}-{x.list.length + i + 1}</span>
@@ -1038,6 +1253,10 @@ const BatchGradingUnified = () => {
                     <option value="">＋ 답안지 선택{pool.length ? '' : ' (미분류 없음)'}</option>
                     {pool.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
+                  {/* 새 파일을 이 자리에 바로 — OCR을 거치지 않은 교사 직접 지정 */}
+                  <label title="새 파일을 이 자리에 바로 붙입니다" style={{ ...smallBtn, cursor: 'pointer' }}>⬆ 업로드
+                    <input type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }} onChange={(e) => { uploadIntoSlot(e.target.files, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1 }); e.target.value = ''; }} />
+                  </label>
                 </div>
               ))}
             </div>
@@ -1054,11 +1273,17 @@ const BatchGradingUnified = () => {
       const pen = sel.type === 'pen' ? connected.find((p) => p.id === sel.penId) : null;
       if (!pen) return [];
       const info = cradleModel.penInfo[pen.id] || {};
-      const handLabel = pen.scenario === 'no_ident' ? '' : pen.scenario === 'other_group' ? pen.ownerLabel : pen.scenario === 'not_in_roster' ? pen.read
+      const handLabel = pen.scenario === 'no_ident' ? '' : (pen.scenario === 'other_group' || pen.scenario === 'other_task') ? pen.ownerLabel : pen.scenario === 'not_in_roster' ? pen.read
         : (() => { const s = studentById(pen.identSid || pen.owner); return s ? `${s.grade} ${s.name}` : ''; })();
-      return QUESTIONS.flatMap((q) => Array.from({ length: pen.pages[q.id] || 0 }, (_, i) => ({
+      const own = QUESTIONS.flatMap((q) => Array.from({ length: pen.pages[q.id] || 0 }, (_, i) => ({
         id: `${pen.id}-${q.id}-${i}`, label: `${q.title}-${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: handLabel, question: q.title, sheetNo: i + 1, kind: info.kind,
+        warn: pen.scenario === 'other_task' ? '다른 과제 데이터' : pen.scenario === 'other_group' ? `${pen.detected} 답안지` : null,
       })));
+      /* [SCR-07 v2.0] 비정상 펜은 이 과제의 다른 반 답안까지 열람한다(매칭은 불가) — 정상 펜은 선택 그룹 답안만 */
+      const extra = info.kind !== 'ok' ? pen.extraBooks.flatMap((b) => Array.from({ length: b.pages }, (_, i) => ({
+        id: `${pen.id}-${b.label}-${i}`, label: `${b.label} 답안 ${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: b.owner, question: '문항 1', sheetNo: i + 1, warn: '다른 반 답안지 — 열람만',
+      }))) : [];
+      return [...own, ...extra];
     }
     if (sel.type === 'unc') return scanModel.unc.map((r) => ({ id: r.id, label: r.origin === 'existing' ? '기존 답안' : '미분류', sub: r.name, url: files.find((f) => f.id === r.fid)?.url, studentLabel: r.origin === 'existing' ? `${studentById(r.home.sid).grade} ${studentById(r.home.sid).name}` : '', existing: r.origin === 'existing', warn: r.origin === 'existing' ? null : r.reason }));
     const s = scanModel.students.find((x) => x.id === sel.id);
@@ -1121,12 +1346,30 @@ const BatchGradingUnified = () => {
             <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{T}</h2>
             <span style={{ padding: '1px 8px', borderRadius: 999, background: '#F5F3FF', color: '#6D28D9', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>통합 구조 시안</span>
           </div>
-          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 4 }}>{TASK.team} / {TASK.title} · 그룹 <strong>{TASK.group}</strong> · 대상 학생 <strong>{ROSTER.length}명</strong></div>
+          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span>{TASK.team} / {TASK.title} · 그룹 <strong>{TASK.group}</strong> · 대상 학생 <strong>{ROSTER.length}명</strong> <span style={{ color: '#94A3B8' }}>(미채점 탭에서 선택)</span></span>
+            {source === 'scan' && (
+              <span style={{ position: 'relative' }}>
+                <button type="button" onClick={() => setShowCodes((v) => !v)} style={{ padding: '1px 8px', borderRadius: 999, border: `1px solid ${showCodes ? '#2A75F3' : '#CBD5E1'}`, background: showCodes ? '#EFF6FF' : 'white', color: showCodes ? '#1D4ED8' : '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>🏷 답안지 코드 {SHEET_CODES.length}개</button>
+                {showCodes && (
+                  <span style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 20, background: 'white', border: '1px solid #CBD5E1', borderRadius: 10, boxShadow: '0 8px 20px rgba(15,23,42,0.18)', padding: '10px 12px', minWidth: 260, display: 'block' }}>
+                    <span style={{ display: 'block', marginBottom: 6 }}>답안지 <strong style={{ color: '#1E293B' }}>1장마다 코드 1개</strong>가 부여됩니다.</span>
+                    {QUESTIONS.map((q) => (
+                      <span key={q.id} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0' }}>
+                        <strong style={{ width: 50, color: '#475569' }}>{q.title}</strong>
+                        {SHEET_CODES.filter((c) => c.q === q.id).map((c) => <span key={c.code} style={{ padding: '1px 6px', borderRadius: 5, background: '#F1F5F9', fontFamily: 'monospace', color: '#1E293B' }}>{c.code}<span style={{ color: '#94A3B8' }}>({c.page}/{q.sheets})</span></span>)}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
         </div>
         {/* 입력 방식 — 바꾸면 처음부터 */}
         <div role="tablist" style={{ marginLeft: 'auto', display: 'flex', background: '#F1F5F9', borderRadius: 10, padding: 3 }}>
           {[['cradle', '🖊 크래들'], ['scan', '📷 스캔']].map(([k, l]) => (
-            <button key={k} role="tab" aria-selected={source === k} type="button" onClick={() => source !== k && resetAll(k)}
+            <button key={k} role="tab" aria-selected={source === k} type="button" onClick={() => requestSwitch(k)} disabled={step === 'grading'} title={step === 'grading' ? '채점 중에는 바꿀 수 없습니다' : undefined}
               style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: source === k ? 'white' : 'transparent', boxShadow: source === k ? '0 1px 3px rgba(15,23,42,0.15)' : 'none', fontWeight: 800, color: source === k ? '#1E293B' : '#64748B', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>{l}</button>
           ))}
         </div>
@@ -1186,8 +1429,37 @@ const BatchGradingUnified = () => {
             {!gradingDone && elapsed >= 6 && (
               <div style={{ maxWidth: 560, margin: '16px auto 0', ...noteBox('info'), background: '#EFF6FF', color: '#1E40AF', borderColor: '#BFDBFE', fontSize: 'var(--neo-font-size-sm)' }}>
                 ☕ <strong>기다리지 않으셔도 됩니다.</strong> 창을 닫아도 채점은 계속 진행되고, 끝나면 하단 알림으로 알려 드립니다.
+                <button type="button" onClick={() => setToast('실제 화면에서는 창이 최소화되고 채점은 계속 진행됩니다. 끝나면 하단 알림으로 다시 열 수 있습니다.')}
+                  style={{ ...primaryBtn(true), marginLeft: 10, padding: '5px 12px' }}>창 닫고 다른 작업 하기</button>
               </div>
             )}
+            {/* 대상별 진행 — 크래들은 펜(슬롯), 스캔은 학생. 채점이 정상 완료된 펜만 「데이터 삭제」 */}
+            <div style={{ maxWidth: 720, margin: '18px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
+                {source === 'cradle' && <span style={{ width: 60 }}>슬롯</span>}
+                <span style={{ width: 150 }}>학생</span>
+                {source === 'cradle' ? <span style={{ width: 110 }}>펜 데이터 상태</span> : <span style={{ width: 110 }}>답안지</span>}
+                <span style={{ flex: 1 }}>상세 내용</span>
+              </div>
+              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                {gradedList.map((g) => {
+                  const st = studentById(g.sid);
+                  const failed = failedIds.includes(g.sid);
+                  const done = step === 'done' || gradingDone;
+                  const deleted = source === 'cradle' && deletedPens.includes(g.penId);
+                  return (
+                    <div key={g.sid} style={{ display: 'flex', alignItems: 'center', padding: '7px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
+                      {source === 'cradle' && <span style={{ width: 60, fontWeight: 700 }}>{slotShort(g.slot)}</span>}
+                      <span style={{ width: 150, color: '#475569' }}>{st.no} {st.name}</span>
+                      <span style={{ width: 110 }}>{source === 'cradle'
+                        ? <span style={pill(deleted ? { bg: '#F5F3FF', border: '#DDD6FE', color: '#6D28D9' } : failed && done ? BADGE.check : BADGE.ok)}>{deleted ? '데이터 삭제' : '정상'}</span>
+                        : <span style={{ color: '#64748B' }}>{g.sheets}장</span>}</span>
+                      <span style={{ flex: 1, fontWeight: 700, color: !done ? '#1D4ED8' : failed ? '#B91C1C' : '#047857' }}>{!done ? 'AI 채점중' : failed ? 'AI 채점 실패 — 토큰 용량 초과' : 'AI 채점 완료'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1206,12 +1478,54 @@ const BatchGradingUnified = () => {
                     <div><strong>⚠ {failedIds.length}명은 AI 채점에 실패했습니다.</strong> 답안 분량이 커서 <strong>토큰 용량을 초과</strong>했습니다(서버 응답 지연). 나머지 학생의 채점 결과는 정상 반영됐습니다.</div>
                     {/* 남는 것은 입력 방식마다 다르다 — 크래들은 펜 데이터, 스캔은 올린 답안지 */}
                     <div style={{ marginTop: 6, color: '#475569' }}>실패한 {failedIds.length}명은 <strong>미채점</strong>으로 자동 되돌려집니다. {source === 'cradle' ? '해당 펜의 데이터는 지우지 않았으니 같은 펜을 다시 거치해 이어서 채점할 수 있습니다.' : '올린 답안지는 그대로 보관되어 있어 파일을 다시 올리지 않고 이어서 채점할 수 있습니다.'}</div>
-                    <button type="button" onClick={retry} style={{ ...primaryBtn(true), background: '#DC2626', marginTop: 8 }}>↻ 다시 시도</button>
+                    <div style={{ marginTop: 4, color: '#B45309' }}>잠시 후 [다시 시도]를 누르거나, 계속 실패하면 서비스팀에 문의해 주세요.</div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button type="button" onClick={retry} style={{ ...primaryBtn(true), background: '#DC2626' }}>↻ 다시 시도</button>
+                      <button type="button" onClick={() => setToast('서비스팀 문의: 1544-0000 · support@neolab.net')} style={ghostBtn}>서비스팀 문의</button>
+                    </div>
                   </>
                 )}
               </div>
             )}
-            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46' }}>[확인]을 누르면 「채점 확인」 단계로 이동합니다.</div>
+            {/* 스캔 — 일부 문항만 채점된 학생은 미채점에 남는다 (SCR-05 S14) */}
+            {source === 'scan' && gradedList.some((g) => !g.full) && (
+              <div style={{ maxWidth: 620, margin: '0 auto 10px', ...noteBox('warn'), background: '#FFFBEB', color: '#92400E', borderColor: '#FDE68A', fontSize: 'var(--neo-font-size-sm)' }}>
+                ⚠ <strong>{gradedList.filter((g) => !g.full).length}명</strong>은 일부 문항만 채점되어 <strong>미채점에 남습니다.</strong> 빠진 답안지를 스캔해 다시 실행하면 이어서 채점됩니다.
+              </div>
+            )}
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46' }}>
+              {source === 'scan'
+                ? <>[확인]을 누르면 <strong>전 문항이 채점된 {gradedList.filter((g) => g.full && !failedIds.includes(g.sid)).length}명</strong>이 「채점 확인」 단계로 이동합니다.</>
+                : '[확인]을 누르면 「채점 확인」 단계로 이동합니다.'}
+            </div>
+            {/* 대상별 진행 — 크래들은 펜(슬롯), 스캔은 학생. 채점이 정상 완료된 펜만 「데이터 삭제」 */}
+            <div style={{ maxWidth: 720, margin: '14px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
+                {source === 'cradle' && <span style={{ width: 60 }}>슬롯</span>}
+                <span style={{ width: 150 }}>학생</span>
+                {source === 'cradle' ? <span style={{ width: 110 }}>펜 데이터 상태</span> : <span style={{ width: 110 }}>답안지</span>}
+                <span style={{ flex: 1 }}>상세 내용</span>
+              </div>
+              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                {gradedList.map((g) => {
+                  const st = studentById(g.sid);
+                  const failed = failedIds.includes(g.sid);
+                  const done = step === 'done' || gradingDone;
+                  const deleted = source === 'cradle' && deletedPens.includes(g.penId);
+                  return (
+                    <div key={g.sid} style={{ display: 'flex', alignItems: 'center', padding: '7px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
+                      {source === 'cradle' && <span style={{ width: 60, fontWeight: 700 }}>{slotShort(g.slot)}</span>}
+                      <span style={{ width: 150, color: '#475569' }}>{st.no} {st.name}</span>
+                      <span style={{ width: 110 }}>{source === 'cradle'
+                        ? <span style={pill(deleted ? { bg: '#F5F3FF', border: '#DDD6FE', color: '#6D28D9' } : failed && done ? BADGE.check : BADGE.ok)}>{deleted ? '데이터 삭제' : '정상'}</span>
+                        : <span style={{ color: '#64748B' }}>{g.sheets}장</span>}</span>
+                      <span style={{ flex: 1, fontWeight: 700, color: !done ? '#1D4ED8' : failed ? '#B91C1C' : '#047857' }}>{!done ? 'AI 채점중' : failed ? 'AI 채점 실패 — 토큰 용량 초과' : 'AI 채점 완료'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
           </div>
         )}
       </div>
@@ -1230,12 +1544,53 @@ const BatchGradingUnified = () => {
             <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); if (source === 'scan') { setRows([]); } }}>
               {source === 'cradle' ? '← 펜 다시 거치' : '↰ 파일 다시 선택'}
             </button>
-            <button type="button" disabled={model?.blocked} onClick={startGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
+            <button type="button" disabled={model?.blocked} onClick={requestGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
           </>
         )}
         {step === 'done' && <button type="button" onClick={() => resetAll(source)} style={{ ...primaryBtn(true), background: '#10B981' }}>✓ 확인</button>}
       </div>
 
+      {confirm && (() => {
+        const replacedNames = [...new Set(rows.filter((r) => r.origin === 'existing' && r.sid == null).map((r) => studentById(r.home.sid).name))];
+        const box = (title, body, actions) => (
+          <div onClick={() => setConfirm(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '20px 22px', width: 480, maxWidth: '94vw', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{title}</h3>
+              <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.7, marginBottom: 16 }}>{body}</div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>{actions}</div>
+            </div>
+          </div>
+        );
+        if (confirm.kind === 'switch') {
+          return box('매핑을 취소하고 나갈까요?',
+            source === 'cradle'
+              ? <>읽어온 펜 데이터 판정 결과와 직접 연결한 내용이 모두 사라집니다. <strong>펜에 저장된 필기 데이터는 삭제되지 않습니다.</strong></>
+              : <>답안지 판별 결과와 직접 지정한 내용이 모두 사라집니다. <strong>다시 채점하려면 스캔 파일을 다시 올려야 합니다.</strong></>,
+            <><button type="button" style={ghostBtn} onClick={() => setConfirm(null)}>계속 매핑하기</button>
+              <button type="button" style={{ ...primaryBtn(true), background: '#EF4444' }} onClick={() => resetAll(confirm.next)}>나가기</button></>);
+        }
+        if (confirm.kind === 'replace') {
+          return box('🔄 이미 답안이 있는 학생이 있습니다',
+            <>스캔본 내용 중 <strong style={{ color: '#C2410C' }}>{replacedNames.length}명</strong>의 학생이 이미 제출한 답안파일이 있습니다.
+              <div style={{ margin: '8px 0', padding: '8px 12px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 8, color: '#9A3412' }}>대상 : {replacedNames.join(', ')}</div>
+              어느 쪽을 선택해도 나머지 답안은 <strong>미분류로 남아</strong> 채점 전까지 변경할 수 있습니다.</>,
+            <><button type="button" style={ghostBtn} onClick={() => { rows.filter((r) => r.origin === 'existing' && r.sid == null).forEach(restoreExisting); setConfirm(null); }}>기존 답안으로 채점</button>
+              <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={() => setConfirm(null)}>스캔파일로 교체</button></>);
+        }
+        return box('🔄 기존 답안을 교체합니다',
+          <>학생이 제출한 답안 <strong style={{ color: '#C2410C' }}>{replacedSlots().length}건</strong>이 스캔본으로 교체됩니다. 기존 답안은 이력에 보관되며 복원할 수 있습니다. 계속하시겠습니까?
+            <div style={{ marginTop: 8, padding: '8px 12px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 8, color: '#9A3412', fontSize: 'var(--neo-font-size-xs)' }}>교체 대상: {replacedSlots().join(', ')}</div></>,
+          <><button type="button" style={ghostBtn} onClick={() => setConfirm(null)}>취소</button>
+            <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={startGrading}>덮어쓰고 채점 시작</button></>);
+      })()}
+      {/* [POP-30] 필수 프로그램 확인 — 크래들 채점은 AiGLE Connect만 요구한다 */}
+      <RequiredProgramModal open={programOpen} onClose={() => setProgramOpen(false)}
+        programs={[
+          { key: 'connect', name: 'AiGLE Connect', desc: 'USB·블루투스 펜 연결 · 크래들 일괄 채점 · 백그라운드 자동 실행', required: true, installed: isConnectDownloaded() },
+          { key: 'printDoctor', name: 'Ncode Print Doctor', desc: 'N-code 인쇄 최적 상태 지원 · 프린터 인쇄 적합성 진단', required: false },
+        ]}
+        onInstalled={(key) => { if (key === 'connect') markConnectDownloaded(); }}
+        onAllReady={() => { markConnectDownloaded(); connectorSessionReady = true; setConnector('ready'); }} />
       {toast && <div style={{ position: 'fixed', left: '50%', bottom: 40, transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 16px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 50 }}>{toast}</div>}
       <IncidentReportDialog open={incidentOpen} onClose={() => setIncidentOpen(false)} onSubmitted={(r) => setToast(`이용불편 접수가 완료되었습니다 — ${r.id}`)}
         context={{ source: source === 'cradle' ? '크래들 일괄 채점(통합)' : '스캔 일괄 채점(통합)', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr', task: TASK.title, group: TASK.group, studentCount: ROSTER.length }} />
