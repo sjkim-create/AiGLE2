@@ -66,8 +66,14 @@ const slotLabel = (slot) => `크래들 ${cradleOf(slot)} · ${slotInCradle(slot)
 /** [SCR-07 v2.1] 학생 표기 — 「학년-반-번호 이름」 (예: 1-1-12 김민지). grade가 서식에 안 맞으면 이름만 */
 const studentTag = (st) => {
   if (!st) return '—';
+  const no = studentNo(st);
+  return no === '—' ? st.name : `${no} ${st.name}`;
+};
+/** [SCR-07 v4.25] 학년·반·번호만 (예: 1-1-12) — 목록에서 이름과 열을 나눠 쓴다 */
+const studentNo = (st) => {
+  if (!st) return '—';
   const m = (st.grade || '').match(/(\d+)학년\s*(\d+)반\s*(\d+)번/);
-  return m ? `${m[1]}-${m[2]}-${m[3]} ${st.name}` : st.name;
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : '—';
 };
 
 /* [SCR-07 v1.6] 답안지 미리보기 이미지 — 펜 필기를 답안지 서식 위에 렌더한 결과(프로토타입은 샘플 1장 고정).
@@ -1168,8 +1174,8 @@ const CradleGradingModal = ({
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
                                   <thead>
                                     <tr style={{ background: '#F8FAFC', color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}>
+                                      {/* [SCR-07 v4.25] 펜 ID 열 폐기 — 교사는 펜을 «크래들 몇 번 자리»로 찾지 펜 ID로 찾지 않는다 */}
                                       <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 700 }}>슬롯</th>
-                                      <th style={{ textAlign: 'left', padding: '6px 10px', fontWeight: 700 }}>펜 ID</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>연결</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>배터리</th>
                                       <th style={{ textAlign: 'center', padding: '6px 10px', fontWeight: 700 }}>저장 잔량</th>
@@ -1179,8 +1185,7 @@ const CradleGradingModal = ({
                                   <tbody>
                                     {pens.map((pen) => (
                                       <tr key={pen.id} style={{ borderTop: '1px solid #F1F5F9' }}>
-                                        <td style={{ padding: '7px 10px', fontWeight: 800, color: '#1E293B' }}>{slotInCradle(pen.slot)}</td>
-                                        <td style={{ padding: '7px 10px', color: '#1E293B', whiteSpace: 'nowrap' }}>{pen.id}</td>
+                                        <td style={{ padding: '7px 10px', fontWeight: 800, color: '#1E293B' }}>{slotInCradle(pen.slot)}번</td>
                                         <td style={{ padding: '7px 10px', textAlign: 'center' }}>
                                           <span style={{ padding: '2px 8px', borderRadius: 999, fontWeight: 800, fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap',
                                             background: LINK_TOKEN[pen.link].bg, color: LINK_TOKEN[pen.link].color }}>{LINK_TOKEN[pen.link].label}</span>
@@ -1305,10 +1310,14 @@ const CradleGradingModal = ({
                       [SCR-07 v1.6] 좌·우는 처음부터 **50:50 고정**. 펜을 골라도 폭이 바뀌지 않아 시선이 흔들리지 않는다. */}
                   <div style={{ ...sectionCard, flex: 1, minHeight: 0, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', padding: '10px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
-                      <span style={{ width: 118 }}>펜</span>
-                      <span style={{ width: 124 }}>학생</span>
-                      <span style={{ width: 88 }}>배지</span>
-                      <span style={{ flex: 1 }}>채점 진행</span>
+                      {/* [SCR-07 v4.25] 열 재구성 — 펜 ID 폐기, 학생과 학년·반·번호를 나눠 읽는다.
+                          「배지」·「채점 진행」은 UI 용어라 교사가 무엇을 보는지 말해 주지 않아 이름을 바꿨다:
+                          배지 → **펜 데이터 상태**(이 펜의 데이터가 어떤 상태인가), 채점 진행 → **상세 내용**(왜 그런가 · 지금 무엇을 하는가) */}
+                      <span style={{ width: 100 }}>슬롯</span>
+                      <span style={{ width: 76 }}>학생</span>
+                      <span style={{ width: 82 }}>학년·반·번호</span>
+                      <span style={{ width: 92 }}>펜 데이터 상태</span>
+                      <span style={{ flex: 1 }}>상세 내용</span>
                     </div>
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                       {listedPens.map((p) => {
@@ -1329,14 +1338,17 @@ const CradleGradingModal = ({
                               background: picked ? '#EFF6FF' : 'white',
                               boxShadow: picked ? 'inset 3px 0 0 #2A75F3' : 'none',
                             }}>
-                            <span style={{ width: 118, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', whiteSpace: 'nowrap' }}>
-                              {p.id}<span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>{slotLabel(p.slot)}</span>
+                            <span style={{ width: 100, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', whiteSpace: 'nowrap' }}>
+                              {slotLabel(p.slot)}
                             </span>
                             {/* [POP-28 #9] 중복이면 학생 이름도 빨강 */}
-                            <span style={{ width: 124, fontSize: 'var(--neo-font-size-sm)', color: v?.type === 'duplicate' ? '#991B1B' : '#475569', fontWeight: v?.type === 'duplicate' ? 800 : 400, whiteSpace: 'nowrap' }}>
-                              {studentTag(st)}
+                            <span style={{ width: 76, fontSize: 'var(--neo-font-size-sm)', color: v?.type === 'duplicate' ? '#991B1B' : '#475569', fontWeight: v?.type === 'duplicate' ? 800 : 400, whiteSpace: 'nowrap' }}>
+                              {st ? st.name : '—'}
                             </span>
-                            <span style={{ width: 88 }}>
+                            <span style={{ width: 82, fontSize: 'var(--neo-font-size-xs)', color: v?.type === 'duplicate' ? '#991B1B' : '#94A3B8', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {studentNo(st)}
+                            </span>
+                            <span style={{ width: 92 }}>
                               <span style={{ padding: '1px 8px', borderRadius: 999, background: vt.bg, border: `1px solid ${vt.border}`, color: vt.color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, whiteSpace: 'nowrap' }}>{vt.label}</span>
                             </span>
                             <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-xs)', color: needs ? vt.color : '#166534', lineHeight: 1.5 }}>
@@ -1352,7 +1364,7 @@ const CradleGradingModal = ({
                                 <button type="button"
                                   onClick={(e) => { e.stopPropagation(); undockPen(p.slot); setSelectedPenId(null); }}
                                   title="크래들에서 이 펜을 뺍니다. 다시 꽂으려면 1단계에서 빈 슬롯을 누르세요. (에뮬레이터)"
-                                  aria-label={`${p.id} 펜 빼기`}
+                                  aria-label={`${slotLabel(p.slot)} 펜 빼기`}
                                   style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', color: '#475569',
                                     fontSize: 'var(--neo-font-size-sm)', lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>⏏</button>
                               )}
@@ -1574,10 +1586,11 @@ const CradleGradingModal = ({
                   채점 실패 펜은 데이터를 그대로 두어야 미채점에서 그 펜으로 다시 채점할 수 있다. */}
               <div style={{ maxWidth: 720, margin: '22px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
                 <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
-                  <span style={{ width: 150 }}>펜</span>
-                  <span style={{ width: 120 }}>학생</span>
-                  <span style={{ width: 110 }}>배지</span>
-                  <span style={{ flex: 1 }}>채점 진행</span>
+                  {/* [SCR-07 v4.25] 2단계 목록과 같은 열 이름을 쓴다 — 같은 펜을 두 화면에서 다른 말로 부르지 않는다 */}
+                  <span style={{ width: 150 }}>슬롯</span>
+                  <span style={{ width: 150 }}>학생</span>
+                  <span style={{ width: 110 }}>펜 데이터 상태</span>
+                  <span style={{ flex: 1 }}>상세 내용</span>
                 </div>
                 <div style={{ maxHeight: 210, overflowY: 'auto' }}>
                   {connectedPens.filter((p) => ['grading', 'uploaded', 'ok', 'grade_failed'].includes(verdicts[p.id]?.type)).map((p) => {
@@ -1586,7 +1599,7 @@ const CradleGradingModal = ({
                     const st = selectedStudents.find((x) => x.id === v.studentId);
                     return (
                       <div key={p.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
-                        <span style={{ width: 150, color: '#1E293B', fontWeight: 700 }}>{p.id} <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: 'var(--neo-font-size-xs)' }}>{slotLabel(p.slot)}</span></span>
+                        <span style={{ width: 150, color: '#1E293B', fontWeight: 700 }}>{slotLabel(p.slot)}</span>
                         <span style={{ width: 150, color: '#475569' }}>{studentTag(st)}</span>
                         <span style={{ width: 110 }}>
                           <span style={{ padding: '1px 8px', borderRadius: 999, background: vt.bg, border: `1px solid ${vt.border}`, color: vt.color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{vt.label}</span>
