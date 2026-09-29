@@ -27,31 +27,8 @@ const Sidebar = ({
     setActiveMenu(menu);
     if (setShowAnalysis) setShowAnalysis(false);
   };
-  // [v4.6] 「설정 필요」 배지 렌더 헬퍼 — 프로필 이름 옆(16px) · 드롭다운 「환경설정」 옆(14px) 두 지점 공용
-  const renderSetupBadge = (size = 16) => {
-    if (!settingsBadgeCount) return null;
-    return (
-      <span
-        aria-label={`설정 필요 ${settingsBadgeCount}개`}
-        title={`설정이 필요한 항목이 ${settingsBadgeCount}개 있습니다`}
-        style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          minWidth: size, height: size,
-          padding: '0 5px',
-          marginLeft: 6,
-          borderRadius: 999,
-          background: '#EF4444', color: 'white',
-          // 舊 0.7rem/0.66rem(11.2px/10.6px) 2단 분기 → neoUI 최소 단계 xs(12px)로 통일.
-          // 두 값 모두 xs 로 스냅되어 분기가 의미를 잃었다.
-          fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
-          lineHeight: 1,
-          boxShadow: '0 0 0 2px rgba(239,68,68,0.15)',
-        }}
-      >
-        {settingsBadgeCount}
-      </span>
-    );
-  };
+  /* [상용 헤더 정렬] 舊 renderSetupBadge — 「설정 필요」 배지는 상단 ⚙️ 아이콘의 빨간 점으로 옮겼다 */
+
     return (
         <aside className="main-sidebar">
             {/* [v4.7] AiGLE 로고 — 프로필 위. 어느 화면(환경설정 포함)에서든 누르면 메인(대시보드)으로 돌아간다.
@@ -70,36 +47,9 @@ const Sidebar = ({
                 <img src="/images/logo.svg" alt="AiGLE" style={{ height: '30px' }} />
             </div>
 
-            <div
-                className="user-profile"
-                style={{ marginBottom: '1rem', cursor: 'pointer', position: 'relative' }}
-                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-            >
-                {/* [v4.7] 아바타 원형 삭제 — 로고 아래 빈 원이 시선을 끌 뿐 정보가 없다 */}
-                <div className="user-info">
-                    {/* [v4.6] 이름 옆 「설정 필요」 배지 */}
-                    <div className="name" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        <span>[교사] 김 b</span>
-                        {renderSetupBadge(16)}
-                    </div>
-                    <div className="id">tch20261zim</div>
-                </div>
-
-                {isProfileDropdownOpen && (
-                    <div className="user-profile-dropdown" onClick={(e) => e.stopPropagation()}>
-                        <div className="dropdown-item" onClick={() => { setIsSettingsMode(true); setActiveSettingsMenu('내 정보'); setIsProfileDropdownOpen(false); }}>내 정보</div>
-                        {/* [v4.6] 드롭다운 「환경설정」 우측 「설정 필요」 배지 */}
-                        <div className="dropdown-item"
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                            onClick={() => { setIsSettingsMode(true); setActiveSettingsMenu('환경설정'); setIsProfileDropdownOpen(false); }}>
-                            <span>환경설정</span>
-                            {renderSetupBadge(14)}
-                        </div>
-                        <div className="dropdown-divider"></div>
-                        <div className="dropdown-item logout">로그아웃</div>
-                    </div>
-                )}
-            </div>
+            {/* [상용 헤더 정렬] 교사 프로필 블록은 **상단 우측**(AppTopBar)으로 옮겼다.
+                사이드바는 「무엇을 하는가」(메뉴)만 담고, 「누구인가」(계정)는 헤더가 맡는다.
+                환경설정·로그아웃도 함께 옮겨 갔다 — 여기서 열던 드롭다운은 없다. */}
 
             <nav className="nav-menu">
                 {!isSettingsMode ? (
@@ -303,9 +253,7 @@ const Sidebar = ({
                         🚨 이용불편 접수
                     </button>
                 )}
-                <a href="#" className="footer-link">교사 이용 가이드 <span>›</span></a>
-                <a href="#" className="footer-link">학생 이용 가이드 <span>›</span></a>
-                <a href="#" className="footer-link">개인정보수집 이용 동의서<span>›</span></a>
+                {/* [상용 헤더 정렬] 이용 가이드·동의서 링크는 상단 ❓ 메뉴로 옮겼다 */}
             </div>
         </aside>
     );

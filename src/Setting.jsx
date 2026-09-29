@@ -14,6 +14,7 @@ import PromptArchive from './PromptArchive';
 import AnalysisReport from './AnalysisReport';
 import AiGradingTest from './AiGradingTest';
 import Sidebar from './Sidebar';
+import AppTopBar from './AppTopBar'; // [상용 헤더 정렬] 우측 상단 유틸리티 바 (펜·도움말·언어·환경설정·프로필)
 import GradingManagement from './GradingManagement';
 import Dashboard from './Dashboard';
 import TeacherDashboard from './TeacherDashboard';
@@ -495,6 +496,14 @@ function Setting() {
       />
 
       <main className="main-wrapper" style={activeMenu === '아이글 채점 테스트' ? { padding: 0, overflow: 'hidden' } : {}}>
+        {/* [상용 헤더 정렬] 모든 화면 위에 공통으로 얹히는 유틸리티 바 — 각 화면의 제목 줄은 이 아래에 그대로 남는다 */}
+        <AppTopBar
+          settingsBadgeCount={settingsBadgeCount}
+          showToast={showToast}
+          onNavigate={(menu) => { setIsSettingsMode(false); setActiveMenu(menu); }}
+          onGoSettings={(m) => { setIsSettingsMode(true); setActiveSettingsMenu(m); }}
+          onOpenPenReset={() => { setIsSettingsMode(true); setActiveSettingsMenu('환경설정'); setIsResetModalOpen(true); }}
+        />
         {isSettingsMode ? (
           <div className="settings-container" style={{ padding: '2rem', height: '100%', overflowY: 'auto' }}>
             <header className="content-header" style={{ marginBottom: '2rem' }}>
