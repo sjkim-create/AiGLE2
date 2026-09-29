@@ -161,7 +161,7 @@ const CradleStrip = ({ compact, docked, dotOf, selectedSlots = [], onSlot, pool 
 /* 답안지 목(mock) — 미리보기·썸네일 공용 */
 const ANSWER_LINES = ['작품 속 인물은 처음에 현실을 받아들이지 못하지만', '사건을 겪으며 태도가 점점 달라진다.', '이 변화가 작품의 주제를 드러낸다고 생각한다.', '특히 마지막 장면의 선택이 가장 중요하다.'];
 const SheetMock = ({ studentLabel, question, sheetNo, small, answer }) => (
-  <div style={{ background: 'white', borderRadius: 6, padding: small ? '8px 8px' : '18px 20px', boxShadow: small ? 'none' : '0 4px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', gap: small ? 3 : 8, height: '100%', boxSizing: 'border-box' }}>
+  <div style={{ background: 'white', borderRadius: 6, padding: small ? '8px 8px' : '18px 20px', boxShadow: small ? 'none' : '0 4px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', gap: small ? 3 : 8, height: small ? '100%' : 'auto', minHeight: small ? 0 : '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
     <div style={{ fontSize: small ? 9 : 14, fontWeight: 900, color: '#1E3A8A' }}>AiGLE</div>
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: small ? 8 : 12 }}>
       <tbody>
@@ -170,8 +170,8 @@ const SheetMock = ({ studentLabel, question, sheetNo, small, answer }) => (
       </tbody>
     </table>
     {Array.from({ length: small ? 5 : 12 }, (_, i) => (
-      <div key={i} style={{ borderBottom: '1px dashed #CBD5E1', minHeight: small ? 6 : 30, display: 'flex', alignItems: 'flex-end', paddingLeft: 8 }}>
-        {answer && !small && i < ANSWER_LINES.length && <span style={{ fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: 22, color: '#1E293B', lineHeight: 1.2 }}>{ANSWER_LINES[(i + (sheetNo || 0)) % ANSWER_LINES.length]}</span>}
+      <div key={i} style={{ borderBottom: '1px dashed #CBD5E1', height: small ? 6 : 32, flex: 'none', display: 'flex', alignItems: 'flex-end', paddingLeft: 8, overflow: 'hidden' }}>
+        {answer && !small && i < ANSWER_LINES.length && <span style={{ fontFamily: '"Nanum Pen Script", "Gaegu", cursive', fontSize: 19, color: '#1E293B', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ANSWER_LINES[(i + (sheetNo || 0)) % ANSWER_LINES.length]}</span>}
       </div>
     ))}
   </div>
@@ -666,30 +666,30 @@ const BatchGradingUnified = () => {
   const penTab = (info) => (info.kind === 'dup' || info.kind === 'unc' ? 'check' : info.kind === 'ok' ? 'ok' : 'none');
 
   /** 크래들 1대의 10구 띠 — 목록 묶음 머리에 붙는 에뮬레이터 */
+  /** 크래들 1대 — 검은 본체에 펜을 꽂은 모양. 점 한 줄 높이(20px)로 줄여 미니맵에 3대를 쌓는다.
+   *  펜 머리의 LED 색 = 상태. 빈 슬롯은 비어 있고, 거치할 펜이 있으면 ＋ */
   const renderRail = (cn) => (
-    <div style={{ display: 'flex', gap: 3, background: 'linear-gradient(180deg,#6B7176,#4C5257)', borderRadius: 7, padding: '5px 6px 4px' }}>
+    <div style={{ flex: 1, display: 'flex', gap: 2, background: 'linear-gradient(180deg,#6B7176,#4C5257)', borderRadius: 5, padding: '3px 4px' }}>
       {Array.from({ length: SLOTS }, (_, i) => (cn - 1) * SLOTS + i + 1).map((slot) => {
         const pen = docked[slot];
         const avail = PEN_POOL.some((p) => p.slot === slot);
         const info = pen && pen.link === 'connected' ? cradleModel.penInfo[pen.id] : null;
         const k = info ? PEN_KIND[info.kind] : null;
-        const picked = pen && sel?.type === 'pen' && (sel.penId === pen.id || (cradleModel.penInfo[sel.penId]?.sid && cradleModel.penInfo[sel.penId]?.sid === info?.sid && info?.kind === 'dup'));
+        const selInfo = sel?.type === 'pen' ? cradleModel.penInfo[sel.penId] : null;
+        const picked = pen && sel?.type === 'pen' && (sel.penId === pen.id || (selInfo?.kind === 'dup' && info?.kind === 'dup' && selInfo.sid === info.sid));
+        const led = pen ? (k ? k.dot : '#FBBF24') : null;
         return (
-          <button key={slot} type="button" disabled={!pen && !avail}
-            onClick={() => {
-              if (!pen) { dockPen(slot); return; }
-              if (pen.link !== 'connected') return;
-              setSel({ type: 'pen', penId: pen.id }); setPageIdx(0);
-              document.getElementById(`pen-row-${pen.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            }}
+          <button key={slot} type="button" disabled={!pen && !avail} onClick={() => onSlotClick(slot)}
             title={pen ? `${slotShort(slot)} · ${k ? `${k.label} — ${penText(info)}` : '연결 중'}` : avail ? `${slotShort(slot)} — 빈 슬롯 (눌러서 거치)` : `${slotShort(slot)} — 빈 슬롯`}
             aria-label={`슬롯 ${slotShort(slot)}${pen ? '' : ' 비어 있음'}`}
-            style={{ flex: 1, minWidth: 0, height: 38, padding: 0, position: 'relative', borderRadius: '4px 4px 2px 2px', cursor: (pen || avail) ? 'pointer' : 'default',
-              background: '#2F3438', border: picked ? '2px solid #60A5FA' : '1px solid rgba(0,0,0,0.4)', boxShadow: picked ? '0 0 0 2px rgba(96,165,250,0.35)' : 'inset 0 2px 4px rgba(0,0,0,0.5)' }}>
-            {pen && <span style={{ position: 'absolute', left: '50%', top: 2, transform: 'translateX(-50%)', width: 8, height: 24, borderRadius: 4, background: 'linear-gradient(90deg,#121417,#2B3035 40%,#16191C)' }} />}
-            {pen && <span style={{ position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)', width: 8, height: 8, borderRadius: '50%', background: k ? k.dot : '#FBBF24', border: '1.5px solid #2F3438' }} />}
-            {!pen && avail && <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>＋</span>}
-            <span style={{ position: 'absolute', left: 0, right: 0, top: -1, textAlign: 'center', fontSize: 8, color: 'rgba(255,255,255,0.45)', fontWeight: 700, pointerEvents: 'none' }}>{pen ? '' : slotIn(slot)}</span>
+            style={{ flex: 1, minWidth: 0, height: 20, padding: 0, position: 'relative', borderRadius: 3, cursor: (pen || avail) ? 'pointer' : 'default',
+              background: '#2F3438', border: picked ? '2px solid #60A5FA' : '1px solid rgba(0,0,0,0.45)', boxShadow: picked ? '0 0 0 2px rgba(96,165,250,0.4)' : 'inset 0 1px 3px rgba(0,0,0,0.5)' }}>
+            {pen && (
+              <span style={{ position: 'absolute', left: '50%', top: 2, bottom: 2, transform: 'translateX(-50%)', width: 9, borderRadius: 3, background: 'linear-gradient(90deg,#121417,#2B3035 45%,#16191C)', display: 'flex', justifyContent: 'center', paddingTop: 2 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: led, boxShadow: `0 0 5px ${led}` }} />
+              </span>
+            )}
+            {!pen && avail && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, lineHeight: 1 }}>＋</span>}
           </button>
         );
       })}
@@ -697,6 +697,66 @@ const BatchGradingUnified = () => {
   );
 
   /** 크래들 — 좌측 목록: 크래들별 묶음(머리 = 10구 띠) + 펜 행. 펜 없는 학생은 맨 아래 */
+  /** 펜 한 자루 = 한 행 — 묶음형·미니맵형이 같이 쓴다 */
+  const penRow = (p) => {
+    const infos = cradleModel.penInfo;
+    const info = infos[p.id] || { kind: 'unread' };
+    const k = PEN_KIND[info.kind];
+    const st = info.sid ? studentById(info.sid) : null;
+    const on = sel?.type === 'pen' && sel.penId === p.id;
+    return (
+      <button key={p.id} id={`pen-row-${p.id}`} type="button" onClick={() => { setSel({ type: 'pen', penId: p.id }); setPageIdx(0); }}
+        style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+        <span style={{ flex: 'none', width: 34, padding: '2px 0', textAlign: 'center', borderRadius: 6, background: '#1E293B', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{slotShort(p.slot)}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <strong style={{ fontSize: 'var(--neo-font-size-sm)', color: st ? '#1E293B' : '#94A3B8' }}>{st ? st.name : '학생 미지정'}</strong>
+            {st && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{st.no}</span>}
+            <span style={{ marginLeft: 'auto', ...pill(k) }}>{k.label}</span>
+          </span>
+          <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: info.kind === 'ok' ? '#166534' : k.color, lineHeight: 1.45 }}>{penText(info)}</span>
+        </span>
+      </button>
+    );
+  };
+
+  /** 슬롯 클릭 — 미니맵·묶음 띠·위치 카드 공통. 빈 칸은 거치, 펜은 선택 */
+  const onSlotClick = (slot) => {
+    const pen = docked[slot];
+    if (!pen) { dockPen(slot); return; }
+    if (pen.link !== 'connected') return;
+    setSel({ type: 'pen', penId: pen.id }); setPageIdx(0);
+    document.getElementById(`pen-row-${pen.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+
+  /** 미니맵 — 검은 크래들 3대를 점 한 줄 높이로. 목록 맨 위에 고정 (약 90px) */
+  const renderMinimap = () => (
+    <div style={{ padding: '8px 12px 6px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
+        <div key={cn} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 14, fontSize: 10, fontWeight: 800, color: '#64748B', textAlign: 'right' }}>{cn}</span>
+          {renderRail(cn)}
+          <span style={{ width: 30, fontSize: 10, color: '#94A3B8', textAlign: 'right' }}>{Object.values(docked).filter((x) => cradleOf(x.slot) === cn).length}/{SLOTS}</span>
+        </div>
+      ))}
+      {/* 범례 — 펜 머리 LED 색의 뜻 */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2, paddingLeft: 20, fontSize: 10, color: '#64748B' }}>
+        {[['ok', '정상'], ['dup', '확인 필요'], ['unc', '미분류'], ['unread', '읽지 않음'], ['empty', '대상 아님']].map(([kk, l]) => (
+          <span key={kk} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: PEN_KIND[kk].dot }} />{l}</span>
+        ))}
+        <span>＋ 빈 슬롯(눌러서 거치)</span>
+      </div>
+    </div>
+  );
+
+  /** 위치 줄 — 고른 펜이 실물 크래들 어디에 있는지. 그림은 좌측 미니맵이 맡고, 여기는 말과 조치만 */
+  const renderLocationCard = (pen) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
+      <span title="좌측 미니맵에 파랗게 표시된 자리입니다" style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>📍 실물 위치 — 크래들 {cradleOf(pen.slot)} · {slotIn(pen.slot)}번 자리</span>
+      <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title="크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 미니맵의 빈 슬롯을 누르세요." onClick={() => { undockPen(pen.slot); setSel(null); }}>⏏ 펜 빼기</button>
+    </div>
+  );
+
   const renderPenList = () => {
     const infos = cradleModel.penInfo;
     const pens = connected;
@@ -704,49 +764,17 @@ const BatchGradingUnified = () => {
     const nNone = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'none').length + cradleModel.absent.length;
     const show = (p) => tab === 'all' || (infos[p.id] && penTab(infos[p.id]) === tab);
     return (
-      <div style={{ ...card, width: 340, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, width: 320, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', gap: 6, padding: 10, borderBottom: '1px solid #F1F5F9' }}>
           {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['none', '제외', nNone]].map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
           ))}
         </div>
+        {renderMinimap()}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => {
-            const rowsIn = pens.filter((p) => cradleOf(p.slot) === cn && show(p));
-            return (
-              <div key={cn}>
-                {/* 묶음 머리 — 스크롤해도 붙어 있어, 지금 보는 행이 어느 크래들의 몇 번인지 늘 보인다 */}
-                <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', padding: '8px 12px 8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 5 }}>
-                    <span>크래들 {cn}</span><span style={{ color: '#94A3B8' }}>{Object.values(docked).filter((p) => cradleOf(p.slot) === cn).length}/{SLOTS}</span>
-                  </div>
-                  {renderRail(cn)}
-                </div>
-                {rowsIn.length === 0 && <div style={{ padding: '8px 14px', fontSize: 'var(--neo-font-size-xs)', color: '#CBD5E1' }}>{tab === 'all' ? '거치된 펜 없음' : '해당 펜 없음'}</div>}
-                {rowsIn.map((p) => {
-                  const info = infos[p.id] || { kind: 'unread' };
-                  const k = PEN_KIND[info.kind];
-                  const st = info.sid ? studentById(info.sid) : null;
-                  const on = sel?.type === 'pen' && sel.penId === p.id;
-                  return (
-                    <button key={p.id} id={`pen-row-${p.id}`} type="button" onClick={() => { setSel({ type: 'pen', penId: p.id }); setPageIdx(0); }}
-                      style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      <span style={{ flex: 'none', width: 34, padding: '2px 0', textAlign: 'center', borderRadius: 6, background: '#1E293B', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{slotShort(p.slot)}</span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <strong style={{ fontSize: 'var(--neo-font-size-sm)', color: st ? '#1E293B' : '#94A3B8' }}>{st ? st.name : '학생 미지정'}</strong>
-                          {st && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{st.no}</span>}
-                          <span style={{ marginLeft: 'auto', ...pill(k) }}>{k.label}</span>
-                        </span>
-                        <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: info.kind === 'ok' ? '#166534' : k.color, lineHeight: 1.45 }}>{penText(info)}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
+          {/* 목록은 한 줄로 이어진다(스캔 목록과 같은 모양). 슬롯 순서 */}
+          {pens.filter(show).map(penRow)}
           {(tab === 'all' || tab === 'none') && cradleModel.absent.length > 0 && (
             <div>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
@@ -777,7 +805,7 @@ const BatchGradingUnified = () => {
     const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length],
       ['answer', '답안 있음', model.students.filter((s) => s.badge === 'answer').length], ['none', '제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
-      <div style={{ ...card, width: 340, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, width: 320, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', gap: 6, padding: 10, flexWrap: 'wrap', borderBottom: '1px solid #F1F5F9' }}>
           {tabs.map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
@@ -845,6 +873,7 @@ const BatchGradingUnified = () => {
     const rivals = info.kind === 'dup' ? connected.filter((p) => p.id !== pen.id && cradleModel.penInfo[p.id]?.sid === info.sid && cradleModel.penInfo[p.id]?.kind === 'dup') : [];
     return (
       <>
+        {renderLocationCard(pen)}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ padding: '2px 8px', borderRadius: 6, background: '#1E293B', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>슬롯 {slotShort(pen.slot)}</span>
           <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{st ? st.name : '학생 미지정'}</span>
@@ -852,7 +881,6 @@ const BatchGradingUnified = () => {
           <span style={pill(k)}>{k.label}{info.kind === 'dup' ? ' — 중복 데이터' : ''}</span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {info.manual && <button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} onClick={() => setManual((m) => { const n = { ...m }; delete n[pen.id]; return n; })}>매칭 해제</button>}
-            <button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} title="크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 목록 위 크래들의 빈 슬롯을 누르세요." onClick={() => { undockPen(pen.slot); setSel(null); }}>⏏ 펜 빼기</button>
           </span>
         </div>
         {info.kind === 'dup' && (
@@ -918,7 +946,7 @@ const BatchGradingUnified = () => {
         {s.badge === 'check' && <div style={noteBox('warn')}>⚠ {s.detail}. 빈 자리는 [답안지 선택]으로 채우고, 남는 장은 [✕]로 내려 주세요. AI가 문항을 추정한 장은 [확인]을 눌러 주세요.</div>}
         {s.badge === 'answer' && s.detail.startsWith('기존 답안 교체') && <div style={noteBox('info')}>🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 기존 답안으로 채점하려면 [미분류 파일]에서 [↩ 되돌리기]를 누르세요.</div>}
         {/* 문항 칩 — 한 줄로 압축. 누르면 아래 미리보기가 그 장으로 간다 */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {s.qs.map((x) => {
             const empties = x.hasExisting ? 0 : Math.max(0, x.q.sheets - x.list.length);
             const bad = !s.absent && x.st !== 'ok';
@@ -975,7 +1003,7 @@ const BatchGradingUnified = () => {
     const i = Math.min(pageIdx, Math.max(0, pages.length - 1));
     const pg = pages[i];
     return (
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #E2E8F0' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)' }}>
           <strong>{source === 'scan' ? '파일 미리보기' : '답안 미리보기'}</strong>
           {pg && <span style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{pg.label} · {pg.sub}</span>}
@@ -991,7 +1019,7 @@ const BatchGradingUnified = () => {
           {!pg && <div style={{ alignSelf: 'center', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>{sel ? '미리볼 답안이 없습니다.' : '왼쪽에서 선택하면 답안을 크게 볼 수 있습니다.'}</div>}
           {pg && (pg.url
             ? <img src={pg.url} alt={pg.label} style={{ maxWidth: '100%', alignSelf: 'flex-start', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: 'white' }} />
-            : <div style={{ width: '100%', maxWidth: 720, aspectRatio: '1 / 1.2', alignSelf: 'flex-start' }}><SheetMock studentLabel={pg.studentLabel} question={pg.question} sheetNo={pg.sheetNo} answer={!pg.existing} /></div>)}
+            : <div style={{ width: '100%', maxWidth: 720, alignSelf: 'flex-start' }}><SheetMock studentLabel={pg.studentLabel} question={pg.question} sheetNo={pg.sheetNo} answer={!pg.existing} /></div>)}
         </div>
       </div>
     );
@@ -1051,13 +1079,13 @@ const BatchGradingUnified = () => {
         {step === 'mapping' && !reading && model && (
           <>
             {renderSummaryBar()}
-            {/* 2단 — 좌: 목록(크래들은 묶음 머리에 10구 띠) / 우: 매핑 + 큰 미리보기. 높이 하한을 둬 노트북에서도 미리보기가 충분히 크다 */}
+            {/* 3단 — 목록(크래들은 맨 위 미니맵) | 매핑(조치) | 미리보기. 각 열이 따로 스크롤한다 */}
             <div style={{ height: 'max(600px, calc(100vh - 300px))', display: 'flex', gap: 10 }}>
               {source === 'cradle' ? renderPenList() : renderStudentList()}
-              <div style={{ ...card, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, flex: 'none', maxHeight: '48%', overflowY: 'auto' }}>
-                  {source === 'cradle' ? renderCradleAction() : renderScanAction()}
-                </div>
+              <div style={{ ...card, flex: '1 1 0', minWidth: 0, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+                {source === 'cradle' ? renderCradleAction() : renderScanAction()}
+              </div>
+              <div style={{ ...card, flex: '1.15 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {renderPreviewPane()}
               </div>
             </div>
