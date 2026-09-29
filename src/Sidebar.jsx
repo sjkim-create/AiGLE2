@@ -242,7 +242,7 @@ const Sidebar = ({
             </nav>
 
             <div className="sidebar-footer">
-                {/* [BRD-16 v2.8] 이용불편 접수 — 舊 환경설정 카드 안 버튼을 여기로 옮겼다.
+                {/* [POP-41] 이용불편 접수 — 舊 환경설정 카드 안 버튼을 여기로 옮겼다.
                     불편은 환경설정에서 생기지 않는다. 어느 화면에서 막히든 눈에 보이는 자리에 있어야 한다. */}
                 {onOpenIncident && (
                     <button type="button" onClick={onOpenIncident}

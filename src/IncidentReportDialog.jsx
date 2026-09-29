@@ -1,6 +1,6 @@
 /**
  * IncidentReportDialog.jsx
- * [BRD-16] 이용불편 접수 다이얼로그 — 교사 화면(크래들 일괄 채점 헤더 · 환경설정 AiGLE Connect 카드)에서 연다.
+ * [POP-41] 이용불편 접수 다이얼로그 — 게시판(접수 이후)은 [BRD-16] — 교사 화면(크래들 일괄 채점 헤더 · 환경설정 AiGLE Connect 카드)에서 연다.
  *   · 학교 · 교사 · 과제 · 그룹 정보는 화면이 넘겨 주는 값으로 자동 채워진다 (교사가 다시 쓰지 않는다)
  *   · 진단 로그(전체 기간)와 연결된 펜 데이터를 자동 첨부한다 — 舊 [로그 다운로드]·[펜 데이터 다운로드]를 대체
  *   · [신고하기] → 시스템 관리자 > 게시판 > 장애신고에 등록 + Jira 자동 등록(MCP 연동 예정 — 시뮬레이션)
@@ -11,7 +11,7 @@ import { addIncident, SYMPTOMS } from './lib/incidentStore';
 import { availableDates } from './appLogger';
 import { buildZipManifest, clearAll as clearPenRaw } from './lib/penRawStore';
 
-/* [BRD-16 v2.7] 문제가 생긴 날 — **최근 3일**만 고르게 한다.
+/* [POP-41] 문제가 생긴 날 — **최근 3일**만 고르게 한다.
  *   진단 로그 보관 기간 안에서 교사가 기억하는 범위가 그 정도이고, 날짜가 좁아야 개발자가 로그를 빨리 짚는다. */
 const recentDays = () => {
   const NAMES = ['오늘', '어제', '그저께'];
@@ -25,7 +25,7 @@ const recentDays = () => {
 
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
-/* [BRD-16 v2.9] 첨부 제한 — 개수 5개, 파일 하나당 10MB.
+/* [POP-41] 첨부 제한 — 개수 5개, 파일 하나당 10MB.
  *   메일로 되돌려 보내는 자료라 한 통에 담기는 크기를 넘지 않게 한다. */
 const MAX_FILES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;

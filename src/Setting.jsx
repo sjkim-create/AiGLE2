@@ -30,9 +30,9 @@ import TeacherManagement from './TeacherManagement';
 import SchoolTeacherManagement from './SchoolTeacherManagement';
 import SchoolManagement from './SchoolManagement';
 import { markConnectDownloaded } from './RequiredProgramModal';
-import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16 v2.8] 좌측 하단 [🚨 이용불편 접수]
+import IncidentReportDialog from './IncidentReportDialog'; // [POP-41] 좌측 하단 [🚨 이용불편 접수]
 
-/* [BRD-16 v2.8] 사이드바에서 접수할 때 고를 수 있는 과제·그룹.
+/* [POP-41] 사이드바에서 접수할 때 고를 수 있는 과제·그룹.
  *   채점 화면에서 접수하면 화면이 값을 넘겨 주지만, 밖에서 누르면 알 길이 없어 교사가 직접 고른다.
  *   실서비스는 「내가 맡은 과제」 목록을 서버에서 받아 채운다 (프로토타입은 목). */
 const INCIDENT_TASK_OPTIONS = [
@@ -471,7 +471,7 @@ function Setting() {
   return (
     <div className="app-container">
       <TaskDeleteDialog task={taskToDelete} onCancel={() => setTaskToDelete(null)} onConfirm={handleDeleteTask} />
-      {/* [BRD-16 v2.8] 이용불편 접수 — 좌측 하단 버튼에서 연다.
+      {/* [POP-41] 이용불편 접수 — 좌측 하단 버튼에서 연다.
           채점 화면 밖이라 과제·그룹을 알 수 없으므로 다이얼로그에서 **직접 고르게** 한다(taskOptions). */}
       <IncidentReportDialog open={isIncidentOpen} onClose={() => setIsIncidentOpen(false)}
         onSubmitted={(r) => showToast(`이용불편 접수가 완료되었습니다 — ${r.id} (Jira ${r.jira?.key})${r.attachments?.penRaw ? ` · 펜 원본 ${r.attachments.penRaw.sessions}회분 전송 후 로컬 삭제` : ''}. 운영팀 답변은 메일로 보내 드립니다.`, 'success')}
