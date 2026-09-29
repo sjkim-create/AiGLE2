@@ -586,8 +586,9 @@ const CradleGradingModal = ({
       });
     });
 
-    /* [POP-28 #12] 업로드가 끝나면 펜에서 파일이 지워진다 — 배지만 「데이터 삭제」로 바뀌고
-     * 채점 진행 칸은 「AI 채점 완료」 그대로다. 채점 중에는 진행 칸이 「AI 채점중」이 된다. */
+    /* [POP-28 #12 · SCR-07 v4.22] 펜 데이터는 **채점이 정상 완료된 펜만** 지워진다.
+     *   채점 실패·펜 오류는 데이터를 그대로 두어야 미채점에서 그 펜으로 다시 채점할 수 있다.
+     *   그래서 삭제 표시(배지 「데이터 삭제」)는 업로드 진행률이 아니라 **채점 성공 확정** 뒤에만 붙는다. */
     Object.entries(base).forEach(([penId, v]) => {
       if (v.type !== 'ok') return;
       if (failedPenIds.includes(penId)) base[penId] = { ...v, type: 'grade_failed', progress: VERDICT_SPEC.grade_failed.progress };
@@ -720,12 +721,11 @@ const CradleGradingModal = ({
     const iv = setInterval(() => {
       v += 1;
       setProgress(Math.min(100, v));
-      /* [POP-28 #12] 업로드가 끝난 펜부터 순서대로 파일이 지워진다 —
-       * 「데이터 삭제」는 실패가 아니라 정상 완료의 흔적이다. 진행률에 맞춰 앞에서부터 옮긴다. */
-      const doneCount = Math.floor((v / 100) * penIds.length);
-      setUploadedPenIds(penIds.slice(0, doneCount).filter((id) => id !== failPenId));
+      /* [SCR-07 v4.22] 진행 중에는 아무 펜도 지우지 않는다 — 채점 성공이 확정돼야 삭제한다.
+       *   (舊: 업로드 진행률에 맞춰 앞에서부터 「데이터 삭제」로 바꿨다. 실패가 뒤늦게 나면 거짓 표시가 된다) */
       if (v >= 100) {
         clearInterval(iv);
+        // 채점 성공한 펜만 데이터 삭제 — 실패 펜은 데이터를 그대로 둔다(미채점에서 재채점)
         setUploadedPenIds(penIds.filter((id) => id !== failPenId));
         setGradingPenIds([]);
         if (failPenId) {
@@ -750,9 +750,10 @@ const CradleGradingModal = ({
     appLogger.info('useBatchUploadPipeline', 'AI 채점 재시도', { penIds: targets });
     setTimeout(() => {
       setGradingPenIds([]);
+      // 재시도 성공 → 그 펜도 이제 지운다
       setUploadedPenIds((prev) => [...prev, ...targets]);
       setRetrying(false);
-      setToast('실패했던 답안의 채점이 완료되었습니다.');
+      setToast('실패했던 답안의 채점이 완료되었습니다. 해당 펜의 데이터도 삭제되었습니다.');
     }, 2500);
   };
 
@@ -1188,6 +1189,10 @@ const CradleGradingModal = ({
                             {dockChanged
                               ? <>🔄 크래들 구성이 바뀌었습니다{unreadPens.length > 0 && <> — 아직 읽지 않은 펜 <strong>{unreadPens.length}자루</strong></>}. 펜을 다시 거치했다면 [↻ 다시 읽기]를 눌러 주세요.</>
                               : <>판정을 처음부터 다시 돌립니다. 직접 매칭 기록은 유지됩니다.</>}
+                            {/* [SCR-07 v4.22] 다시 읽기는 공짜가 아니다 — AI OCR 횟수가 차감된다는 사실을 누르기 전에 알린다 */}
+                            <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.15)', color: '#FDE68A', fontWeight: 700 }}>
+                              기재란 판독에 <strong>AI OCR</strong>을 사용합니다 — 다시 읽을 때마다 읽은 펜 수만큼 차감됩니다.
+                            </div>
                           </span>
                           {dockChanged && !rereadHintClosed && (
                             <button type="button" aria-label="닫기" onClick={(e) => { e.stopPropagation(); setRereadHintClosed(true); }}
@@ -1197,10 +1202,17 @@ const CradleGradingModal = ({
                       )}
                     </span>
                   </div>
+                  {/* [SCR-07 v4.22] 업로드 매니페스트 — 「채점 시작」이 서버로 무엇을 보내는지 한 줄로 못 박는다.
+                   *   확인 필요·대상 아님은 서버로 보내지 않고 학생이 미채점에 남는다 (펜 데이터도 지우지 않는다) */}
+                  <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 6, marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.6 }}>
+                    채점을 시작하면 <strong style={{ color: '#166534' }}>채점 대상 {gradableStudentIds.length}명</strong>의 답안만 서버로 올라갑니다.
+                    {(needsCheckCount + notTargetCount) > 0 && (
+                      <> 나머지 펜 {needsCheckCount + notTargetCount}자루는 올리지 않고, 해당 학생은 <strong>미채점</strong>에 남습니다 — 펜 데이터도 지우지 않습니다.</>
+                    )}
+                  </div>
                 </div>
 
-
-                  {/* 펜 목록. POP-28 판정표를 그대로 옮긴 한 장이다.
+                {/* 펜 목록. POP-28 판정표를 그대로 옮긴 한 장이다.
                       [SCR-07 v1.6] 좌·우는 처음부터 **50:50 고정**. 펜을 골라도 폭이 바뀌지 않아 시선이 흔들리지 않는다. */}
                   <div style={{ ...sectionCard, flex: 1, minHeight: 0, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', padding: '10px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
@@ -1468,8 +1480,9 @@ const CradleGradingModal = ({
                 </div>
               )}
 
-              {/* [POP-28 #11·#12] 펜별 상태 전이 — 펜 연결 → AI 채점중 → AI 채점 완료.
-                  업로드가 끝난 펜은 파일이 지워져 배지가 「데이터 삭제」로 바뀐다. 실패가 아니라 정상 완료의 흔적이다. */}
+              {/* [POP-28 #11·#12 · SCR-07 v4.22] 펜별 상태 전이 — 펜 연결 → AI 채점중 → AI 채점 완료.
+                  **채점이 정상 완료된 펜만** 파일이 지워져 배지가 「데이터 삭제」로 바뀐다.
+                  채점 실패 펜은 데이터를 그대로 두어야 미채점에서 그 펜으로 다시 채점할 수 있다. */}
               <div style={{ maxWidth: 720, margin: '22px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
                 <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
                   <span style={{ width: 150 }}>펜</span>
@@ -1516,6 +1529,11 @@ const CradleGradingModal = ({
                   ) : (
                     <>
                       <div><strong>⚠ {failedPenIds.length}명은 AI 채점에 실패했습니다.</strong> 답안 분량이 커서 <strong>토큰 용량을 초과</strong>했습니다(서버 응답 지연). 나머지 학생의 채점 결과는 정상 반영됐습니다.</div>
+                      {/* [SCR-07 v4.22] 실패 뒤 무엇이 남는지 — 재배정을 교사가 판단할 일로 만들지 않는다 */}
+                      <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'white', border: '1px solid #FECACA', color: '#475569', lineHeight: 1.7 }}>
+                        실패한 <strong>{failedPenIds.length}명</strong>은 <strong>미채점</strong>으로 자동 되돌려집니다.
+                        해당 펜의 데이터는 <strong>지우지 않았으니</strong> 같은 펜을 다시 거치해 이어서 채점할 수 있습니다.
+                      </div>
                       <div style={{ marginTop: 4, color: '#B45309' }}>잠시 후 [다시 시도]를 누르거나, 계속 실패하면 서비스팀에 문의해 주세요.</div>
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         <button type="button" onClick={retryFailed}
