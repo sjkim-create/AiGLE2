@@ -188,6 +188,14 @@ const BatchGradingUnified = () => {
   const [sel, setSel] = useState(null);         // { type: 'student' | 'unc', id }
   const [tab, setTab] = useState('all');
   const [pageIdx, setPageIdx] = useState(0);    // 우측 큰 미리보기의 장 번호 — 선택이 바뀌면 0
+  /* 미리보기는 장을 세로로 잇는다 — 장 번호가 바뀌면 그 장으로 스크롤 */
+  const pvTargetRef = useRef(null);
+  useEffect(() => {
+    const id = pvTargetRef.current;
+    const el = id && document.getElementById(id);
+    // 페이지 전체가 튀지 않게 미리보기 상자 안에서만 스크롤한다
+    if (el?.parentElement) el.parentElement.scrollTo({ top: el.offsetTop - 12, behavior: 'smooth' });
+  }, [pageIdx, sel]);
   const [toast, setToast] = useState('');
   const [incidentOpen, setIncidentOpen] = useState(false);
   // 채점
@@ -379,7 +387,7 @@ const BatchGradingUnified = () => {
       const p = f.plan || { sid: ROSTER[i % ROSTER.length].id, q: QUESTIONS[i % QUESTIONS.length].id, page: 1 };
       if (p.fault) {
         const reason = p.fault === 'other_task' ? '학생 미매칭 — 이 과제 답안지가 아닙니다' : p.fault === 'not_in_roster' ? NOT_IN_ROSTER('1학년 1반 31번 오세훈') : IDENT_UNREAD;
-        return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason };
+        return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason, noAssign: p.fault === 'other_task' };
       }
       taken.add(`${p.sid}:${p.q}`);
       return { id: `r${f.id}`, fid: f.id, name: f.name, sid: p.sid, q: p.q, sheet: p.page, conf: (i === 3 || i === 30) ? 'medium' : 'high' }; // AI가 문항을 추정한 답안지 2장 (시연)
@@ -907,35 +915,81 @@ const BatchGradingUnified = () => {
     );
   };
 
+  /** 미리보기의 특정 장으로 이동 — 매핑 열의 행을 누르면 호출 */
+  const gotoPage = (pageId) => {
+    const idx = previewPages().findIndex((p) => p.id === pageId);
+    if (idx >= 0) setPageIdx(idx);
+  };
+
+  /** 미분류 스캔을 파일 쪽에서 바로 지정 — 학생 · 문항을 고르면 그 문항의 다음 장 자리에 붙는다 */
+  const assignUncRow = (r) => {
+    const sid = assignPick[`${r.id}:s`]; const q = Number(assignPick[`${r.id}:q`]);
+    if (!sid || !q) return;
+    const n = rows.filter((x) => x.sid === sid && x.q === q).length;
+    patchRow(r.id, { sid, q, sheet: n + 1, conf: 'high', reason: null });
+    setAssignPick((p) => ({ ...p, [`${r.id}:s`]: '', [`${r.id}:q`]: '' }));
+    setToast(`${r.name}을(를) ${studentById(sid).name} · 문항 ${q}에 지정했습니다.`);
+  };
+
   const renderScanAction = () => {
+    const smallBtn = { ...ghostBtn, padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap', flex: 'none' };
     if (sel?.type === 'unc') {
       const scans = scanModel.unc.filter((r) => r.origin !== 'existing');
       const ex = scanModel.unc.filter((r) => r.origin === 'existing');
-      const row = (r, i) => (
-        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-xs)', background: previewPages()[pageIdx]?.id === r.id ? '#EFF6FF' : 'white' }}>
-          <button type="button" onClick={() => setPageIdx(i)} style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.origin === 'existing' ? '📄 ' : '🖼 '}{r.name}</button>
-          <span style={{ color: '#B91C1C', flex: 1.3 }}>{r.reason}</span>
-          {r.origin === 'existing' && <button type="button" style={{ ...ghostBtn, padding: '2px 8px', color: '#2A75F3', borderColor: '#2A75F3' }} title="원래 문항으로 되돌립니다 — 그 자리의 스캔본은 미분류로 내려갑니다" onClick={() => restoreExisting(r)}>↩ 되돌리기</button>}
-        </div>
+      const curId = previewPages()[pageIdx]?.id;
+      const fileHead = (r) => (
+        <button type="button" onClick={() => gotoPage(r.id)} title="미리보기에서 보기"
+          style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {r.origin === 'existing' ? '📄 ' : '🖼 '}{r.name}
+        </button>
       );
       return (
         <>
           <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>미분류 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{scanModel.unc.length}장</span></div>
-          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>어느 문항에도 붙지 않아 채점되지 않습니다. 파일을 눌러 아래에서 확인한 뒤, 학생의 빈 자리에서 [답안지 선택]으로 지정하세요.</div>
-          <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, maxHeight: 190, overflowY: 'auto' }}>
-            {scans.length > 0 && <div style={{ padding: '6px 10px', fontWeight: 800, color: '#991B1B', fontSize: 'var(--neo-font-size-xs)' }}>미연결 스캔 {scans.length}장</div>}
-            {scans.map((r) => row(r, scanModel.unc.indexOf(r)))}
-            {ex.length > 0 && <div style={{ padding: '6px 10px', fontWeight: 800, color: '#0E7490', fontSize: 'var(--neo-font-size-xs)', borderTop: '1px solid #E2E8F0' }}>교체된 기존 답안 {ex.length}건</div>}
-            {ex.map((r) => row(r, scanModel.unc.indexOf(r)))}
-            {!scanModel.unc.length && <div style={{ padding: 10, color: '#94A3B8' }}>미분류 파일이 없습니다.</div>}
+          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.6 }}>
+            학생을 찾지 못한 답안지입니다. 미리보기에서 답안을 보고 <strong>학생과 문항을 골라 지정</strong>하세요. 지정하지 않은 답안지는 채점하지 않습니다.
           </div>
+          {scans.length > 0 && <div style={{ fontWeight: 800, color: '#991B1B', fontSize: 'var(--neo-font-size-sm)' }}>학생 미매칭 {scans.length}장</div>}
+          {scans.map((r) => (
+            <div key={r.id} style={{ border: `1px solid ${curId === r.id ? '#2A75F3' : '#E2E8F0'}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, background: curId === r.id ? '#F8FBFF' : 'white' }}>
+              {fileHead(r)}
+              <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', lineHeight: 1.5 }}>⚠ {r.reason}</div>
+              {/* 다른 과제 답안지는 이 과제에 붙이지 않는다 — 크래들의 「그룹 불일치」와 같은 취급 */}
+              {r.noAssign ? (
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>다른 과제의 답안지라 이 과제에 지정할 수 없습니다. 해당 과제에서 채점하세요.</div>
+              ) : (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={assignPick[`${r.id}:s`] || ''} onChange={(e) => setAssignPick((p) => ({ ...p, [`${r.id}:s`]: e.target.value }))}
+                  style={{ flex: '1 1 140px', padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
+                  <option value="">학생 선택</option>
+                  {ROSTER.map((st) => <option key={st.id} value={st.id}>{st.no} {st.name}</option>)}
+                </select>
+                <select value={assignPick[`${r.id}:q`] || ''} onChange={(e) => setAssignPick((p) => ({ ...p, [`${r.id}:q`]: e.target.value }))}
+                  style={{ flex: '0 1 100px', padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
+                  <option value="">문항</option>
+                  {QUESTIONS.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
+                </select>
+                <button type="button" disabled={!assignPick[`${r.id}:s`] || !assignPick[`${r.id}:q`]} onClick={() => assignUncRow(r)}
+                  style={{ ...primaryBtn(!!(assignPick[`${r.id}:s`] && assignPick[`${r.id}:q`])), padding: '5px 14px', flex: 'none' }}>지정</button>
+              </div>
+              )}
+            </div>
+          ))}
+          {ex.length > 0 && <div style={{ fontWeight: 800, color: '#0E7490', fontSize: 'var(--neo-font-size-sm)', marginTop: 4 }}>교체된 기존 답안 {ex.length}건</div>}
+          {ex.map((r) => (
+            <div key={r.id} style={{ border: `1px solid ${curId === r.id ? '#2A75F3' : '#E2E8F0'}`, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>{fileHead(r)}<div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#0E7490', marginTop: 3 }}>스캔본이 자리를 대신하고 있습니다</div></div>
+              <button type="button" style={{ ...smallBtn, color: '#2A75F3', borderColor: '#2A75F3' }} title="원래 문항으로 되돌립니다 — 그 자리의 스캔본은 미분류로 내려갑니다" onClick={() => restoreExisting(r)}>↩ 되돌리기</button>
+            </div>
+          ))}
+          {!scanModel.unc.length && <div style={noteBox('muted')}>미분류 답안지가 없습니다.</div>}
         </>
       );
     }
     const s = scanModel.students.find((x) => x.id === sel?.id);
     if (!s) return <div style={{ color: '#94A3B8' }}>왼쪽에서 학생을 선택하세요.</div>;
-    const pool = scanModel.unc.filter((r) => r.origin !== 'existing');
-    const flat = s.qs.flatMap((x) => x.list);
+    const pool = scanModel.unc.filter((r) => r.origin !== 'existing' && !r.noAssign);
+    const curId = previewPages()[pageIdx]?.id;
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -943,36 +997,52 @@ const BatchGradingUnified = () => {
           <span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE[s.badge])}>{s.badge === 'answer' ? '답안 있음' : BADGE[s.badge].label}</span>
         </div>
         {s.badge === 'none' && <div style={noteBox('muted')}>채점에서 제외됩니다 — 올린 파일에서 답안지를 한 장도 찾지 못했습니다. 채점하려면 빈 자리에서 미분류 답안지를 지정하세요.</div>}
-        {s.badge === 'check' && <div style={noteBox('warn')}>⚠ {s.detail}. 빈 자리는 [답안지 선택]으로 채우고, 남는 장은 [✕]로 내려 주세요. AI가 문항을 추정한 장은 [확인]을 눌러 주세요.</div>}
+        {s.badge === 'check' && <div style={noteBox('warn')}>⚠ {s.detail}. 빈 자리는 [답안지 선택]으로 채우고, 남는 장은 [연결 해제]로 내려 주세요. AI가 문항을 추정한 장은 [확인]을 눌러 주세요.</div>}
         {s.badge === 'answer' && s.detail.startsWith('기존 답안 교체') && <div style={noteBox('info')}>🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 기존 답안으로 채점하려면 [미분류 파일]에서 [↩ 되돌리기]를 누르세요.</div>}
-        {/* 문항 칩 — 한 줄로 압축. 누르면 아래 미리보기가 그 장으로 간다 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {s.qs.map((x) => {
-            const empties = x.hasExisting ? 0 : Math.max(0, x.q.sheets - x.list.length);
-            const bad = !s.absent && x.st !== 'ok';
-            return (
-              <div key={x.q.id} style={{ border: `1px solid ${bad ? '#FCA5A5' : '#E2E8F0'}`, borderRadius: 8, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', background: bad ? '#FEF2F2' : '#F8FAFC' }}>
-                <strong style={{ fontSize: 'var(--neo-font-size-xs)' }}>{x.q.title}</strong>
-                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: bad ? '#B91C1C' : '#94A3B8', fontWeight: 700 }}>{x.hasExisting ? '기존 답안' : `${x.list.length}/${x.q.sheets}장`}</span>
-                {x.list.map((r, i) => (
-                  <span key={r.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 4px 1px 6px', borderRadius: 6, background: previewPages()[pageIdx]?.id === r.id ? '#DBEAFE' : 'white', border: `1px solid ${i >= x.q.sheets ? '#FCA5A5' : '#CBD5E1'}` }}>
-                    <button type="button" onClick={() => setPageIdx(flat.indexOf(r))} title={r.name} style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', padding: 0 }}>{r.origin === 'existing' ? '📄' : `${x.q.id}-${i + 1}`}</button>
-                    {r.conf === 'medium' && <button type="button" title="AI가 문항을 추정했습니다. 확인했으면 누르세요" onClick={() => patchRow(r.id, { conf: 'high' })} style={{ border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 800, padding: '0 4px' }}>확인</button>}
-                    <button type="button" title="연결 해제 — 미분류로 내립니다" onClick={() => unlinkRow(r)} style={{ border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>✕</button>
+        {/* 문항 카드 — 장마다 한 줄: 장 번호 | 파일명 | (AI 추정 확인) | 연결 해제. 버튼끼리 띄워 오조작을 막는다 */}
+        {s.qs.map((x) => {
+          const empties = x.hasExisting ? 0 : Math.max(0, x.q.sheets - x.list.length);
+          const bad = !s.absent && x.st !== 'ok';
+          return (
+            <div key={x.q.id} style={{ border: `1px solid ${bad ? '#FCA5A5' : '#E2E8F0'}`, borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: bad ? '#FEF2F2' : '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                <strong style={{ fontSize: 'var(--neo-font-size-sm)' }}>{x.q.title}</strong>
+                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: bad ? '#B91C1C' : '#94A3B8', fontWeight: 700 }}>
+                  {x.hasExisting ? '기존 답안' : `${x.list.length}/${x.q.sheets}장`}
+                  {bad && x.st === 'over' && ` · ${x.list.length - x.q.sheets}장 초과`}
+                  {bad && x.st === 'short' && ` · ${x.q.sheets - x.list.length}장 부족`}
+                </span>
+              </div>
+              {x.list.map((r, i) => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: i ? '1px solid #F1F5F9' : 'none', background: curId === r.id ? '#EFF6FF' : i >= x.q.sheets ? '#FFF7F7' : 'white' }}>
+                  <span style={{ flex: 'none', width: 34, textAlign: 'center', padding: '1px 0', borderRadius: 5, background: i >= x.q.sheets ? '#FEE2E2' : '#F1F5F9', color: i >= x.q.sheets ? '#B91C1C' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>
+                    {r.origin === 'existing' ? '기존' : `${x.q.id}-${i + 1}`}
                   </span>
-                ))}
-                {Array.from({ length: empties }, (_, i) => (
-                  <select key={`e${i}`} value="" disabled={!pool.length}
+                  <button type="button" onClick={() => gotoPage(r.id)} title="미리보기에서 보기"
+                    style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>
+                  {r.conf === 'medium' && (
+                    <button type="button" title="문항 번호를 읽지 못해 AI가 내용으로 추정했습니다. 미리보기를 보고 맞으면 누르세요"
+                      onClick={() => patchRow(r.id, { conf: 'high' })}
+                      style={{ ...smallBtn, background: '#FFFBEB', borderColor: '#FCD34D', color: '#92400E' }}>⚠ AI 추정 · 확인</button>
+                  )}
+                  <button type="button" title="이 장을 미분류로 내립니다" onClick={() => unlinkRow(r)} style={{ ...smallBtn, color: '#64748B' }}>연결 해제</button>
+                </div>
+              ))}
+              {Array.from({ length: empties }, (_, i) => (
+                <div key={`e${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: (x.list.length || i) ? '1px solid #F1F5F9' : 'none', background: '#FFFBFB' }}>
+                  <span style={{ flex: 'none', width: 34, textAlign: 'center', padding: '1px 0', borderRadius: 5, border: '1px dashed #F87171', color: '#B91C1C', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{x.q.id}-{x.list.length + i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C' }}>빈 자리 — 답안지 없음</span>
+                  <select value="" disabled={!pool.length}
                     onChange={(e) => { const r = pool.find((p) => p.id === e.target.value); if (r) patchRow(r.id, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1, conf: 'high', reason: null }); }}
-                    style={{ padding: '1px 4px', borderRadius: 6, border: '1px dashed #F87171', background: 'white', color: '#B91C1C', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', maxWidth: 120 }}>
-                    <option value="">＋ 답안지 선택</option>
+                    style={{ flex: 'none', padding: '4px 8px', borderRadius: 6, border: '1px solid #93C5FD', background: '#EFF6FF', color: '#1D4ED8', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, maxWidth: 150 }}>
+                    <option value="">＋ 답안지 선택{pool.length ? '' : ' (미분류 없음)'}</option>
                     {pool.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                ))}
-              </div>
-            );
-          })}
-        </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </>
     );
   };
@@ -990,23 +1060,26 @@ const BatchGradingUnified = () => {
         id: `${pen.id}-${q.id}-${i}`, label: `${q.title}-${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: handLabel, question: q.title, sheetNo: i + 1, kind: info.kind,
       })));
     }
-    if (sel.type === 'unc') return scanModel.unc.map((r) => ({ id: r.id, label: r.name, sub: '미분류', url: files.find((f) => f.id === r.fid)?.url, studentLabel: r.origin === 'existing' ? `${studentById(r.home.sid).grade} ${studentById(r.home.sid).name}` : '', existing: r.origin === 'existing' }));
+    if (sel.type === 'unc') return scanModel.unc.map((r) => ({ id: r.id, label: r.origin === 'existing' ? '기존 답안' : '미분류', sub: r.name, url: files.find((f) => f.id === r.fid)?.url, studentLabel: r.origin === 'existing' ? `${studentById(r.home.sid).grade} ${studentById(r.home.sid).name}` : '', existing: r.origin === 'existing', warn: r.origin === 'existing' ? null : r.reason }));
     const s = scanModel.students.find((x) => x.id === sel.id);
     if (!s) return [];
     return s.qs.flatMap((x) => x.list.map((r, i) => ({ id: r.id, label: r.origin === 'existing' ? `${x.q.title} · 기존 답안` : `${x.q.title}-${i + 1}`, sub: r.name, url: files.find((f) => f.id === r.fid)?.url,
-      studentLabel: `${s.grade} ${s.name}`, question: x.q.title, sheetNo: i + 1, existing: r.origin === 'existing' })));
+      studentLabel: `${s.grade} ${s.name}`, question: x.q.title, sheetNo: i + 1, existing: r.origin === 'existing',
+      warn: i >= x.q.sheets && !x.hasExisting ? `${x.q.title} 기준 ${x.q.sheets}장 초과` : r.conf === 'medium' ? 'AI가 문항을 추정한 장' : null })));
   };
 
-  /** 큰 미리보기 — 매핑 영역 바로 아래. 선택하면 첫 장이 바로 뜬다 */
+  /** 미리보기 — 한 학생(한 펜)의 답안지를 **여러 장 세로로 이어서** 보여 준다. 크래들·스캔 공통.
+   *  장마다 머리에 문항·장 번호가 붙어 「이 학생에게 무엇이 붙었는지」를 한 번에 훑는다. ◀ ▶는 장 사이 이동 */
   const renderPreviewPane = () => {
     const pages = previewPages();
     const i = Math.min(pageIdx, Math.max(0, pages.length - 1));
     const pg = pages[i];
+    pvTargetRef.current = pg ? `pv-${pg.id}` : null;
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)' }}>
-          <strong>{source === 'scan' ? '파일 미리보기' : '답안 미리보기'}</strong>
-          {pg && <span style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{pg.label} · {pg.sub}</span>}
+          <strong>{source === 'scan' ? '답안지 미리보기' : '답안 미리보기'}</strong>
+          {pages.length > 0 && <span style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}>전체 {pages.length}장</span>}
           {pages.length > 1 && (
             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
               <button type="button" disabled={i === 0} onClick={() => setPageIdx(i - 1)} style={{ ...ghostBtn, padding: '2px 10px', opacity: i === 0 ? 0.4 : 1 }}>◀</button>
@@ -1015,11 +1088,23 @@ const BatchGradingUnified = () => {
             </span>
           )}
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#E2E8F0', padding: 16, display: 'flex', justifyContent: 'center' }}>
-          {!pg && <div style={{ alignSelf: 'center', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>{sel ? '미리볼 답안이 없습니다.' : '왼쪽에서 선택하면 답안을 크게 볼 수 있습니다.'}</div>}
-          {pg && (pg.url
-            ? <img src={pg.url} alt={pg.label} style={{ maxWidth: '100%', alignSelf: 'flex-start', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: 'white' }} />
-            : <div style={{ width: '100%', maxWidth: 720, alignSelf: 'flex-start' }}><SheetMock studentLabel={pg.studentLabel} question={pg.question} sheetNo={pg.sheetNo} answer={!pg.existing} /></div>)}
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, overflowY: 'auto', background: '#E2E8F0', padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+          {!pages.length && <div style={{ margin: 'auto', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>{sel ? '미리볼 답안이 없습니다.' : '왼쪽에서 선택하면 답안을 크게 볼 수 있습니다.'}</div>}
+          {pages.map((p, k) => (
+            <div key={p.id} id={`pv-${p.id}`} onClick={() => setPageIdx(k)} style={{ width: '100%', maxWidth: 720, flex: 'none', cursor: 'pointer' }}>
+              {/* 장 머리 — 문항·장 번호 + 주의 표시 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 'var(--neo-font-size-xs)' }}>
+                <span style={{ flex: 'none', whiteSpace: 'nowrap', padding: '2px 8px', borderRadius: 999, background: k === i ? '#2A75F3' : '#475569', color: 'white', fontWeight: 800 }}>{p.label}</span>
+                <span style={{ flex: '1 1 auto', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 40 }}>{p.sub}</span>
+                {p.warn && <span title={p.warn} style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '1px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontWeight: 800 }}>⚠ {p.warn}</span>}
+              </div>
+              <div style={{ borderRadius: 8, outline: k === i ? '3px solid #60A5FA' : 'none', outlineOffset: 2 }}>
+                {p.url
+                  ? <img src={p.url} alt={p.label} style={{ display: 'block', width: '100%', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: 'white' }} />
+                  : <SheetMock studentLabel={p.studentLabel} question={p.question} sheetNo={p.sheetNo} answer={!p.existing} />}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
