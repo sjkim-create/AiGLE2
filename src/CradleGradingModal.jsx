@@ -92,6 +92,9 @@ const BADGE = {
 const DUPLICATE_TONE = { bg: '#FEF2F2', border: '#FCA5A5', color: '#991B1B', dot: '🔴' };
 
 /** 판정 코드 → { badge, progress } (POP-28 §4). progress = 「채점 진행」 칸 문구 */
+/* [SCR-07 v4.24] 답안지 학생정보(학년/반/번호·이름)를 못 읽었을 때의 단일 문구 */
+const IDENT_UNREAD = '학생 미매칭 — 답안지 학생정보를 읽을 수 없습니다';
+
 const VERDICT_SPEC = {
   // 1단계 · 북코드 대조
   empty:          { badge: 'nodata',     progress: '학생 미매칭 — 필기 데이터가 없습니다' },
@@ -100,9 +103,11 @@ const VERDICT_SPEC = {
   // 2단계 · 내용 판정
   roster_loading: { badge: 'loading',    progress: '' /* POP-28 #4 — 문구 없음 */ },
   /* [SCR-07 v4.19] 번호표 조건(#5 미체크 · #6 위치 판독 불가) 폐기 → 기재란 OCR 조건으로 대체 */
-  no_ident:       { badge: 'unsyncable', progress: '학생 미매칭 — 답안지 기재란(학년/반/번호·이름)을 읽을 수 없습니다' },
-  ident_partial:  { badge: 'unsyncable', progress: null /* 런타임 생성 — 「학생 미매칭 — 기재란 일부만 일치 [읽음: …]」 */ },
-  not_in_roster:  { badge: 'unsyncable', progress: null /* 런타임 생성 — 「학생 미매칭 — 기재란의 학생이 명단에 없습니다 [읽음: …]」 */ },
+  /* [SCR-07 v4.24] 「기재란」은 교사가 쓰는 말이 아니다 → **답안지 학생정보**로 통일.
+   *   판독 실패(#5)와 일부만 일치(#6)는 교사가 할 일이 같으므로(답안을 보고 직접 매칭) 문구도 같게 둔다. */
+  no_ident:       { badge: 'unsyncable', progress: IDENT_UNREAD },
+  ident_partial:  { badge: 'unsyncable', progress: IDENT_UNREAD },
+  not_in_roster:  { badge: 'unsyncable', progress: null /* 런타임 생성 — 「학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: …]」 */ },
   not_selected:   { badge: 'unsyncable', progress: '학생 미매칭 — 채점 목록에서 선택하지 않은 학생입니다' },
   // 3단계 · 중복 검사
   duplicate:      { badge: 'normal',     progress: '중복 데이터' },
@@ -131,7 +136,7 @@ const badgeOf = (code) => {
  *   1단계는 파일 «이름만» 보므로 대상 아닌 펜은 다운로드 자체를 건너뛴다. */
 const JUDGE_PHASES = [
   { key: 'books', label: '북코드 대조', desc: '펜 파일 이름만 보고 채점 대상인지 판정', call: 'GetOfflineFileNames', cost: '저렴' },
-  { key: 'content', label: '기재란 판독', desc: '1단계를 통과한 펜만 읽어 답안지 기재란(학년/반/번호·이름)을 OCR로 판독', call: 'ReadOfflineStrokesByBases', cost: '다운로드' },
+  { key: 'content', label: '학생정보 판독', desc: '1단계를 통과한 펜만 읽어 답안지 학생정보(학년/반/번호·이름)를 OCR로 판독', call: 'ReadOfflineStrokesByBases', cost: '다운로드' },
   { key: 'duplicate', label: '중복 검사', desc: '2단계를 통과한 펜끼리 학생 중복 확인', call: '—', cost: '—' },
 ];
 
@@ -501,11 +506,8 @@ const CradleGradingModal = ({
     (pen) => (uploadedPenIds.includes(pen.id) ? 99 : pen.capacity),
     [uploadedPenIds]
   );
-  /** 거치된 펜 중 가장 적게 남은 잔량 — 크래들 단위 요약 */
-  const minCapacityIn = (cradleNo) => {
-    const pens = dockedPens.filter((p) => cradleOf(p.slot) === cradleNo);
-    return pens.length ? Math.min(...pens.map(capacityOf)) : null;
-  };
+  /* [SCR-07 v4.24] 크래들 단위 「잔량 최저」 표시 폐기 — 크래들 이미지 위 글자를 줄인다.
+   *   전체 최저값은 크래들 아래 요약 줄이 말한다. */
 
   const runFirmwareUpdate = (penId) => {
     let v = 0;
@@ -583,10 +585,10 @@ const CradleGradingModal = ({
     const norm = (t) => String(t || '').replace(/\s+/g, '');
     const exact = selectedStudents.find((st) => norm(st.name) === norm(ident.name) && norm(st.grade) === norm(ident.grade));
     const byName = selectedStudents.find((st) => norm(st.name) === norm(ident.name));
-    if (!exact && byName) {                                       // #6 일부만 일치 — 이름은 맞는데 학년/반/번호가 다름
-      return verdictOf('ident_partial', { name: byName.name, progress: `학생 미매칭 — 기재란 일부만 일치 [읽음: ${read}]` });
-    }
-    if (!exact) return verdictOf('not_in_roster', { progress: `학생 미매칭 — 기재란의 학생이 명단에 없습니다 [읽음: ${read}]` }); // #7
+    /* #6 일부만 일치(이름은 맞는데 학년/반/번호가 다름) — [v4.24] 「일부만 일치」를 따로 말하지 않는다.
+     *   교사가 할 일은 #5와 똑같이 «답안을 보고 직접 매칭»이고, 무엇이 얼마나 맞았는지는 조치를 바꾸지 않는다. */
+    if (!exact && byName) return verdictOf('ident_partial', { name: byName.name });
+    if (!exact) return verdictOf('not_in_roster', { progress: `학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: ${read}]` }); // #7
     const student = exact;
     if (!targetIds.includes(student.id)) return verdictOf('not_selected', { name: student.name }); // #8
 
@@ -692,6 +694,12 @@ const CradleGradingModal = ({
   );
   const notTargetCount = useMemo(
     () => connectedPens.filter((p) => { const t = verdicts[p.id]?.type; return VERDICT_SPEC[t]?.badge === 'nodata'; }).length,
+    [connectedPens, verdicts]
+  );
+  /* [SCR-07 v4.24] 교사가 «직접 매칭으로 풀 수 있는» 펜만 센다.
+   *   그룹 불일치·다른 과제 펜은 이 그룹에 붙일 수 없어 조치 대상이 아니다. */
+  const matchablePens = useMemo(
+    () => connectedPens.filter((p) => ['no_ident', 'ident_partial', 'not_in_roster', 'duplicate'].includes(verdicts[p.id]?.type)).length,
     [connectedPens, verdicts]
   );
   const unmappedStudents = useMemo(
@@ -875,29 +883,16 @@ const CradleGradingModal = ({
           {!compact && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, color: 'rgba(255,255,255,0.72)' }}>
               <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, letterSpacing: 1 }}>◈ NEO SMARTPEN <span style={{ opacity: 0.7, letterSpacing: 0, marginLeft: 6 }}>크래들 {cradleNo}</span></span>
-              <span style={{ fontSize: 'var(--neo-font-size-xs)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* [SCR-07 v4.24] 크래들 위에는 장비 이름과 거치 수만 둔다 — 「잔량 최저」는 요약 줄로 내렸다 */}
+              <span style={{ fontSize: 'var(--neo-font-size-xs)' }}>
                 {connectorState === 'ready'
-                  ? <span style={{ color: '#86EFAC', fontWeight: 700 }}>● 연결됨 · {dockedIn(cradleNo)}/{SLOTS_PER_CRADLE}</span>
+                  ? <span style={{ color: '#86EFAC', fontWeight: 700 }}>● {dockedIn(cradleNo)}/{SLOTS_PER_CRADLE}</span>
                   : <span style={{ color: '#FCD34D', fontWeight: 700 }}>● 확인 중</span>}
-                {/* [SCR-07 v4.23] 저장 잔량 — 거치된 펜 중 가장 적게 남은 값 */}
-                {minCapacityIn(cradleNo) != null && (
-                  <span title="거치된 펜 중 저장 잔량이 가장 적은 펜의 남은 용량입니다. 채점이 끝나 데이터가 지워지면 회복됩니다."
-                    style={{ fontWeight: 700, color: minCapacityIn(cradleNo) < CAPACITY_LOW ? '#FCA5A5' : 'rgba(255,255,255,0.8)' }}>
-                    잔량 최저 {minCapacityIn(cradleNo)}%
-                  </span>
-                )}
               </span>
             </div>
           )}
           {compact && (
-            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 9, fontWeight: 800, marginBottom: 2, letterSpacing: 1 }}>
-              크래들 {cradleNo}
-              {minCapacityIn(cradleNo) != null && (
-                <span title="거치된 펜 중 저장 잔량이 가장 적은 펜의 남은 용량" style={{ marginLeft: 4, letterSpacing: 0, color: minCapacityIn(cradleNo) < CAPACITY_LOW ? '#FCA5A5' : 'rgba(255,255,255,0.45)' }}>
-                  · 잔량 {minCapacityIn(cradleNo)}%
-                </span>
-              )}
-            </div>
+            <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 9, fontWeight: 800, marginBottom: 2, letterSpacing: 1 }}>크래들 {cradleNo}</div>
           )}
 
           <div style={{ display: 'flex', gap: compact ? 3 : 6 }}>
@@ -1097,6 +1092,12 @@ const CradleGradingModal = ({
                   )}
 
                   {renderCradle()}
+                  {/* [SCR-07 v4.24] 슬롯 아래 숫자의 뜻은 크래들 밖에서 한 번만 말한다 */}
+                  {connectedPens.length > 0 && (
+                    <div style={{ marginTop: -14, fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, padding: '0 4px' }}>
+                      슬롯 아래 숫자는 펜의 <span style={{ color: '#475569' }}>저장 잔량</span>입니다 — 20% 미만 노랑 · 10% 미만 빨강
+                    </div>
+                  )}
 
                   <div style={{ ...sectionCard, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>
@@ -1279,7 +1280,7 @@ const CradleGradingModal = ({
                               : <>판정을 처음부터 다시 돌립니다. 직접 매칭 기록은 유지됩니다.</>}
                             {/* [SCR-07 v4.22] 다시 읽기는 공짜가 아니다 — AI OCR 횟수가 차감된다는 사실을 누르기 전에 알린다 */}
                             <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.15)', color: '#FDE68A', fontWeight: 700 }}>
-                              기재란 판독에 <strong>AI OCR</strong>을 사용합니다 — 다시 읽을 때마다 읽은 펜 수만큼 차감됩니다.
+                              답안지 학생정보 판독에 <strong>AI OCR</strong>을 사용합니다 — 다시 읽을 때마다 읽은 펜 수만큼 차감됩니다.
                             </div>
                           </span>
                           {dockChanged && !rereadHintClosed && (
@@ -1489,7 +1490,7 @@ const CradleGradingModal = ({
                           return noteBox('warn', (<><div>같은 학생에 두 펜이 붙었습니다. 답안을 확인하고, 학생을 고르세요.</div>{curBook && matchAction(selectedPen, curBook)}</>));
                         }
                         if (v?.stage === 2) {
-                          return noteBox('warn', (<><div>답안지 기재란으로 학생을 찾지 못했습니다. 답안을 확인하고, 학생을 고르세요.</div>{curBook && matchAction(selectedPen, curBook)}</>));
+                          return noteBox('warn', (<><div>답안지 학생정보로 학생을 찾지 못했습니다. 답안을 확인하고, 학생을 고르세요.</div>{curBook && matchAction(selectedPen, curBook)}</>));
                         }
                         if (v?.type === 'other_group') {
                           return noteBox('muted', (
@@ -1646,8 +1647,15 @@ const CradleGradingModal = ({
             {step === 'grading' && '💡 창을 닫아도 채점은 계속 진행되며, 하단 알림으로 다시 열 수 있습니다.'}
             {step === 'connect' && connectorState === 'ready' && dockedPens.length === 0 && '크래들에 펜을 1자루 이상 거치해야 다음 단계로 넘어갑니다.'}
             {step === 'mapping' && !reading && startBlocked && <span style={{ color: '#B45309' }}>⚠ {startBlockReason}</span>}
+            {/* [SCR-07 v4.24] 舊 「펜이 연결되지 않은 {n}명」은 틀린 말이었다 — 이 수는 «채점 대상에 들지 못한 학생»이고,
+                그중 대부분은 펜이 멀쩡히 연결돼 있지만 주인을 못 찾은 경우다. 세는 대상을 그대로 말하고, 조치를 붙인다. */}
             {step === 'mapping' && !reading && !startBlocked && unmappedStudents.length > 0 && (
-              <span style={{ color: '#B45309' }}>⚠ 펜이 연결되지 않은 {unmappedStudents.length}명은 채점 대상에서 제외됩니다.</span>
+              <span style={{ color: '#B45309' }}>
+                ⚠ 학생 {unmappedStudents.length}명이 채점 대상에서 빠집니다
+                {matchablePens > 0
+                  ? <> — 주인을 찾지 못한 답안 {matchablePens}자루는 답안을 보고 직접 매칭하면 채점됩니다.</>
+                  : <> — 거치된 펜에서 이 학생들의 답안을 찾지 못했습니다.</>}
+              </span>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
