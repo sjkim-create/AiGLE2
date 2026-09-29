@@ -13,15 +13,12 @@ import { buildZipManifest, clearAll as clearPenRaw } from './lib/penRawStore';
 
 /* [POP-41] 문제가 생긴 날 — **최근 3일**만 고르게 한다.
  *   진단 로그 보관 기간 안에서 교사가 기억하는 범위가 그 정도이고, 날짜가 좁아야 개발자가 로그를 빨리 짚는다. */
-const recentDays = () => {
-  const NAMES = ['오늘', '어제', '그저께'];
-  return Array.from({ length: 3 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return { key, name: NAMES[i], hasLog: availableDates().includes(key) };
-  });
-};
+const recentDays = () => Array.from({ length: 3 }, (_, i) => {
+  const d = new Date();
+  d.setDate(d.getDate() - i);
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { key, hasLog: availableDates().includes(key) };
+});
 
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
@@ -135,7 +132,8 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context, taskOptions
             <select value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)}
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', boxSizing: 'border-box' }}>
               {days.map((d) => (
-                <option key={d.key} value={d.key}>{d.name} ({d.key})</option>
+                /* [POP-41] 날짜만 보인다 — 「오늘/어제」는 여는 날에 따라 뜻이 달라져 나중에 읽을 때 혼란을 준다 */
+                <option key={d.key} value={d.key}>{d.key}</option>
               ))}
             </select>
             <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 6 }}>고른 날짜의 진단 로그가 함께 전달됩니다. 더 이전 일은 상세 내용에 적어 주세요.</div>
