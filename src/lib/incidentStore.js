@@ -28,13 +28,15 @@ const listeners = new Set();
 
 export const INCIDENT_STATUS = ['장애 접수', '개발자 확인 완료', '메일 발송'];
 // [v1.1] 오류 종류 — 번호표 관련 항목 폐기. 발생 지점별로 구분한다
+/* [BRD-16 v2.7] 이용불편 종류 4종.
+ *   舊 6종은 교사가 「매핑 오류」·「OCR 오류」처럼 내부 용어로 자기 문제를 분류해야 했다.
+ *   선생님이 «무엇을 하다가» 막혔는지로 줄였고, 「AI 채점 실패·결과 오류」에서 결과 오류는 뺐다
+ *   (등급·점수가 이상한 것은 오류가 아니라 채점 확인에서 교사가 고칠 일이다). */
 export const SYMPTOMS = [
-  { key: 'connect',  label: 'AiGLE Connect 설치·실행 오류', desc: '프로그램이 없거나 실행 중인데도 준비되지 않음' },
-  { key: 'pen',      label: '크래들·펜 연결 실패',           desc: '펜을 꽂아도 연결 중에서 멈추거나 실패로 표시' },
-  { key: 'mapping',  label: '펜 데이터 읽기·학생 매핑 오류', desc: '데이터 없음 · 학생을 찾지 못함 · 중복 데이터' },
-  { key: 'grading',  label: 'AI 채점 실패·결과 오류',        desc: '채점 실패 · 점수/등급이 이상함 · 결과가 반영되지 않음' },
-  { key: 'print',    label: '답안지 인쇄·스캔 OCR 오류',      desc: '인쇄 실패 · 스캔 채점에서 학생·문항을 못 읽음' },
-  { key: 'etc',      label: '화면·기타 오류',                desc: '위에 없는 문제 — 상세에 적어 주세요' },
+  { key: 'install',  label: '설치 프로그램 문제',   desc: 'AiGLE Connect · Print Doctor가 설치·실행되지 않음' },
+  { key: 'pen',      label: '크래들·펜 문제',       desc: '펜을 꽂아도 표시되지 않음 · 펜 데이터를 읽지 못함' },
+  { key: 'grading',  label: 'AI 채점 실패 문제',    desc: '채점이 실패하거나 끝나지 않음' },
+  { key: 'etc',      label: '기타',                 desc: '위에 없는 문제 — 아래에 적어 주세요' },
 ];
 
 // [v1.5] 운영팀 답변 메일 = 인사말 + 본문(개발자 답변) + 맺음말. 인사말·맺음말은 기본 문장을 제시하고 운영팀이 고친다
@@ -98,7 +100,7 @@ const writeFail = (what, id) => (err) => logError('incidentStore', `${what} 저�
 
 /** 교사 화면에서 신고 접수. 진단 로그 본문은 서브문서에, 펜 데이터는 파일 목록만 담는다 */
 // [v1.1] 진단 로그·펜 데이터는 항상 첨부한다 (교사가 고르지 않음). logDate = 'all' 또는 'YYYY-MM-DD'
-export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles = [], penRaw = null, logDate = 'all' }) => {
+export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles = [], penRaw = null, logDate = 'all', occurredAt = null, userFiles = [] }) => {
   start();
   const date = logDate && logDate !== 'all' ? logDate : null;
   const logName = logFileName(teacherId, date);
@@ -107,8 +109,11 @@ export const addIncident = ({ source, school, teacher, teacherId, teacherEmail, 
     id: nextId(), createdAt: stamp(), source,
     school, teacher, teacherId, teacherEmail, task: task || '-', group: group || '-', studentCount: studentCount ?? null,
     symptom, detail: detail || '', logDate: date || '전체 기간',
+    // [v2.7] occurredAt = 선생님이 고른 «문제가 생긴 날». 진단 로그도 같은 날짜분을 담는다
+    occurredAt: occurredAt || date || null,
     // [v1.7] penRaw = 채점 시 로컬에 쌓인 펜 원본 폴더(최근 5회)를 zip 으로 묶은 것. penData 목록은 zip 안 파일 경로 (게시판 표시는 종전과 동일)
-    attachments: { log: { name: logName, chars: logText.length }, penData: penFiles, penRaw },
+    // [v2.7] userFiles = 선생님이 직접 붙인 파일(화면 캡처 등). 개발자 첨부(진단 로그·펜 원본)와 구분해 보관한다
+    attachments: { log: { name: logName, chars: logText.length }, penData: penFiles, penRaw, userFiles },
     status: '장애 접수', jira: null, devComment: '', replyParts: null, replyDraft: '', mail: null,
   };
   // 게시판 등록과 동시에 Jira 자동 등록. 상태는 「장애 접수」 그대로

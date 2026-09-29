@@ -58,6 +58,40 @@ const GRADE_FEEDBACK = {
             { k: 'C', title: '논리적 구성 및 표현력', body: '미지수 설정에 대한 언급이 포함되어 있고 풀이 과정을 논리적인 문장으로 기술하였으나, 최종 결과가 방정식이 아닌 식의 형태로 제시되었습니다.' },
             { k: 'D', title: '가치·태도 및 성찰', body: '미지수 a의 의미를 명시하고 잔액이 산출되는 사고 과정을 텍스트로 설명하였으며, 특히 (a ≠ 8)과 같은 조건 확인에 대한 성찰적 언급이 나타나므로 2가지 이상의 요소가 충족됩니다.' },
         ],
+        guide: {
+            title: '문장제 상황을 일차방정식으로 나타내기',
+            points: [
+                '문제에 주어진 수를 그대로 옮기기 전에, 무엇이 «변하는 값»이고 무엇이 «정해진 값»인지 먼저 갈라 봐요.',
+                '「남은 값 = 처음 값 − 쓴 값」처럼 관계를 말로 먼저 세운 뒤, 그 말을 식으로 바꾸어 적어요.',
+                '마지막에 등호(=)가 들어갔는지 확인해요. 등호가 없으면 방정식이 아니라 식입니다.',
+            ],
+            items: [
+                {
+                    ask: '이용 횟수를 미지수로 두고, 사용한 요금 전체를 하나의 식으로 바꾸어 써 봐요.',
+                    written: '"720 × a"',
+                    whenTo: '1회 요금과 이용 횟수의 관계를 식으로 나타낼 때',
+                    example: '청소년 1회 요금이 720원이고 a회 이용했으므로 사용한 요금은 720a원이다.',
+                    tip: '곱셈 기호를 생략해 720a로 쓰면 이후 계산에서 항을 다루기 쉬워져요.',
+                    check: '미지수 a가 «이용 횟수»를 뜻한다는 것을 문장으로 밝혔는지 확인해요.',
+                },
+                {
+                    ask: '충전 금액에서 사용한 요금을 뺀 잔액을 식으로 바꾸어 써 봐요.',
+                    written: '"10000 - 720a"',
+                    whenTo: '처음 금액에서 쓴 금액을 빼는 관계를 나타낼 때',
+                    example: '처음 충전 금액 10000원에서 사용한 요금 720a원을 빼면 남은 잔액은 10000 − 720a원이다.',
+                    tip: '뺄셈의 순서가 바뀌면 값의 의미도 달라지니 «처음 − 사용»의 차례를 지켜요.',
+                    check: '식이 «남은 잔액»을 뜻한다는 것이 드러났는지 확인해요.',
+                },
+                {
+                    ask: '앞에서 세운 잔액 식과 실제 남은 잔액을 등호로 연결해 방정식을 완성해 봐요.',
+                    written: '"10000 - 720a"',
+                    whenTo: '구한 식과 문제에 주어진 값이 같음을 나타낼 때',
+                    example: '남은 잔액이 4240원이므로 10000 − 720a = 4240이라는 일차방정식이 된다.',
+                    tip: '등호를 넣어야 «방정식»이 되고, 그래야 a의 값을 구할 수 있어요.',
+                    check: '문제에서 요구한 것이 식이 아니라 방정식이었는지 다시 읽어 확인해요.',
+                },
+            ],
+        },
     },
     '노력': {
         letter: 'C', scale: '3단계 기준',
@@ -69,6 +103,40 @@ const GRADE_FEEDBACK = {
             { k: 'B', title: '과정·기능 및 탐구 수행', body: '상수 a를 구하는 과정이나 그래프를 그리는 등의 탐구 수행이 전혀 이루어지지 않았다. 문제 해결을 위한 기능 수행이 미흡하여 최하 수준에 해당한다.' },
             { k: 'C', title: '가치·태도 및 성찰', body: '유리함수 학습에 대한 흥미나 그래프를 통한 시각적 분석의 유용성을 인식하는 태도를 답안에서 전혀 찾아볼 수 없다.' },
         ],
+        guide: {
+            title: '유리함수가 직선이 되는 조건 찾기',
+            points: [
+                '문제가 무엇을 구하라고 했는지 한 문장으로 다시 적어 보고 시작해요.',
+                '유리함수는 분모가 상수가 되거나 분자·분모가 약분될 때 직선이 된다는 점을 떠올려요.',
+                '구한 값을 원래 식에 다시 넣어, 정말 직선이 되는지 확인해요.',
+            ],
+            items: [
+                {
+                    ask: '문제에서 구해야 하는 것이 무엇인지 먼저 적어 봐요.',
+                    written: '(작성한 내용이 문항의 요구와 이어지지 않았어요)',
+                    whenTo: '문제의 요구 사항을 자기 말로 바꾸어 적을 때',
+                    example: '이 문제는 주어진 유리함수의 그래프가 직선이 되도록 하는 상수 a의 값을 구하는 문제이다.',
+                    tip: '무엇을 구하는지 먼저 적어 두면 중간에 길을 잃지 않아요.',
+                    check: '답안이 문항이 요구한 «상수 a»에 대한 것인지 확인해요.',
+                },
+                {
+                    ask: '유리함수가 직선이 되려면 어떤 조건이 필요한지 써 봐요.',
+                    written: '(조건에 대한 언급이 없었어요)',
+                    whenTo: '유리함수의 성질을 근거로 조건을 세울 때',
+                    example: '분자와 분모가 약분되어 분모에 x가 남지 않으면 그래프는 직선이 된다.',
+                    tip: '조건을 먼저 세워 두면 어떤 값을 구해야 하는지가 분명해져요.',
+                    check: '직선이 되는 조건을 근거와 함께 밝혔는지 확인해요.',
+                },
+                {
+                    ask: '세운 조건을 이용해 상수 a의 값을 구하고, 원래 식에 넣어 확인해 봐요.',
+                    written: '(값을 구하는 과정이 없었어요)',
+                    whenTo: '조건을 식으로 옮겨 값을 구할 때',
+                    example: '약분이 되도록 분자와 분모의 인수를 맞추면 a의 값을 구할 수 있고, 그 값을 넣으면 실제로 직선이 됨을 확인할 수 있다.',
+                    tip: '구한 값을 다시 넣어 확인하는 습관이 실수를 줄여 줘요.',
+                    check: '구한 a의 값이 실제로 직선을 만드는지 검산했는지 확인해요.',
+                },
+            ],
+        },
     },
 };
 const GRADE_LETTER = { '매우우수': 'A', '매우 우수': 'A', '우수': 'B', '보통': 'C', '노력': 'D', '매우 노력': 'E' };
@@ -353,6 +421,64 @@ const GradingReviewModal = ({
                 ))}
             </div>
 
+            {/* ── 학습 안내 ──
+                앞의 세 블록(좋아요·노력·성장)이 «무엇이 어땠는지»를 말한다면,
+                여기는 «그래서 어떻게 고치면 되는지»를 문항의 요구 단위로 쪼개 보여준다.
+                학생이 실제로 쓴 문장을 그대로 놓고 그 옆에 고친 예시를 붙여야
+                교사가 「이 말을 이렇게 바꾸라」고 짚어줄 수 있다. */}
+            {gradeFb.guide && (
+                <div style={{ marginTop: 26 }}>
+                    <div style={{ ...secTitle, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        학습 안내
+                        <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 400, color: T.sub }}>고치기 전에 한 번 읽어 보세요</span>
+                    </div>
+
+                    {/* 과제 유형별 총괄 안내 */}
+                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: T.rLg, padding: '12px 16px', marginBottom: 16 }}>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: '#1D4ED8', marginBottom: 6 }}>{gradeFb.guide.title}</div>
+                        <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {gradeFb.guide.points.map((p, i) => (
+                                <li key={i} style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>{p}</li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        {gradeFb.guide.items.map((it, i) => (
+                            <div key={i}>
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+                                    <span style={{ flex: 'none', width: 22, height: 22, borderRadius: '50%', background: '#2A75F3', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                                    <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text, lineHeight: 1.6 }}>{it.ask}</div>
+                                </div>
+
+                                <div style={{ paddingLeft: 32, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    {/* 학생이 실제로 쓴 문장 — 고칠 대상 */}
+                                    <div style={{ background: T.surface, border: `1px solid ${T.lineSoft}`, borderRadius: T.rLg, padding: '10px 14px' }}>
+                                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub, marginBottom: 4 }}>학생이 작성한 내용</div>
+                                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>{it.written}</div>
+                                    </div>
+
+                                    {/* 고친 예시 */}
+                                    <div style={{ background: '#F5F9FF', border: '1px solid #DBEAFE', borderRadius: T.rLg, padding: '10px 14px' }}>
+                                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', fontWeight: 600, marginBottom: 6 }}>이렇게 해봐요</div>
+                                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7, marginBottom: 8 }}>{it.whenTo}</div>
+                                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.8 }}>{it.example}</div>
+                                        {it.tip && (
+                                            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#2A75F3', lineHeight: 1.7, marginTop: 8 }}>{it.tip}</div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                        <span style={{ flex: 'none', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.sub }}>확인</span>
+                                        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>{it.check}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* ── AI 과정 분석 전용 영역 ── */}
             <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px dashed #CBD5E1' }}>
                 <div style={{ ...secTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -572,16 +698,21 @@ const GradingReviewModal = ({
                             {!isStep3 && (
                                 <div>
                                     <div style={secTitle}>채점 히스토리</div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 380 }}>
+                                    {/* [SCR-03] 채점 회차 카드는 횡배열 —
+                                        회차는 «비교» 대상이라 나란히 놓여야 등급 변화가 한눈에 읽힌다.
+                                        종배열은 카드가 늘어날수록 아래로 밀려 직전 회차와 눈이 멀어졌다.
+                                        카드가 좁아지므로 내부는 라벨/시각/등급을 세로로 쌓는다. */}
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'stretch' }}>
                                         {gradingHistory.map(h => (
-                                            <div key={h.id} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#93C5FD' : T.line}`, borderRadius: T.rLg, padding: '10px 14px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                                    <span style={{ fontSize: 'var(--neo-font-size-sm)' }}><strong>{h.label}</strong> <span style={{ color: T.sub, marginLeft: 6 }}>{h.timestamp || '2026. 09. 16. 오후 06:03'}</span></span>
-                                                    <button onClick={() => setReflectedHistoryId(h.id)} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#2A75F3' : T.line}`, background: 'white', color: reflectedHistoryId === h.id ? '#2A75F3' : T.sub, borderRadius: 'var(--neo-radius-md, 6px)', padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                            <div key={h.id} style={{ flex: '1 1 180px', minWidth: 0, border: `1px solid ${reflectedHistoryId === h.id ? '#93C5FD' : T.line}`, background: reflectedHistoryId === h.id ? '#F5F9FF' : 'white', borderRadius: T.rLg, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                                    <strong style={{ fontSize: 'var(--neo-font-size-sm)' }}>{h.label}</strong>
+                                                    <button onClick={() => setReflectedHistoryId(h.id)} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#2A75F3' : T.line}`, background: 'white', color: reflectedHistoryId === h.id ? '#2A75F3' : T.sub, borderRadius: 'var(--neo-radius-md, 6px)', padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
                                                         {reflectedHistoryId === h.id ? '✓ 반영' : '반영'}
                                                     </button>
                                                 </div>
-                                                <div style={{ fontSize: 'var(--neo-font-size-sm)' }}><span style={{ color: T.sub }}>{isScoreMode ? '채점 점수' : '채점 등급'}</span> <strong style={{ marginLeft: 6 }}>{fmt(h.level, h.score)}</strong></div>
+                                                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub }}>{h.timestamp || '2026. 09. 16. 오후 06:03'}</div>
+                                                <div style={{ fontSize: 'var(--neo-font-size-sm)', marginTop: 'auto' }}><span style={{ color: T.sub }}>{isScoreMode ? '채점 점수' : '채점 등급'}</span> <strong style={{ marginLeft: 6 }}>{fmt(h.level, h.score)}</strong></div>
                                             </div>
                                         ))}
                                     </div>

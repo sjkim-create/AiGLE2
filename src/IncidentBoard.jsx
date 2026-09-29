@@ -2,7 +2,7 @@
  * IncidentBoard.jsx
  * [BRD-16] 시스템 관리자 > 게시판 > 장애신고
  *   · 목록 화면과 상세(수정) 화면으로 나뉜다 (v1.2 — 舊 좌우 분할 폐기)
- *   · 목록: 접수 일시 · 학교명 · 교사명 · 과제명 · 그룹 · 증상 · 상태. 접수 일시(기본)·학교명·교사명 헤더 클릭 정렬
+ *   · 목록: 접수 일시 · 학교명 · 교사명 · 과제명 · 그룹 · 이용불편 종류 · 상태. 접수 일시(기본)·학교명·교사명 헤더 클릭 정렬
  *   · 상세: 신고 정보 · 첨부(진단 로그 · 펜 데이터) 다운로드 · Jira · 개발자 답변(있을 때만) · 운영팀 답변 편집 → 메일 발송
  *   · Jira 자동 등록·개발자 댓글 수신은 서버(Functions + Jira Webhook) 연동 예정 — 시뮬레이션 버튼
  *   · 저장소는 Firestore(incidentStore v2.0) — 목록·상세는 onSnapshot 으로 실시간 갱신. 진단 로그 본문은 내려받을 때만 서브문서에서 읽는다
@@ -111,7 +111,7 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast }) => {
               {th('teacher', SORT_KEYS.teacher)}
               {th(null, '과제명')}
               {th(null, '그룹')}
-              {th(null, '증상')}
+              {th(null, '이용불편 종류')}
               {th(null, '상태')}
             </tr>
           </thead>
@@ -252,12 +252,30 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
             <div><div style={label}>교사명</div><strong>{item.teacher}</strong> <span style={{ color: '#94A3B8' }}>({item.teacherId})</span></div>
             <div><div style={label}>과제명</div><strong>{item.task}</strong></div>
             <div><div style={label}>그룹</div><strong>{item.group}</strong></div>
+            {/* [v2.7] 선생님이 고른 «문제가 생긴 날» */}
+            <div><div style={label}>발생일</div><strong>{item.occurredAt || item.createdAt?.slice(0, 10) || '-'}</strong></div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <div style={label}>증상</div>
+              <div style={label}>이용불편 종류</div>
               <strong>{item.symptom}</strong>
               {item.detail && <div style={{ marginTop: 6, color: '#475569', whiteSpace: 'pre-wrap', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px' }}>{item.detail}</div>}
             </div>
           </div>
+        </div>
+
+        {/* [v2.7] 선생님 첨부 — 개발자 첨부(자동)와 나눠 보여 준다 */}
+        <div style={box}>
+          <div style={{ ...label, marginBottom: 10 }}>첨부파일 (선생님)</div>
+          {item.attachments?.userFiles?.length ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {item.attachments.userFiles.map((f, i) => (
+                <div key={`${f.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>
+                  <span>📎</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-xs)' }}>{f.size >= 1048576 ? `${(f.size / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(f.size / 1024))}KB`}</span>
+                </div>
+              ))}
+            </div>
+          ) : <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>첨부파일 없음</span>}
         </div>
 
         {/* 첨부 */}

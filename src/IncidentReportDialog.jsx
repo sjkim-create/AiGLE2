@@ -1,6 +1,6 @@
 /**
  * IncidentReportDialog.jsx
- * [BRD-16] 장애 신고 다이얼로그 — 교사 화면(크래들 일괄 채점 헤더 · 환경설정 AiGLE Connect 카드)에서 연다.
+ * [BRD-16] 이용불편 접수 다이얼로그 — 교사 화면(크래들 일괄 채점 헤더 · 환경설정 AiGLE Connect 카드)에서 연다.
  *   · 학교 · 교사 · 과제 · 그룹 정보는 화면이 넘겨 주는 값으로 자동 채워진다 (교사가 다시 쓰지 않는다)
  *   · 진단 로그(전체 기간)와 연결된 펜 데이터를 자동 첨부한다 — 舊 [로그 다운로드]·[펜 데이터 다운로드]를 대체
  *   · [신고하기] → 시스템 관리자 > 게시판 > 장애신고에 등록 + Jira 자동 등록(MCP 연동 예정 — 시뮬레이션)
@@ -11,13 +11,34 @@ import { addIncident, SYMPTOMS } from './lib/incidentStore';
 import { availableDates } from './appLogger';
 import { buildZipManifest, clearAll as clearPenRaw } from './lib/penRawStore';
 
+/* [BRD-16 v2.7] 문제가 생긴 날 — **최근 3일**만 고르게 한다.
+ *   진단 로그 보관 기간 안에서 교사가 기억하는 범위가 그 정도이고, 날짜가 좁아야 개발자가 로그를 빨리 짚는다. */
+const recentDays = () => {
+  const NAMES = ['오늘', '어제', '그저께'];
+  return Array.from({ length: 3 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { key, name: NAMES[i], hasLog: availableDates().includes(key) };
+  });
+};
+
+const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+
 const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
   const [symptom, setSymptom] = useState(SYMPTOMS[0].label);
   const [detail, setDetail] = useState('');
-  const [logDate, setLogDate] = useState(''); // [v1.3] 진단 로그 일자 'YYYY-MM-DD' — 기본 최신 날짜 (舊 '전체 기간' 옵션 폐기)
+  const [days, setDays] = useState(recentDays());
+  const [occurredAt, setOccurredAt] = useState('');   // [v2.7] 문제가 생긴 날 (최근 3일 중 1)
+  const [files, setFiles] = useState([]);             // [v2.7] 선생님이 붙인 파일
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { if (open) { setSymptom(SYMPTOMS[0].label); setDetail(''); setLogDate(availableDates()[0] || ''); setSubmitting(false); } }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const d = recentDays();
+    setDays(d); setOccurredAt(d[0].key);
+    setSymptom(SYMPTOMS[0].label); setDetail(''); setFiles([]); setSubmitting(false);
+  }, [open]);
   if (!open) return null;
 
   const { source = '환경설정', school = '공주 고등학교', teacher = '김 b', teacherId = 'tch20261zim', teacherEmail = 'tch20261zim@gjhs.kr', task = null, group = null, studentCount = null } = context || {};
@@ -29,7 +50,11 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
     setSubmitting(true);
     /* 펜 원본 폴더(최근 5회)를 zip 으로 묶어 첨부 → 전송이 끝나면 로컬 파일 삭제 */
     const penRaw = manifest.files.length ? { zipName: manifest.zipName, sessions: manifest.sessions, pens: manifest.pens, bytes: manifest.bytes } : null;
-    const report = addIncident({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail, penFiles: manifest.files, penRaw, logDate: logDate || 'all' });
+    /* 진단 로그는 «문제가 생긴 날»분을 담는다 — 그 날 로그가 없으면 보관 전체로 되돌린다 */
+    const hasLog = days.find((d) => d.key === occurredAt)?.hasLog;
+    const report = addIncident({ source, school, teacher, teacherId, teacherEmail, task, group, studentCount, symptom, detail,
+      penFiles: manifest.files, penRaw, logDate: hasLog ? occurredAt : 'all', occurredAt,
+      userFiles: files.map((f) => ({ name: f.name, size: f.size })) });
     if (penRaw) clearPenRaw();
     onSubmitted && onSubmitted(report);
     onClose && onClose();
@@ -44,11 +69,11 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="오류 접수" style={{ background: 'white', borderRadius: 14, width: 560, maxWidth: '94vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="이용불편 접수" style={{ background: 'white', borderRadius: 14, width: 560, maxWidth: '94vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
         <div style={{ padding: '18px 22px 10px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #F1F5F9' }}>
           <span style={{ fontSize: '1.4rem' }}>🚨</span>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>오류 접수</h2>
+            <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>이용불편 접수</h2>
             <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>접수 내용은 운영팀이 확인한 후 메일로 보내드립니다.</div>
           </div>
           <button onClick={onClose} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748B' }}>✕</button>
@@ -64,10 +89,28 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
             {group && row('그룹', group)}
           </div>
 
+          {/* [v2.7] 언제 — 최근 3일 중 하루 */}
+          <div>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B', marginBottom: 8 }}>언제 생긴 문제인가요?</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {days.map((d) => {
+                const on = occurredAt === d.key;
+                return (
+                  <button key={d.key} type="button" onClick={() => setOccurredAt(d.key)}
+                    style={{ flex: 1, padding: '8px 10px', borderRadius: 10, border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: on ? '#1D4ED8' : '#1E293B' }}>{d.name}</div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: on ? '#3B82F6' : '#94A3B8', marginTop: 2 }}>{d.key.slice(5).replace('-', '. ')}.</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 6 }}>고른 날짜의 진단 로그가 함께 전달됩니다. 더 이전 일은 상세 내용에 적어 주세요.</div>
+          </div>
+
           {/* 증상 */}
           <div>
             <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B', marginBottom: 8 }}>어떤 문제인가요?</div>
-            {/* [v1.1] 오류 종류 — 발생 지점별 6종, 각 버튼에 설명 1줄 */}
+            {/* [v2.7] 이용불편 종류 4종 — 2×2 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {SYMPTOMS.map((s) => {
                 const on = symptom === s.label;
@@ -84,7 +127,28 @@ const IncidentReportDialog = ({ open, onClose, onSubmitted, context }) => {
               style={{ width: '100%', minHeight: 84, marginTop: 10, padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box', resize: 'vertical' }} />
           </div>
 
-          {/* [v2.4] 진단 로그(일자)·펜 원본 진단 파일 안내 블록 삭제 — 화면에 보이지 않고 자동 첨부만 한다 (로그 = 최신 날짜, 펜 원본 = 로컬 보관분 전체) */}
+          {/* [v2.7] 첨부파일 — 선생님이 직접 붙인다. 진단 로그·펜 원본은 여전히 자동 첨부라 여기 보이지 않는다 */}
+          <div>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B', marginBottom: 8 }}>첨부파일 <span style={{ fontWeight: 600, color: '#94A3B8' }}>(선택)</span></div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, border: '1px dashed #CBD5E1', background: '#F8FAFC', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569' }}>
+              📎 파일 선택
+              <input type="file" multiple style={{ display: 'none' }}
+                onChange={(e) => { setFiles((prev) => [...prev, ...Array.from(e.target.files || [])].slice(0, 5)); e.target.value = ''; }} />
+            </label>
+            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginLeft: 10 }}>화면 캡처·사진 등 최대 5개</span>
+            {files.length > 0 && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {files.map((f, i) => (
+                  <div key={`${f.name}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-xs)', color: '#475569', background: '#F1F5F9', borderRadius: 6, padding: '5px 8px' }}>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                    <span style={{ color: '#94A3B8' }}>{fmtBytes(f.size)}</span>
+                    <button type="button" onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} aria-label={`${f.name} 첨부 제거`}
+                      style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, padding: '12px 22px 18px', justifyContent: 'flex-end', borderTop: '1px solid #F1F5F9' }}>
