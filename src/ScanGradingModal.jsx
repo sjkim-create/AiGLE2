@@ -5,12 +5,18 @@
  * 목적: 스캔 파일을 순서·이름 정렬 없이 업로드 → 답안지 기재 내용을 OCR로 읽어
  *       학생·과제·문항을 판별 → 슬롯(학생 × 문항)에 연결 → AI 일괄 채점 → 채점 확인 단계로 전환
  *
- * 5-Step Workflow:
- *   1) upload      — 다중 스캔 파일 업로드 (PDF/PNG/JPG) + [v3.24] 대상 학생 게이트(1단)
- *   2) matching    — OCR 실행 + 학생/과제/문항 판별 (mock, 1.5초 후 자동 결과 생성)
- *   3) review      — 연결 결과 검토. 슬롯 매트릭스(기본) / 파일 목록(보조) 2뷰
- *   4) grading     — AI 일괄 채점 진행 (채점 대상 슬롯만, 5초 mock)
- *   5) completed   — 완료 요약 + [확인] 시 상위 콜백 호출 → 학생 상태 전환
+ * 4-Step Workflow — [SCR-05 v4.8] SCR-07 크래들 일괄 채점과 같은 결로 맞췄다
+ *   1) upload      — 다중 스캔 파일 업로드 (PDF/PNG/JPG). 형식·용량·중복은 여기서 거른다
+ *   2) mapping     — 데이터 매핑. 읽는 중(OCR 판별) → 결과 검토가 **한 단계**다
+ *                    (舊 `matching`·`review` 2단계 → 크래들의 「데이터 매핑」과 같은 1단계로 통합)
+ *   3) grading     — AI 일괄 채점 진행 (채점 대상 슬롯만). 실패 학생은 [다시 시도]
+ *   4) completed   — 완료 요약 + [확인] 시 상위 콜백 호출 → 학생 상태 전환
+ *
+ *   크래들과 다른 점은 **데이터를 가져오는 방법(펜 거치 ↔ 파일 업로드)** 과
+ *   매핑 단위(펜 1자루 ↔ 학생 × 문항 슬롯)뿐이다. 헤더·단계 안내·읽는 중 화면·요약 카운트·
+ *   「상세 내용」 문구·채점 중 안내·실패 재시도·닫기 확인은 크래들과 같은 규칙을 쓴다.
+ *
+ * [SCR-05 v4.9] 결석생(전 문항 0장)은 SCR-07처럼 채점 대상에서 **자연 제외**하고 채점 시작을 막지 않는다.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * [SCR-05 v4.0] OCR 매핑(A안) — 파일명 규칙·QR 없이 답안지 기재 내용만으로 판별
@@ -38,6 +44,7 @@
  *     · over     장수 >  기준 — 중복 스캔 의심
  *     · short    장수 <  기준 — 답안지가 덜 붙었다. **0장도 여기 포함**한다 `[v4.6]`
  *                (舊 `missing`(0장)은 차단·빈 장 자리·해소 방법이 short와 같아 흡수했다)
+ *                [v4.9] 단, **전 문항이 0장인 학생(결석생)은 차단하지 않고 제외**한다
  *   덮어쓰기(overwrite)는 상태가 아니라 **플래그**다 (답안 있음 학생 + 장수 ≥ 1).
  *
  * [SCR-01 v3.24] 답안 기제출(`답안 있음`) 학생 처리 — 3단 게이트 (슬롯 단위로 승계)
@@ -50,16 +57,56 @@
  *   「계속 채점」에서도 답안지가 한 장도 없는 문항은 채점 대상이 아니다. 한 장이라도 붙은
  *   문항은 기준 장수가 어디까지나 **예상값**이므로 있는 장만으로 채점한다.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import appLogger from './appLogger';
+import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 크래들과 같은 [🚨 이용불편 접수]
 
 const STEPS = [
-  { key: 'upload', label: '파일 업로드', icon: '📁' },
-  { key: 'matching', label: 'OCR 판별', icon: '🔎' },
-  { key: 'review', label: '연결 결과 확인', icon: '📋' },
+  /* [v4.8] 단계 안내는 타이틀 호버 툴팁 — SCR-07 v2.7과 같은 방식 */
+  { key: 'upload', label: '파일 업로드', icon: '📁', hint: '스캔 파일을 올려 주세요. 파일명·순서는 상관없고, 누구의 몇 번 문항인지는 다음 단계에서 판별합니다.' },
+  { key: 'mapping', label: '데이터 매핑', icon: '🔗' },
   { key: 'grading', label: 'AI 일괄 채점', icon: '🤖' },
   { key: 'completed', label: '완료', icon: '✓' },
 ];
+
+/* [v4.8] 업로드 제한 — 걸린 파일은 목록에 넣지 않고 사유만 안내한다 */
+const MAX_FILE_MB = 20;
+const ACCEPT_RE = /\.(pdf|png|jpe?g)$/i;
+
+/* [v4.8] 읽는 중 순환 타이틀 — SCR-07 v1.8과 같이 실제 단계와 묶지 않고 「하는 일」만 보인다 */
+const JUDGE_PHASES = [
+  { key: 'code', label: '답안지 코드 대조' },
+  { key: 'ident', label: '학생정보 판독' },
+  { key: 'question', label: '문항 번호 판독' },
+  { key: 'count', label: '장수 검사' },
+];
+
+/* [v4.8] 「상세 내용」 문구 — SCR-07 VERDICT_SPEC와 같은 말투(「종류 — 사유」)를 쓴다.
+ *   학생정보를 못 읽은 경우는 크래들과 **같은 문구**다. 교사가 할 일(답안을 보고 직접 지정)이 같기 때문이다. */
+const IDENT_UNREAD = '학생 미매칭 — 답안지 학생정보를 읽을 수 없습니다';
+const SCAN_REASON = {
+  unread:        IDENT_UNREAD,
+  not_in_roster: null /* 런타임 생성 — 「학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: …]」 */,
+  other_task:    '학생 미매칭 — 이 과제 답안지가 아닙니다',
+  unlinked:      '미연결 — 연결을 해제한 답안지입니다',
+  replaced:      '기존 답안 — 스캔본이 자리를 대신하고 있습니다',
+};
+
+/* [v4.8] 학생 표기 — 크래들과 같은 「학년-반-번호」 */
+const studentNo = (st) => {
+  if (!st) return '—';
+  const m = (st.grade || '').match(/(\d+)학년\s*(\d+)반\s*(\d+)번/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : '—';
+};
+
+/* [v4.8] 학생 행 상태 배지 — 크래들 BADGE와 같은 색 규칙(정상 초록 · 확인 필요 빨강) */
+const ROW_BADGE = {
+  normal: { label: '정상', bg: '#F0FDF4', border: '#86EFAC', color: '#166534' },
+  check:  { label: '확인 필요', bg: '#FEF2F2', border: '#FCA5A5', color: '#B91C1C' },
+  /* [v4.9] 결석생 — 크래들 「데이터 없음」과 같은 회색. 채점에서 자연 제외된다 */
+  excluded: { label: '제외', bg: '#F8FAFC', border: '#E2E8F0', color: '#64748B' },
+};
 
 // [v4.0] 슬롯 상태 토큰 — 기준 장수 대비 실제 장수로 판정
 const SLOT_TOKEN = {
@@ -74,6 +121,8 @@ const SLOT_TOKEN = {
  * 상태 라벨이 `초과`/`부족` → `답안지 초과`/`답안지 부족`으로 길어져 66px로는 넘쳤다.
  * 좌측 패널 폭(352 → 392)도 같은 양만큼 늘려 학생 이름 칸이 줄지 않게 했다. */
 const SLOT_CELL_W = 78;
+/* [v4.8] 좌측 목록 폭 — 이름(+번호) · 문항 칩 · 상태 배지를 한 줄에 두고, 상세 내용은 아랫줄로 */
+const NAME_W = 118;
 
 // [v4.0] OCR 신뢰도 3단계
 const CONFIDENCE_TOKEN = {
@@ -106,6 +155,36 @@ const ScanGradingModal = ({
   // [v4.4] 답안지 코드 — 평소엔 숨기고 클릭했을 때만 보여준다
   const [showCodeList, setShowCodeList] = useState(false);   // 헤더: 문항별 전체 목록
 
+  /* ── [v4.8] SCR-07과 같은 결 ── */
+  // 데이터 매핑 단계의 「읽는 중」 — 舊 별도 단계(`matching`)였다
+  const [reading, setReading] = useState(false);
+  const [readTick, setReadTick] = useState(0);
+  useEffect(() => {
+    if (!reading) return undefined;
+    setReadTick(0);
+    const iv = setInterval(() => setReadTick((t) => t + 1), 650);
+    return () => clearInterval(iv);
+  }, [reading]);
+  // 업로드에서 걸러진 파일 — { name, reason }. 목록에 넣지 않고 사유만 보여 준다
+  const [uploadErrors, setUploadErrors] = useState([]);
+  const [hoverStep, setHoverStep] = useState(null);
+  const [toast, setToast] = useState('');
+  useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
+  const [incidentOpen, setIncidentOpen] = useState(false);
+  // 채점 중 「다른 일 하셔도 됩니다」 시간차 안내 (SCR-07 v2.9)
+  const [gradingElapsed, setGradingElapsed] = useState(0);
+  useEffect(() => {
+    if (step !== 'grading' || gradingFinished) return undefined;
+    const t0 = Date.now();
+    const iv = setInterval(() => setGradingElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [step, gradingFinished]);
+  // 이번 채점에 올린 학생 / AI 채점 실패 학생 — 에뮬레이터는 첫 시도에서 마지막 학생 1명을 실패시킨다
+  const [gradedStudentIds, setGradedStudentIds] = useState([]);
+  const [failedStudentIds, setFailedStudentIds] = useState([]);
+  const [retrying, setRetrying] = useState(false);
+  const failedOnceGradeRef = useRef(false);
+
   useEffect(() => {
     return () => { files.forEach((f) => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); }); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +198,9 @@ const ScanGradingModal = ({
   // 문항 목록 — sheets = TSK-02 「답안지 출력 장수 설정」(문항별 기준 장수, 미설정 시 1)
   const questionList = (questions.length ? questions : [{ id: 1, title: '문항 1' }])
     .map((q) => ({ ...q, sheets: q.sheets || 1 }));
+
+  // [v4.8] 좌측 목록 폭 = 좌우 여백 + 이름 + 문항 칩 + 배지 + 스크롤바
+  const LIST_W = 28 + NAME_W + questionList.length * (SLOT_CELL_W + 4) + 12 + 80 + 16;
 
   // ─── [v3.24] 답안 기제출 학생 판별 ───
   const isAnswerStudent = (s) => s?.submitType === 'ocr';
@@ -205,8 +287,22 @@ const ScanGradingModal = ({
   };
 
 
+  /* [v4.8] 업로드 검사 — 형식 · 용량 · 같은 파일 중복.
+   *   걸린 파일은 목록에 넣지 않는다. 넣어 두고 판별 단계에서 실패시키면 교사가 원인을 두 번 찾게 된다. */
   const handleFilesAdd = (fileList) => {
-    const next = Array.from(fileList).map((f, i) => {
+    const rejected = [];
+    const known = new Set(files.map((f) => `${f.name}:${f.size}`));
+    const accepted = [];
+    Array.from(fileList).forEach((f) => {
+      const name = f.name || 'scan.jpg';
+      if (!ACCEPT_RE.test(name)) { rejected.push({ name, reason: '지원하지 않는 형식입니다 (PDF · PNG · JPG만 가능)' }); return; }
+      if ((f.size || 0) > MAX_FILE_MB * 1024 * 1024) { rejected.push({ name, reason: `${MAX_FILE_MB}MB를 넘습니다 — 해상도를 낮춰 다시 스캔해 주세요` }); return; }
+      const sig = `${name}:${f.size || 0}`;
+      if (known.has(sig)) { rejected.push({ name, reason: '이미 올린 파일입니다' }); return; }
+      known.add(sig);
+      accepted.push(f);
+    });
+    const next = accepted.map((f, i) => {
       const isImage = (f.type || '').startsWith('image/') || /\.(png|jpe?g)$/i.test(f.name || '');
       const isPdf = (f.type || '') === 'application/pdf' || /\.pdf$/i.test(f.name || '');
       return {
@@ -218,6 +314,8 @@ const ScanGradingModal = ({
         previewUrl: isImage ? URL.createObjectURL(f) : null,
       };
     });
+    setUploadErrors(rejected);
+    if (rejected.length) appLogger.error('scan-upload', '업로드 제외', { rejected });
     setFiles((prev) => [...prev, ...next]);
   };
 
@@ -238,6 +336,7 @@ const ScanGradingModal = ({
     files.forEach((f) => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
     setFiles([]);
     setMatchResults([]);
+    setUploadErrors([]);
     setSelectedKey(null);
     setOpenMenu(null);
     setPreviewFileId(null);
@@ -248,6 +347,8 @@ const ScanGradingModal = ({
   const injectMockFiles = () => {
     const seed = files.length + 1;
     const plan = [];
+    // [v4.9] 결석생 시연 대상 — 초과·부족 시연(앞 2명)과 `답안 있음` 학생(기존 답안이 자리를 채움)을 피해 뒤에서부터 고른다
+    const absentDemoId = [...targetStudents].reverse().find((s) => targetStudents.indexOf(s) >= 2 && !isAnswerStudent(s))?.id;
     targetStudents.forEach((s, si) => {
       /* [v4.7] `답안 있음` 학생도 스캔을 만든다 — 舊 v4.4의 「만들지 않는다」 폐기.
        * 실제 운영에서 교사는 답안 유무를 가리지 않고 반 전체를 통째로 스캔하므로,
@@ -255,6 +356,7 @@ const ScanGradingModal = ({
       questionList.forEach((q, qi) => {
         // 시연용 결손: 3번째 학생의 마지막 문항은 통째로 누락
         if (si === 2 && qi === questionList.length - 1) return;  // 0장 → `부족 0/N장`
+        if (s.id === absentDemoId) return;  // [v4.9] 결석생 시연 — 전 문항 0장 → 채점 제외(차단하지 않음)
         let need = q.sheets;
         if (si === 1 && qi === 0 && q.sheets > 1) need = q.sheets - 1; // 부족(short)
         if (si === 0 && qi === 1) need = q.sheets + 1;                 // 초과(over) — 중복 스캔 시연
@@ -263,7 +365,10 @@ const ScanGradingModal = ({
     });
     // 판별 실패 1건(미분류 시연)은 상한에 잘리지 않도록 자른 뒤에 붙인다
     const capped = plan.slice(0, 23);
-    capped.push({ s: null, q: null, page: 1 });
+    /* [v4.8] 미분류 사유 3종을 모두 재현한다 — 크래들 판정(#3 다른 과제 · #5 판독 불가 · #7 명단 밖)과 같은 짝 */
+    capped.push({ s: null, q: null, page: 1, fault: 'unread' });
+    capped.push({ s: null, q: null, page: 1, fault: 'other_task' });
+    capped.push({ s: null, q: null, page: 1, fault: 'not_in_roster' });
     const mock = capped.map((it, i) => ({
       id: seed + i,
       name: `scan_${String(seed + i).padStart(4, '0')}.jpg`,
@@ -285,7 +390,10 @@ const ScanGradingModal = ({
    */
   const startMatching = () => {
     if (!files.length) return;
-    setStep('matching');
+    // [v4.8] 舊 `matching` 단계 → 데이터 매핑 단계 안의 「읽는 중」 (SCR-07과 같은 구성)
+    setStep('mapping');
+    setReading(true);
+    appLogger.info('scan-ocr', '답안지 판별 시작', { fileCount: files.length });
     setTimeout(() => {
       const rows = files.map((f, i) => {
         const plan = f._plan;
@@ -293,13 +401,24 @@ const ScanGradingModal = ({
         const q = plan?.q || questionList[i % questionList.length];
         const noPlanStudent = plan ? !plan.s : false;
 
-        // 판별 실패 (미분류)
+        /* 판별 실패 (미분류) — [v4.8] 사유를 3종으로 가른다.
+         *   other_task    답안지 코드가 이 과제 코드 목록에 없다 (다른 과제 답안지 혼입)
+         *   not_in_roster 학생정보는 읽혔으나 선택 그룹 명단에 없다
+         *   unread        학생정보를 비웠거나 읽지 못했다 */
         if (noPlanStudent) {
-          return {
+          const base = {
             fileId: f.id, fileName: f.name,
             ocrSheetCode: null, ocrStudentText: '(인식 실패)', ocrNameText: '', ocrQuestionNo: null, ocrPageNo: null,
-            studentId: null, questionNo: null, sheetNo: null, confidence: 'low', inferred: false,
+            studentId: null, questionNo: null, sheetNo: null, confidence: 'low', inferred: false, reason: 'unread',
           };
+          if (plan.fault === 'other_task') {
+            return { ...base, ocrSheetCode: '00000871', ocrStudentText: targetStudents[0]?.grade || '', ocrNameText: targetStudents[0]?.name || '', ocrQuestionNo: 1, reason: 'other_task' };
+          }
+          if (plan.fault === 'not_in_roster') {
+            return { ...base, ocrSheetCode: sheetCodeOf(questionList[0].id, 1), ocrStudentText: '1학년 1반 31번', ocrNameText: '오세훈', ocrQuestionNo: 1, reason: 'not_in_roster',
+              reasonText: '학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: 1학년 1반 31번 오세훈]' };
+          }
+          return base;
         }
         // 매 4번째 파일은 문항 번호 미기재 → AI 내용 추론 → medium
         const questionMissed = i % 4 === 3;
@@ -330,10 +449,18 @@ const ScanGradingModal = ({
       const existingRows = answerStudents.flatMap((st) => questionList.map(
         (q) => buildExistingRow(st, q, !taken.has(slotKey(st.id, q.id)))));
       setMatchResults([...rows, ...existingRows]);
-      setStep('review');
+      setReading(false);
+      appLogger.info('scan-ocr', '답안지 판별 완료', { fileCount: rows.length, unassigned: rows.filter((r) => r.studentId == null).length });
       // 교체가 발생하면 **판별 결과를 보여준 뒤** 교체 의사를 한 번 묻는다 (판별 전에 묻지 않는다)
       if (existingRows.some((r) => r.studentId == null)) setConfirmReplace(true);
-    }, 1500);
+    }, 2400);
+  };
+
+  /** [v4.8] 미분류 사유 문구 — 연결되지 않은 행만 갖는다 */
+  const reasonOf = (r) => {
+    if (r.studentId != null && r.questionNo != null) return null;
+    if (r.origin === 'existing') return SCAN_REASON.replaced;
+    return r.reasonText || SCAN_REASON[r.reason] || SCAN_REASON.unlinked;
   };
 
   // 파일의 학생/문항 확정값 변경 — 교사가 직접 지정하면 신뢰도는 high로 승격
@@ -345,6 +472,9 @@ const ScanGradingModal = ({
         const nx = { ...r, ...patch };
         nx.confidence = (nx.studentId != null && nx.questionNo != null) ? 'high' : 'low';
         nx.inferred = false;
+        // [v4.8] 연결을 풀면 사유는 「미연결」, 붙이면 사유가 없어진다
+        nx.reason = nx.confidence === 'low' ? 'unlinked' : null;
+        nx.reasonText = null;
         return nx;
       });
       /* [v4.7] 舊 자동 복원 폐기 — 기존 답안은 교체돼도 사라지지 않고 **미분류에 실체로 남는다.**
@@ -360,7 +490,7 @@ const ScanGradingModal = ({
     setMatchResults((prev) => prev.map((r) => {
       if (r.fileId === row.fileId) return { ...r, studentId: sid, questionNo: qid };
       if (r.origin !== 'existing' && r.studentId === sid && r.questionNo === qid) {
-        return { ...r, studentId: null, questionNo: null, sheetNo: null, studentInput: '', confidence: 'low', inferred: false };
+        return { ...r, studentId: null, questionNo: null, sheetNo: null, studentInput: '', confidence: 'low', inferred: false, reason: 'unlinked', reasonText: null };
       }
       return r;
     }));
@@ -438,12 +568,19 @@ const ScanGradingModal = ({
    * 슬롯이 하나라도 `초과`·`부족`이거나, 연결된 답안지에 `확인 필요`가 남아 있으면 막는다.
    * 舊 v4.2는 이 상황들을 통과시키고 완료 요약에서 고지만 했으나,
    * 「데이터가 덜 갖춰진 채로 채점이 확정된다」는 문제가 커서 사전 차단으로 전환했다. */
-  const abnormalSlots = slots.filter((sl) => slotStatus(sl) !== 'ok');
+  /* [v4.9] 결석생 — 모든 문항이 0장인 학생. SCR-07처럼 **채점 대상에서 자연 제외**하고 차단하지 않는다.
+   *   舊 v4.6은 0장 문항도 `부족`으로 보고 막아, 결석생 한 명 때문에 반 전체 채점이 멈췄다.
+   *   한 문항이라도 답안지가 붙으면 결석생이 아니므로 나머지 빈 문항은 그대로 `부족`(차단)이다. */
+  const isAbsent = (s) => questionList.every((q) => slotIndex[slotKey(s.id, q.id)].files.length === 0);
+  const absentStudents = targetStudents.filter(isAbsent);
+  const absentIdSet = new Set(absentStudents.map((s) => s.id));
+  const abnormalSlots = slots.filter((sl) => !absentIdSet.has(sl.student.id) && slotStatus(sl) !== 'ok');
   const pendingCheckFiles = assigned.filter((r) => r.confidence === 'medium');
   const startBlocked = gradableSlots.length === 0 || abnormalSlots.length > 0 || pendingCheckFiles.length > 0;
   // 무엇 때문에 막혔는지 교사에게 그대로 알려준다 — 「비활성인데 이유를 모르겠다」가 가장 나쁜 상태다
   const startBlockReason = (() => {
-    if (gradableSlots.length === 0) return '채점 대상이 없습니다. 학생·문항에 연결된 답안지가 한 건도 없습니다.';
+    // [v4.8] SCR-07과 같은 말투 — 무엇이 없는지 + 무엇을 하면 되는지
+    if (gradableSlots.length === 0) return '채점할 수 있는 답안지가 없습니다. 스캔 파일을 다시 올리거나, 미분류 답안지를 학생·문항에 직접 지정해 주세요.';
     const parts = [];
     const n = (st) => abnormalSlots.filter((sl) => slotStatus(sl) === st).length;
     if (n('over')) parts.push(`답안지 초과 ${n('over')}건`);
@@ -460,6 +597,28 @@ const ScanGradingModal = ({
     }))
     .map((s) => s.id);
   const partiallyGradedCount = gradableStudentIds.length - fullyGradedStudentIds.length;
+
+  /* [v4.8] 학생 행의 「상태 배지 · 상세 내용」 — SCR-07 펜 목록의 두 열과 같은 역할.
+   *   배지는 상태의 «종류»(정상 / 확인 필요)만, 상세 내용은 «무슨 일이 일어났는지»를 말한다.
+   *   한 학생에게 사유가 여럿이면 가장 급한 것 하나 + 「외 n건」. */
+  const studentDetail = (s) => {
+    const sls = questionList.map((q) => slotIndex[slotKey(s.id, q.id)]);
+    // [v4.9] 결석생은 확인 대상이 아니라 제외 대상 — 배지 「제외」(회색), 채점 시작을 막지 않는다
+    if (absentIdSet.has(s.id)) return { badge: 'excluded', text: '채점 제외 — 올린 파일에서 이 학생의 답안지를 찾지 못했습니다', issues: [] };
+    const issues = [];
+    sls.forEach((sl) => {
+      const st = slotStatus(sl);
+      if (st === 'over') issues.push(`답안지 초과 — ${sl.question.title} ${sl.files.length}/${sl.question.sheets}장 · 중복 스캔 의심`);
+      if (st === 'short') issues.push(`답안지 부족 — ${sl.question.title} ${sl.files.length}/${sl.question.sheets}장`);
+    });
+    const pending = sls.reduce((a, sl) => a + sl.files.filter((f) => f.confidence === 'medium').length, 0);
+    if (pending) issues.push(`문항 확인 필요 — 문항 번호를 AI가 추정한 답안지 ${pending}장`);
+    if (issues.length) return { badge: 'check', text: issues[0] + (issues.length > 1 ? ` 외 ${issues.length - 1}건` : ''), issues };
+    if (sls.some(slotReplacedExisting)) return { badge: 'normal', text: '기존 답안 교체 — 스캔본으로 채점됩니다', issues };
+    if (sls.every(slotHasExisting)) return { badge: 'normal', text: '기존 답안으로 채점', issues };
+    return { badge: 'normal', text: '답안지 연결', issues };
+  };
+  const needsCheckStudents = targetStudents.filter((s) => studentDetail(s).badge === 'check');
 
 
   // 미분류 파일을 특정 슬롯으로 바로 지정 (부족 슬롯의 빈 장 자리에서 호출)
@@ -479,7 +638,7 @@ const ScanGradingModal = ({
         /* [v4.7] 기존 답안도 **미분류로 내려간다** (舊 v4.4의 「목록에서 사라진다」 폐기).
          * 사라지면 잘못 교체한 순간 복구 수단이 없고, 교사가 채점 전까지 무엇을 밀어냈는지
          * 확인할 방법도 없다. 미분류에 남겨 두면 [↩ 되돌리기] 한 번으로 제자리로 간다. */
-        return [{ ...row, studentId: null, questionNo: null, sheetNo: null, studentInput: '', confidence: 'low', inferred: false }];
+        return [{ ...row, studentId: null, questionNo: null, sheetNo: null, studentInput: '', confidence: 'low', inferred: false, reason: 'unlinked', reasonText: null }];
       }
       if (row.fileId === newFileId) {
         return {
@@ -586,14 +745,25 @@ const ScanGradingModal = ({
     setStep('grading');
     setGradingProgress(0);
     setGradingFinished(false);
+    setGradingElapsed(0);
+    setFailedStudentIds([]);
+    setGradedStudentIds(gradableStudentIds);
+    appLogger.info('useBatchUploadPipeline', '일괄 업로드 시작', { source: 'scan', collectedCount: gradableStudentIds.length, slotCount: gradableSlots.length, unassigned: unassigned.length });
+    /* [v4.8] 에뮬레이터 — 첫 시도에서 마지막 학생 1명이 「토큰 용량 초과」로 실패한다(SCR-07 v2.9와 같은 재현). 재시도에서는 성공 */
+    const failId = (!failedOnceGradeRef.current && gradableStudentIds.length >= 2) ? gradableStudentIds[gradableStudentIds.length - 1] : null;
     const startAt = Date.now();
     const tick = () => {
       const pct = Math.min(100, Math.round(((Date.now() - startAt) / 5000) * 100));
       setGradingProgress(pct);
       if (pct >= 100) {
+        if (failId) {
+          failedOnceGradeRef.current = true;
+          setFailedStudentIds([failId]);
+          appLogger.error('useBatchUploadPipeline', 'AI 채점 실패', { studentId: failId, error: { message: 'context length exceeded', code: 'E-AI-TOKEN-LIMIT' } });
+        }
         setGradingFinished(true);
-        setStep('completed');
         onGradingFinished?.();   // [v4.2] 최소화 상태여도 FAB를 「채점 완료」로 전환
+        setTimeout(() => setStep('completed'), 500);
         return;
       }
       setTimeout(tick, 180);
@@ -601,13 +771,27 @@ const ScanGradingModal = ({
     tick();
   };
 
-  const handleConfirmComplete = () => {
-    if (typeof onCompleted === 'function') onCompleted(fullyGradedStudentIds);
+  /* [v4.8] 실패한 학생만 다시 채점 — 정상 학생의 결과는 그대로 둔다 (SCR-07 v2.9) */
+  const retryFailed = () => {
+    const targets = [...failedStudentIds];
+    if (!targets.length) return;
+    setRetrying(true);
+    appLogger.info('useBatchUploadPipeline', 'AI 채점 재시도', { studentIds: targets });
+    setTimeout(() => {
+      setFailedStudentIds([]);
+      setRetrying(false);
+      setToast('실패했던 답안의 채점이 완료되었습니다.');
+    }, 2500);
   };
 
-  // [v4.2] 닫기 정책
+  const handleConfirmComplete = () => {
+    // [v4.8] 실패한 학생은 채점 확인으로 넘기지 않는다 — 미채점에 남아 다음 시도에서 이어간다
+    if (typeof onCompleted === 'function') onCompleted(fullyGradedStudentIds.filter((id) => !failedStudentIds.includes(id)));
+  };
+
+  // [v4.2 · v4.8] 닫기 정책 — SCR-07과 동일
   //   upload            → 즉시 종료(진행한 작업 없음)
-  //   matching · review → 확인 다이얼로그 후 종료(판별 결과 폐기)
+  //   mapping           → 확인 다이얼로그 후 종료(판별 결과 폐기)
   //   grading · completed → **최소화**. 채점은 계속 진행되고 FAB로 다시 열 수 있다
   const handleCloseAttempt = () => {
     if (step === 'grading' || step === 'completed') {
@@ -620,21 +804,27 @@ const ScanGradingModal = ({
   const forceClose = () => { setConfirmClose(false); onClose?.(); };
 
   // ─────────── UI ───────────
+  /* ── 공용 스타일 — SCR-07과 같은 값 ── */
   const sectionCard = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '16px 20px' };
+  const ghostBtn = { padding: '9px 18px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' };
+  const primaryBtn = (enabled) => ({ padding: '9px 18px', borderRadius: 8, background: enabled ? '#2A75F3' : '#CBD5E1', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: enabled ? 'pointer' : 'not-allowed', fontFamily: 'inherit' });
+  const handleIncidentSubmitted = (report) => { setToast(`이용불편 접수가 완료되었습니다 — ${report.id} (Jira ${report.jira?.key})`); };
+  const kindCount = (k) => files.filter((f) => f.kind === k || (k === 'image' && f.kind === 'mock')).length;
 
-  return (
+  /* [v4.8] SCR-07과 같이 body로 포털한다 */
+  return createPortal(
     <div onClick={handleCloseAttempt} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#F8FAFC', borderRadius: 16, width: '92vw', height: '90vh', maxWidth: '92vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-        {/* 헤더 */}
+      <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', background: '#F8FAFC', borderRadius: 16, width: '92vw', height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+        {/* 헤더 — 그룹 · 과제 · 대상 학생 + [🚨 이용불편 접수] (SCR-07과 같은 구성) */}
         <div style={{ padding: '18px 24px 12px', background: 'white', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>📷 스캔 일괄 채점</h2>
             <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: 4 }}>
-              그룹 <strong style={{ color: '#1E293B' }}>{groupLabel}</strong> · 과제 <strong style={{ color: '#1E293B' }}>{taskTitle}</strong>
+              그룹 <strong style={{ color: '#1E293B' }}>{groupLabel}</strong> · 과제 <strong style={{ color: '#1E293B' }}>{taskTitle}</strong> · 대상 학생 <strong style={{ color: '#1E293B' }}>{targetStudents.length}명</strong>
               {' · '}
               <span style={{ position: 'relative', display: 'inline-block' }}>
                 <button onClick={() => setShowCodeList((v) => !v)}
-                  style={{ padding: '1px 8px', borderRadius: 999, border: `1px solid ${showCodeList ? '#2A75F3' : '#CBD5E1'}`, background: showCodeList ? '#EFF6FF' : 'white', color: showCodeList ? '#1D4ED8' : '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>
+                  style={{ padding: '1px 8px', borderRadius: 999, border: `1px solid ${showCodeList ? '#2A75F3' : '#CBD5E1'}`, background: showCodeList ? '#EFF6FF' : 'white', color: showCodeList ? '#1D4ED8' : '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                   🏷 답안지 코드 {sheetCodeList.length}개
                 </button>
                 {showCodeList && (
@@ -660,66 +850,115 @@ const ScanGradingModal = ({
               </span>
             </div>
           </div>
-          <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button type="button" onClick={() => setIncidentOpen(true)} title="학교·교사·과제·그룹 정보와 진단 로그를 함께 시스템 관리자에게 접수합니다."
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              🚨 이용불편 접수
+            </button>
+            <button onClick={handleCloseAttempt} aria-label="닫기" style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748B', padding: 4 }}>✕</button>
+          </div>
         </div>
+        {toast && (
+          <div style={{ position: 'absolute', left: '50%', bottom: 84, transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 16px', borderRadius: 10, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,0.3)', zIndex: 6, whiteSpace: 'nowrap' }}>
+            ✓ {toast}
+          </div>
+        )}
 
-        {/* 스텝 프로그레스 */}
+        {/* 스텝 프로그레스 — 안내가 있는 단계는 호버 툴팁 (SCR-07 v2.7) */}
         <div style={{ display: 'flex', padding: '12px 24px', gap: 4, background: 'white', borderBottom: '1px solid #E2E8F0' }}>
           {STEPS.map((s, i) => {
             const isActive = i === stepIdx;
             const isDone = i < stepIdx;
             return (
-              <div key={s.key} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: isActive ? '#EFF6FF' : isDone ? '#F0FDF4' : 'transparent', color: isActive ? '#1D4ED8' : isDone ? '#047857' : '#94A3B8', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
+              <div key={s.key}
+                onMouseEnter={() => s.hint && setHoverStep(s.key)} onMouseLeave={() => setHoverStep(null)}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, position: 'relative', cursor: s.hint ? 'help' : 'default', background: isActive ? '#EFF6FF' : isDone ? '#F0FDF4' : 'transparent', color: isActive ? '#1D4ED8' : isDone ? '#047857' : '#94A3B8', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
                 <span>{isDone ? '✓' : s.icon}</span>
                 <span>{i + 1}. {s.label}</span>
+                {s.hint && (
+                  <span aria-label="안내 보기" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 15, height: 15, borderRadius: '50%', border: '1.5px solid currentColor', fontSize: 10, fontWeight: 800, lineHeight: 1, opacity: 0.8 }}>i</span>
+                )}
+                {s.hint && hoverStep === s.key && (
+                  <div role="tooltip" style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, background: '#1E293B', color: 'white', padding: '8px 12px', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, lineHeight: 1.6, whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(15,23,42,0.3)', zIndex: 6 }}>
+                    {s.hint}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
         {/* 본문 */}
-        <div style={{ flex: 1, minHeight: 0, padding: '20px 24px', ...(step === 'review'
+        <div style={{ flex: 1, minHeight: 0, padding: '20px 24px', ...(step === 'mapping' && !reading
           ? { display: 'flex', flexDirection: 'column', overflow: 'hidden' }
           : { overflowY: 'auto' }) }}>
-          {/* ── Step 1: 업로드 ── */}
+          {/* ── Step 1: 파일 업로드 ── 구성은 SCR-07 Step 1과 같다: 경고 줄 → 입력(크래들 ↔ 드롭존) → 요약 카드 → 목록 */}
           {step === 'upload' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* [v4.3] 드롭존 — 한 줄로 압축. 안내문을 따로 카드로 빼지 않고 여기에 흡수했다 */}
-              <div style={{ ...sectionCard, borderStyle: 'dashed', borderColor: '#93C5FD', background: '#F0F9FF', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}
+              {/* [v4.8] 업로드에서 걸러진 파일 — 크래들 「인식 안 됨」 안내와 같은 자리·같은 말투 */}
+              {uploadErrors.length > 0 && (
+                <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', padding: '0 4px', lineHeight: 1.7 }}>
+                  ⚠ 파일 {uploadErrors.length}개를 올리지 못했습니다.
+                  <span style={{ fontWeight: 600, color: '#B45309' }}> 아래 사유를 확인하고 다시 올려 주세요.</span>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 20, fontWeight: 600, color: '#B91C1C', fontSize: 'var(--neo-font-size-xs)' }}>
+                    {uploadErrors.map((er, i) => (<li key={`${er.name}-${i}`}><strong>{er.name}</strong> — {er.reason}</li>))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 드롭존 */}
+              <div style={{ ...sectionCard, borderStyle: 'dashed', borderColor: '#93C5FD', background: '#F0F9FF', padding: '28px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); handleFilesAdd(e.dataTransfer.files); }}>
-                <span style={{ fontSize: '1.5rem' }}>📁</span>
-                <div style={{ minWidth: 220, flex: 1 }}>
-                  <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E3A8A' }}>스캔 파일을 끌어놓거나 선택하세요</div>
-                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>
-                    PDF · PNG · JPG · 20MB 이하 · <strong>파일명·순서 무관</strong> — 답안지에 적힌 학년/반/번호 · 이름 · 문항을 OCR로 읽어 자동 연결합니다.
-                  </div>
+                <span style={{ fontSize: '2rem' }}>📁</span>
+                <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E3A8A' }}>스캔 파일을 끌어놓거나 선택하세요</div>
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
+                  PDF · PNG · JPG · {MAX_FILE_MB}MB 이하 · <strong>파일명·순서 무관</strong>
                 </div>
-                <div style={{ display: 'inline-flex', gap: 8 }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, background: '#2A75F3', color: 'white', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
-                    파일 선택
-                    <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }}
-                      /* [v4.6] 초기화 후 같은 파일을 다시 골라도 onChange가 뜨도록 값을 비운다 */
-                      onChange={(e) => { handleFilesAdd(e.target.files); e.target.value = ''; }} />
-                  </label>
-                  <button onClick={injectMockFiles} style={{ padding: '7px 14px', borderRadius: 8, background: 'white', border: '1px solid #CBD5E1', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>
-                    🧪 데모 파일
-                  </button>
+                <label style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 8, background: '#2A75F3', color: 'white', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
+                  파일 선택
+                  <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }}
+                    /* [v4.6] 초기화 후 같은 파일을 다시 골라도 onChange가 뜨도록 값을 비운다 */
+                    onChange={(e) => { handleFilesAdd(e.target.files); e.target.value = ''; }} />
+                </label>
+              </div>
+
+              {/* 요약 카드 — SCR-07 「거치 n/30 · 연결 완료 n」 자리 */}
+              <div style={{ ...sectionCard, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>
+                  업로드 <span style={{ color: '#2A75F3' }}>{files.length}개</span>
+                  {files.length > 0 && (
+                    <>
+                      <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
+                      이미지 <span style={{ color: '#10B981' }}>{kindCount('image')}</span>
+                      <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
+                      PDF <span style={{ color: '#10B981' }}>{kindCount('pdf')}</span>
+                    </>
+                  )}
+                  {uploadErrors.length > 0 && (
+                    <>
+                      <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
+                      올리지 못함 <span style={{ color: '#DC2626' }}>{uploadErrors.length}개</span>
+                    </>
+                  )}
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                  <button onClick={injectMockFiles} style={{ ...ghostBtn, padding: '7px 14px' }}>🧪 데모 파일</button>
+                  <button onClick={resetUploads} disabled={!files.length}
+                    style={{ ...ghostBtn, padding: '7px 14px', opacity: files.length ? 1 : 0.45, cursor: files.length ? 'pointer' : 'not-allowed' }}>전체 삭제</button>
                 </div>
               </div>
 
               <div style={sectionCard}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }}>업로드된 파일 <span style={{ color: '#2A75F3' }}>{files.length}개</span></h3>
-                  {files.length > 0 && (
-                    <button onClick={resetUploads} style={{ padding: '4px 10px', background: 'white', border: '1px solid #E2E8F0', borderRadius: 6, color: '#94A3B8', fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>전체 삭제</button>
-                  )}
-                </div>
+                <h3 style={{ margin: '0 0 10px', fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }}>
+                  업로드된 파일 <span style={{ color: '#2A75F3' }}>{files.length}개</span>
+                </h3>
                 {files.length === 0 ? (
-                  <div style={{ padding: '20px 12px', textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>업로드된 파일이 없습니다.</div>
+                  <div style={{ padding: '20px 12px', textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>
+                    올린 파일이 없습니다. 위에서 스캔 파일을 선택해 주세요.
+                  </div>
                 ) : (
-                  /* [v4.3] 한 줄에 하나씩 쌓지 않고 그리드로 흘린다.
-                     24장이면 24줄 → 6줄 정도로 줄어 스크롤과 시각적 부담이 함께 준다. */
+                  /* [v4.3] 한 줄에 하나씩 쌓지 않고 그리드로 흘린다 */
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
                     {files.map((f) => (
                       <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', background: '#F8FAFC', border: '1px solid #EEF2F7', borderRadius: 7, fontSize: 'var(--neo-font-size-xs)', minWidth: 0 }}>
@@ -740,9 +979,8 @@ const ScanGradingModal = ({
                     📄 이미 답안이 있는 학생 {answerStudents.length}명이 포함되어 있습니다
                   </h3>
                   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', lineHeight: 1.6, marginBottom: 8 }}>
-이 학생들의 <strong>기존 답안은 연결 결과 확인 화면에 답안지 카드로 함께 표시</strong>됩니다.
-                    그대로 두면 기존 답안으로 채점되고, 스캔본으로 바꾸려면 그 카드의 <strong>[⋯ → 파일 업로드]</strong>로 교체하세요.
-                    교체한 건에 한해 채점 시작 시 한 번 더 확인하며, 기존 답안은 이력에 보관되어 복원할 수 있습니다.
+                    스캔본이 있으면 스캔본으로 채점하고, 기존 답안은 미분류에 남아 채점 전까지 되돌릴 수 있습니다.
+                    교체한 건에 한해 채점 시작 시 한 번 더 확인하며, 기존 답안은 이력에 보관됩니다.
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {answerStudents.map((s) => (
@@ -758,34 +996,38 @@ const ScanGradingModal = ({
             </div>
           )}
 
-          {/* ── Step 2: OCR 판별 ── */}
-          {step === 'matching' && (
-            <div style={{ ...sectionCard, textAlign: 'center', padding: '48px 24px' }}>
-              <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-              <div style={{ width: 56, height: 56, margin: '0 auto 16px', border: '5px solid #DBEAFE', borderTopColor: '#2A75F3', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B', marginBottom: 6 }}>답안지를 판별하고 있어요.</div>
-              <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>
-                각 답안지의 <strong>과제코드 · 학년/반/번호 · 이름 · 문항 번호</strong>를 읽어 학생 명단과 대조하는 중입니다.
+          {/* ── Step 2: 데이터 매핑 · 읽는 중 ── SCR-07 v1.8과 같은 무한 프로그레스 + 순환 타이틀 */}
+          {step === 'mapping' && reading && (
+            <div style={{ ...sectionCard, padding: '48px 24px' }}>
+              <style>{`@keyframes scanReadSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
+              <div style={{ maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
+                <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>답안지를 읽고 있습니다.</div>
+                <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: 6 }}>
+                  올린 <strong>{files.length}개</strong> 파일의 답안지를 확인합니다.
+                </div>
+                <div style={{ position: 'relative', height: 8, margin: '22px 0 12px', borderRadius: 999, background: '#E2E8F0', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, width: '40%', borderRadius: 999,
+                    background: 'linear-gradient(90deg, rgba(42,117,243,0.15), #2A75F3, rgba(42,117,243,0.15))',
+                    animation: 'scanReadSlide 1.3s ease-in-out infinite' }} />
+                </div>
+                <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1D4ED8', minHeight: 22 }}>
+                  {JUDGE_PHASES[readTick % JUDGE_PHASES.length].label}
+                  <span style={{ color: '#94A3B8', fontWeight: 400 }}> 처리 중…</span>
+                </div>
               </div>
-              <div style={{ marginTop: 18, fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>{files.length}개 파일 처리 중…</div>
             </div>
           )}
 
-          {/* ── Step 3: 연결 결과 확인 ── */}
-          {/* [v4.2] 「학생 × 문항」 하나로 고정 (상태별·파일 목록 뷰 삭제).
-              구성은 좌우 2단 마스터/디테일:
-                · 좌 — 학생 목록. 한 줄에 이름 + 문항별 장수 칩(문항 수만큼). 폭을 좁게 잡아
-                       30명이어도 목록 자체만 스크롤된다.
-                · 우 — 고른 학생의 답안지 상세. **패널이 따로 스크롤되므로** 학생을 바꿔도
-                       화면이 위아래로 튀지 않는다 (기존엔 표 아래에 붙어 있어 30명이면 한참 내려가야 했다).
-              상세 카드는 「OCR이 읽은 값(회색·수정 불가)」과 「연결 지정(파랑·수정 가능)」을 나눠 놓는다. */}
-          {step === 'review' && (() => {
+          {/* ── Step 2: 데이터 매핑 · 결과 ── */}
+          {/* [v4.2] 「학생 × 문항」 마스터/디테일.
+              [v4.8] SCR-07과 같은 배치 — 왼쪽 = 요약 카운트 + 목록(상태 배지 · 상세 내용), 오른쪽 = 고른 학생의 답안지.
+                     舊 두 열 위의 가로 요약 바는 왼쪽 열 안으로 넣었다(오른쪽 높이를 잡아먹지 않게).
+              상세 카드는 「OCR이 읽은 값(회색·수정 불가)」과 「연결 결과(파랑)」를 나눠 놓는다. */}
+          {step === 'mapping' && !reading && (() => {
             const trayKey = 'unassigned';
             // 기본 선택 — 조치가 필요한 곳부터. 미분류 > 문제 있는 학생 > 첫 학생
-            const firstBad = targetStudents.find((s) => questionList.some((q) => {
-              const sl = slotIndex[slotKey(s.id, q.id)];
-              return sl && slotStatus(sl) !== 'ok';
-            }));
+            // [v4.9] 결석생(제외)은 조치 대상이 아니므로 기본 선택에서 뺀다
+            const firstBad = needsCheckStudents[0];
             const activeKey = selectedKey
               ?? (unassigned.length > 0 ? trayKey : (firstBad?.id ?? targetStudents[0]?.id ?? null));
             const activeStudent = activeKey === trayKey ? null : targetStudents.find((s) => s.id === activeKey);
@@ -969,7 +1211,10 @@ const ScanGradingModal = ({
                             : r.manual ? <span style={{ color: '#94A3B8' }}>—</span> : <>{ocrQuestionLabel(r)}{r.inferred && <span style={{ color: '#92400E', fontWeight: 700 }}> (AI 추정)</span>}</>}
                         </div>
                       </div>
-                      {wrongTask && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 800, marginTop: 3 }}>⚠ 다른 과제</div>}
+                      {/* [v4.8] 미분류 사유 — 크래들 「상세 내용」과 같은 문구 */}
+                      {reasonOf(r) && !isExisting
+                        ? <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 800, marginTop: 3, lineHeight: 1.5 }}>⚠ {reasonOf(r)}</div>
+                        : wrongTask && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 800, marginTop: 3 }}>⚠ {SCAN_REASON.other_task}</div>}
                     </div>
 
                     {/* [v4.2] 학생·문항 수동 지정 폐기 — 확정된 연결을 데이터로만 표시한다.
@@ -1004,114 +1249,137 @@ const ScanGradingModal = ({
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
-                {/* 요약 한 줄 */}
-                <div style={{ ...sectionCard, display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap', padding: '10px 16px' }}>
-                  <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>
-                    채점 학생 <strong style={{ color: '#1E293B' }}>{targetStudents.length}명</strong>
-                  </span>
-                  <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>
-                    총 답안지 <strong style={{ color: '#1E293B' }}>{matchResults.length}장</strong>
-                  </span>
-                  <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569' }}>
-                    채점 예정 <strong style={{ color: '#2A75F3' }}>{gradableSlots.length}건</strong>
-                  </span>
-                  <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-                    기준 {questionList.map((q) => `${q.title} ${q.sheets}장`).join(' · ')} = 1명당 {questionList.reduce((a, q) => a + q.sheets, 0)}장
-                  </span>
-                </div>
-
                 {/* 학생 이름 직접 입력 후보 (전 행 공용) */}
                 <datalist id="scan-student-options">
                   {targetStudents.map((s) => (<option key={s.id} value={studentLabel(s)} />))}
                 </datalist>
 
-                {/* 좌: 학생 목록 / 우: 상세 — 각자 스크롤 */}
-                <div style={{ display: 'flex', gap: 12, alignItems: 'stretch', flex: 1, minHeight: 260 }}>
-                  {/* ── 좌: 학생 × 문항 ── */}
-                  <div style={{ flex: '0 0 392px', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <strong style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>학생 {targetStudents.length}명</strong>
-                      <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                        {questionList.map((q) => (
-                          <span key={q.id}
-                            style={{ width: SLOT_CELL_W, textAlign: 'center', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B', whiteSpace: 'nowrap' }}>
-                            {q.title.replace(/\s+/g, '')}<span style={{ color: '#2A75F3' }}>({q.sheets}장)</span>
-                          </span>
-                        ))}
-                      </span>
+                {/* [v4.8] 좌우 2열이 화면 전체 높이를 나눈다 (SCR-07 v1.7). 폭은 **고정**이라 학생을 골라도 흔들리지 않는다.
+                    크래들은 50:50이지만, 스캔은 우측에 문항 카드가 가로로 놓이므로 좌측을 목록 폭만큼만 잡는다. */}
+                <div style={{ display: 'flex', gap: 12, minHeight: 0, flex: 1 }}>
+                  <div style={{ flex: `0 0 ${LIST_W}px`, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* 상태 카운트 + 업로드 매니페스트 — SCR-07 미니 크래들 아래 줄과 같은 구성 */}
+                    <div style={{ ...sectionCard, padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
+                        <span style={{ color: '#166534' }}>🟢 채점 대상 {gradableStudentIds.length}</span>
+                        <span style={{ color: '#B91C1C' }} title="답안지 부족·초과 또는 문항 확인이 남은 학생 — 정리해야 채점을 시작할 수 있습니다">확인 필요 {needsCheckStudents.length}</span>
+                        {/* [v4.9] 결석생 — SCR-07 「대상 아님」과 같은 회색 카운트 */}
+                        <span style={{ color: '#94A3B8' }} title="올린 파일에서 답안지를 한 장도 찾지 못한 학생 — 채점에서 자연 제외됩니다">제외 {absentStudents.length}</span>
+                        <span style={{ color: '#94A3B8' }} title="어느 학생·문항에도 붙지 않은 답안지 — 채점에서 제외됩니다">미분류 {unassigned.length}장</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 600 }}>
+                          기준 {questionList.map((q) => `${q.title} ${q.sheets}장`).join(' · ')}
+                        </span>
+                      </div>
+                      <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 6, marginTop: 8, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.6 }}>
+                        채점을 시작하면 <strong style={{ color: '#166534' }}>채점 대상 {gradableStudentIds.length}명(문항 {gradableSlots.length}건)</strong>의 답안지만 서버로 올라갑니다.
+                        {unassigned.length > 0 && <> 미분류 {unassigned.length}장은 올리지 않습니다.</>}
+                      </div>
                     </div>
 
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
-                      {/* 미분류 트레이 항목 */}
-                      {unassigned.length > 0 && (
-                        <button onClick={() => setSelectedKey(trayKey)}
-                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', borderLeft: `3px solid ${activeKey === trayKey ? '#DC2626' : 'transparent'}`, background: activeKey === trayKey ? '#FEF2F2' : 'white', cursor: 'pointer', textAlign: 'left' }}>
-                          <span style={{ minWidth: 0, flex: 1 }}>
-                            <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#991B1B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔴 미분류</span>
-                            {/* [v4.7] 미연결 스캔과 교체된 기존 답안을 한 줄에 나눠 적는다 */}
-                            <span title={[unassignedScans.length ? `미연결 스캔 ${unassignedScans.length}장` : null,
-                                          replacedExistings.length ? `교체된 기존 답안 ${replacedExistings.length}건` : null]
-                                          .filter(Boolean).join(' · ')}
-                              style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#F87171', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {/* 칸이 좁아 축약한다 — 전체 문구는 title과 우측 패널 머리글에 있다 */}
-                              {[unassignedScans.length ? `스캔 ${unassignedScans.length}` : null,
-                                replacedExistings.length ? `교체 ${replacedExistings.length}` : null]
-                                .filter(Boolean).join(' · ')}
+                    {/* 학생 목록 — SCR-07 펜 목록과 같은 열 규칙: 식별 → 상태 배지 → 상세 내용 */}
+                    <div style={{ ...sectionCard, flex: 1, minHeight: 0, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
+                        <span style={{ width: NAME_W }}>학생</span>
+                        <span style={{ display: 'flex', gap: 4, marginRight: 12 }}>
+                          {questionList.map((q) => (
+                            <span key={q.id} style={{ width: SLOT_CELL_W, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              {q.title.replace(/\s+/g, '')}<span style={{ color: '#2A75F3' }}>({q.sheets}장)</span>
                             </span>
-                          </span>
-                          <span style={{ display: 'flex', gap: 4 }}>
-                            <span style={{
-                              width: questionList.length * SLOT_CELL_W + (questionList.length - 1) * 4,
-                              padding: '2px 0', textAlign: 'center', borderRadius: 5,
-                              fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
-                              background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B',
-                            }}>
-                              {unassigned.length}장
-                            </span>
-                          </span>
-                        </button>
-                      )}
+                          ))}
+                        </span>
+                        <span style={{ width: 80 }}>데이터 상태</span>
+                      </div>
 
-                      {targetStudents.map((s) => {
-                        const on = activeKey === s.id;
-                        return (
-                          <button key={s.id} onClick={() => setSelectedKey(s.id)}
-                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', borderLeft: `3px solid ${on ? '#2A75F3' : 'transparent'}`, background: on ? '#EFF6FF' : 'white', cursor: 'pointer', textAlign: 'left' }}>
-                            <span style={{ minWidth: 0, flex: 1 }}>
-                              <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-                              <span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.grade || ''}</span>
-                            </span>
-                            <span style={{ display: 'flex', gap: 4 }}>
-                              {questionList.map((q) => {
-                                const sl = slotIndex[slotKey(s.id, q.id)];
-                                const st = slotStatus(sl);
-                                const tok = SLOT_TOKEN[st];
-                                const ow = slotReplacedExisting(sl);
-                                const check = slotNeedsCheck(sl) || st !== 'ok';
-                                // 정상은 ✓로 조용히, 이상(답안지 초과·부족)만 글자로 드러낸다
-                                return (
-                                  <span key={q.id}
-                                    style={{
-                                      width: SLOT_CELL_W, padding: '2px 0', textAlign: 'center', borderRadius: 5,
-                                      fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
-                                      background: st === 'ok' ? (ow ? '#FFF7ED' : '#F8FAFC') : tok.bg,
-                                      border: check ? '2px solid #F59E0B' : `1px solid ${st === 'ok' ? (ow ? '#FDBA74' : '#E2E8F0') : tok.border}`,
-                                      color: st === 'ok' ? (ow ? '#9A3412' : '#94A3B8') : tok.color,
-                                    }}>
-                                    {st === 'ok' ? (ow ? '🔄' : '✓') : tok.label}
-                                  </span>
-                                );
-                              })}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      <div style={{ flex: 1, overflowY: 'auto' }}>
+                        {/* 미분류 트레이 */}
+                        {unassigned.length > 0 && (() => {
+                          const on = activeKey === trayKey;
+                          const detail = ['채점 제외 —',
+                            [unassignedScans.length ? `미연결 스캔 ${unassignedScans.length}장` : null,
+                              replacedExistings.length ? `교체된 기존 답안 ${replacedExistings.length}건` : null].filter(Boolean).join(' · ')].join(' ');
+                          return (
+                            <div role="button" tabIndex={0} onClick={() => setSelectedKey(trayKey)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedKey(trayKey); } }}
+                              style={{ padding: '9px 12px 9px 16px', borderBottom: '1px solid #F1F5F9', cursor: 'pointer',
+                                background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none' }}>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <span style={{ width: NAME_W, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#991B1B', whiteSpace: 'nowrap' }}>🔴 미분류</span>
+                              <span style={{ display: 'flex', gap: 4, marginRight: 12 }}>
+                                <span style={{ width: questionList.length * SLOT_CELL_W + (questionList.length - 1) * 4, padding: '2px 0', textAlign: 'center', borderRadius: 5,
+                                  fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B' }}>
+                                  {unassigned.length}장
+                                </span>
+                              </span>
+                              <span style={{ width: 80 }}>
+                                <span style={{ padding: '1px 8px', borderRadius: 999, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, whiteSpace: 'nowrap' }}>미분류</span>
+                              </span>
+                              </div>
+                              <div style={{ marginTop: 3, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.5 }}>{detail}</div>
+                            </div>
+                          );
+                        })()}
+
+                        {targetStudents.map((s) => {
+                          const on = activeKey === s.id;
+                          const d = studentDetail(s);
+                          const bt = ROW_BADGE[d.badge];
+                          return (
+                            <div key={s.id} role="button" tabIndex={0} onClick={() => setSelectedKey(s.id)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedKey(s.id); } }}
+                              title={d.issues.length > 1 ? d.issues.join('\n') : undefined}
+                              style={{ padding: '9px 12px 9px 16px', borderBottom: '1px solid #F1F5F9', cursor: 'pointer',
+                                /* SCR-07 v1.6 — 행 전체를 물들이지 않는다. 상태는 배지·칩 색으로만 읽는다 */
+                                background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none' }}>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                              {/* 이름 + 학년-반-번호 (SCR-07 표기 1-1-12) */}
+                              <span style={{ width: NAME_W, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B' }}>{s.name}</span>
+                                <span style={{ marginLeft: 6, fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>{studentNo(s)}</span>
+                              </span>
+                              <span style={{ display: 'flex', gap: 4, marginRight: 12 }}>
+                                {questionList.map((q) => {
+                                  const sl = slotIndex[slotKey(s.id, q.id)];
+                                  const st = slotStatus(sl);
+                                  const tok = SLOT_TOKEN[st];
+                                  const ow = slotReplacedExisting(sl);
+                                  const check = slotNeedsCheck(sl) || st !== 'ok';
+                                  // [v4.9] 결석생은 칩을 강조하지 않고 「—」로 조용히 둔다 (제외 대상이지 조치 대상이 아니다)
+                                  if (absentIdSet.has(s.id)) {
+                                    return (
+                                      <span key={q.id} style={{ width: SLOT_CELL_W, padding: '2px 0', textAlign: 'center', borderRadius: 5, boxSizing: 'border-box',
+                                        fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#CBD5E1' }}>—</span>
+                                    );
+                                  }
+                                  // 정상은 ✓로 조용히, 이상(답안지 초과·부족)만 글자로 드러낸다
+                                  return (
+                                    <span key={q.id}
+                                      style={{
+                                        width: SLOT_CELL_W, padding: '2px 0', textAlign: 'center', borderRadius: 5, boxSizing: 'border-box',
+                                        fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
+                                        background: st === 'ok' ? (ow ? '#FFF7ED' : '#F8FAFC') : tok.bg,
+                                        border: check ? '2px solid #F59E0B' : `1px solid ${st === 'ok' ? (ow ? '#FDBA74' : '#E2E8F0') : tok.border}`,
+                                        color: st === 'ok' ? (ow ? '#9A3412' : '#94A3B8') : tok.color,
+                                      }}>
+                                      {st === 'ok' ? (ow ? '🔄' : '✓') : tok.label}
+                                    </span>
+                                  );
+                                })}
+                              </span>
+                              <span style={{ width: 80 }}>
+                                <span style={{ padding: '1px 8px', borderRadius: 999, background: bt.bg, border: `1px solid ${bt.border}`, color: bt.color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, whiteSpace: 'nowrap' }}>{bt.label}</span>
+                              </span>
+                              </div>
+                              {/* 상세 내용 — SCR-07 「상세 내용」 열. 열이 많아 행 아랫줄에 둔다 */}
+                              <div style={{ marginTop: 3, fontSize: 'var(--neo-font-size-xs)', color: d.badge === 'normal' ? '#166534' : bt.color, lineHeight: 1.5 }}>{d.text}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-
                   </div>
 
                   {/* ── 우: 상세 ── */}
-                  <div style={{ flex: 1, background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+                  <div style={{ flex: '1 1 0', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
                     {activeKey === trayKey ? (
                       <>
                         <div style={{ padding: '10px 14px', borderBottom: '1px solid #E2E8F0', background: '#FEF2F2' }}>
@@ -1148,6 +1416,23 @@ const ScanGradingModal = ({
                             <span style={{ padding: '1px 8px', borderRadius: 999, background: '#EBF2FF', color: '#2A75F3', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700 }}>답안 있음</span>
                           )}
                         </div>
+                        {/* [v4.8] 할 일 안내 — SCR-07 우측 뷰어 상단 안내(noteBox)와 같은 자리·같은 말투 */}
+                        {(() => {
+                          const d = studentDetail(activeStudent);
+                          const sls = questionList.map((q) => slotIndex[slotKey(activeStudent.id, q.id)]);
+                          const box = (tone, text) => {
+                            const t = { muted: { bg: '#F8FAFC', color: '#475569', border: '#E2E8F0' }, warn: { bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' }, info: { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74' } }[tone];
+                            return <div style={{ padding: '8px 14px', borderBottom: `1px solid ${t.border}`, background: t.bg, color: t.color, fontSize: 'var(--neo-font-size-xs)', lineHeight: 1.7 }}>{text}</div>;
+                          };
+                          // [v4.9] 결석생 — 막지 않고 제외된다는 사실과, 채점하려면 무엇을 하면 되는지만 알린다
+                          if (absentIdSet.has(activeStudent.id)) return box('muted', '이 학생은 채점에서 제외됩니다 — 올린 파일에서 답안지를 한 장도 찾지 못했습니다. 채점하려면 왼쪽 [🔴 미분류]에서 이 학생의 답안지를 지정하거나, 아래 빈 자리에서 파일을 올려 주세요. 한 장이라도 붙이면 나머지 문항도 채워야 채점을 시작할 수 있습니다.');
+                          const lines = [];
+                          if (sls.some((sl) => slotStatus(sl) !== 'ok')) lines.push('답안지 장수가 기준과 맞지 않습니다. 빈 자리의 [＋ 답안지 지정…]으로 답안지를 붙이고, 남는 장은 [⋯ → 연결 해제]로 내려 주세요.');
+                          if (sls.some(slotNeedsCheck)) lines.push('문항 번호를 읽지 못해 AI가 내용으로 추정한 답안지가 있습니다. [👁]로 확인하고 [🟡 확인 필요]를 체크해 주세요.');
+                          if (lines.length) return box('warn', lines.map((l) => <div key={l}>{l}</div>));
+                          if (d.text.startsWith('기존 답안 교체')) return box('info', '🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 기존 답안으로 채점하려면 왼쪽 [🔴 미분류]에서 [↩ 되돌리기]를 누르세요.');
+                          return null;
+                        })()}
 
                         {/* [v4.2] 문항을 **가로로** 나란히 놓는다. 문항은 보통 3개 이하이므로
                             폭을 n등분하면 한 학생의 전 문항을 스크롤 없이 한눈에 비교할 수 있다.
@@ -1159,7 +1444,7 @@ const ScanGradingModal = ({
                             const st = slotStatus(sl);
                             const tok = SLOT_TOKEN[st];
                             const ow = slotReplacedExisting(sl);
-                            const check = slotNeedsCheck(sl) || st !== 'ok';
+                            const check = !absentIdSet.has(activeStudent.id) && (slotNeedsCheck(sl) || st !== 'ok'); // [v4.9] 결석생은 강조하지 않는다
                             // 비어 있는 장 번호 — 이미 붙은 장을 빼고 앞에서부터, 모자란 수만큼만
                             const taken = new Set(sl.files.map((f) => f.sheetNo).filter((n) => n != null));
                             const emptySheets = [];
@@ -1232,24 +1517,19 @@ const ScanGradingModal = ({
                       </>
                     ) : (
                       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>
-                        왼쪽에서 학생을 선택하세요.
+                        왼쪽에서 학생을 선택하면<br />그 학생의 답안지를 문항별로 볼 수 있습니다.
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* 덮어쓰기 안내 */}
-                {replacedSlots.length > 0 && (
-                  <div style={{ padding: '8px 14px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 8, fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', lineHeight: 1.6 }}>
-                    🔄 <strong>{replacedSlots.length}건</strong>의 기존 답안이 스캔본으로 교체된 상태입니다. 이대로 채점하면 스캔본으로 채점됩니다.
-                    밀려난 기존 답안은 <strong>미분류에 그대로 남아 있으며</strong>, 좌측 <strong>[🔴 미분류]</strong>에서 <strong>[↩ 되돌리기]</strong>로 언제든 제자리에 돌릴 수 있습니다. 채점 시작 시 교체 대상을 한 번 더 확인합니다.
-                  </div>
-                )}
+                {/* [v4.8] 舊 하단 「덮어쓰기 안내」 배너 폐기 — 교체 사실은 학생 행 상세 내용 · 우측 안내 · 채점 직전 확인 창이 말한다
+                    (SCR-07 v2.8이 배너를 툴팁으로 옮긴 것과 같은 이유: 오른쪽 답안지 높이를 잡아먹지 않게) */}
               </div>
             );
           })()}
 
-          {/* ── Step 4: 채점 ── */}
+          {/* ── Step 3: 채점 ── SCR-07과 같은 구성 */}
           {step === 'grading' && (
             <div style={{ ...sectionCard, textAlign: 'center', padding: '48px 24px' }}>
               <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
@@ -1258,83 +1538,148 @@ const ScanGradingModal = ({
               </div>
               <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B', marginBottom: 6 }}>{gradingFinished ? '채점이 완료되었습니다.' : 'AI가 채점하고 있어요.'}</div>
               <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 18 }}>
-                학생 <strong style={{ color: '#2A75F3' }}>{gradableStudentIds.length}명</strong> · 문항 <strong style={{ color: '#2A75F3' }}>{gradableSlots.length}건</strong>을 채점 중입니다.
+                학생 <strong style={{ color: '#2A75F3' }}>{gradedStudentIds.length}명</strong> · 문항 <strong style={{ color: '#2A75F3' }}>{gradableSlots.length}건</strong>을 채점 중입니다.
                 {replacedCount > 0 && <> (기존 답안 교체 <strong style={{ color: '#C2410C' }}>{replacedCount}건</strong> 포함)</>}
               </div>
               <div style={{ width: '80%', margin: '0 auto', height: 8, background: '#E2E8F0', borderRadius: 999, overflow: 'hidden' }}>
                 <div style={{ width: `${gradingProgress}%`, height: '100%', background: '#2A75F3', transition: 'width 0.2s' }} />
               </div>
               <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>{gradingProgress}%</div>
+
+              {/* [v4.8] 시간차 안내 — SCR-07 v2.9와 같은 문구 */}
+              {!gradingFinished && gradingElapsed >= 6 && (
+                <div style={{ maxWidth: 560, margin: '18px auto 0', padding: '12px 16px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
+                  <span style={{ fontSize: '1.4rem' }}>☕</span>
+                  <span style={{ flex: 1 }}>
+                    <strong>기다리지 않으셔도 됩니다.</strong> 창을 닫아도 채점은 계속 진행되고, 끝나면 하단 알림으로 알려 드립니다.
+                  </span>
+                  <button type="button" onClick={() => onMinimize?.({ finished: false })}
+                    style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                    창 닫고 다른 작업 하기
+                  </button>
+                </div>
+              )}
+
+              {/* [v4.8] 학생별 진행 — SCR-07 펜별 상태 전이(AI 채점중 → AI 채점 완료 / 실패)와 같은 표 */}
+              <div style={{ maxWidth: 720, margin: '22px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
+                  <span style={{ width: 150 }}>학생</span>
+                  <span style={{ width: 110 }}>문항</span>
+                  <span style={{ flex: 1 }}>상세 내용</span>
+                </div>
+                <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+                  {gradedStudentIds.map((id) => {
+                    const st = targetStudents.find((x) => x.id === id);
+                    const n = gradableSlots.filter((sl) => sl.student.id === id).length;
+                    const failed = failedStudentIds.includes(id);
+                    const text = !gradingFinished ? 'AI 채점중' : failed ? 'AI 채점 실패 — 토큰 용량 초과' : 'AI 채점 완료';
+                    return (
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', padding: '8px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
+                        <span style={{ width: 150, color: '#475569' }}>{studentNo(st) === '—' ? st?.name : `${studentNo(st)} ${st?.name}`}</span>
+                        <span style={{ width: 110, color: '#475569' }}>{n}/{questionList.length}문항</span>
+                        <span style={{ flex: 1, color: !gradingFinished ? '#1D4ED8' : failed ? '#B91C1C' : '#047857', fontWeight: 700 }}>{text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* ── Step 5: 완료 ── */}
-          {step === 'completed' && (
-            <div style={{ ...sectionCard, background: '#F0FDF4', borderColor: '#86EFAC', textAlign: 'center', padding: '32px 24px' }}>
-              <div style={{ fontSize: '2.4rem', marginBottom: 8 }}>🎉</div>
-              <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#065F46', marginBottom: 8 }}>스캔 일괄 채점이 완료되었습니다.</div>
-              <div style={{ fontSize: 'var(--neo-font-size-base)', color: '#047857', marginBottom: 14 }}>
-                채점 문항 <strong>{gradableSlots.length}건</strong> · 학생 <strong>{gradableStudentIds.length}명</strong>
-                {replacedCount > 0 && <> (기존 답안 교체 <strong>{replacedCount}건</strong> 포함)</>}
+          {/* ── Step 4: 완료 ── SCR-07 v2.4와 같이 세 줄 — 완료 · 요약 · 다음 행동 (+ 실패 시 실패 박스) */}
+          {step === 'completed' && (() => {
+            const okStudents = gradedStudentIds.length - failedStudentIds.length;
+            const okSlots = gradableSlots.filter((sl) => !failedStudentIds.includes(sl.student.id)).length;
+            const confirmCount = fullyGradedStudentIds.filter((id) => !failedStudentIds.includes(id)).length;
+            return (
+              <div style={{ ...sectionCard, background: '#F0FDF4', borderColor: '#86EFAC', textAlign: 'center', padding: '32px 24px' }}>
+                <div style={{ fontSize: '2.4rem', marginBottom: 8 }}>🎉</div>
+                <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#065F46', marginBottom: 8 }}>완료</div>
+                <div style={{ fontSize: 'var(--neo-font-size-base)', color: '#047857', marginBottom: 14 }}>
+                  채점 문항 <strong>{okSlots}건</strong> · 학생 <strong>{okStudents}명</strong>
+                  {failedStudentIds.length > 0 && <span style={{ color: '#B91C1C' }}> · 실패 <strong>{failedStudentIds.length}명</strong></span>}
+                  {replacedCount > 0 && <> (기존 답안 교체 <strong>{replacedCount}건</strong> 포함)</>}
+                </div>
+                {/* AI 채점 실패 — SCR-07 v2.9 · v4.22와 같은 구성(원인 · 남는 것 · 할 일) */}
+                {(failedStudentIds.length > 0 || retrying) && (
+                  <div style={{ maxWidth: 620, margin: '0 auto 14px', padding: '12px 16px', borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, textAlign: 'left' }}>
+                    {retrying ? (
+                      <div>⏳ 실패한 답안을 다시 채점하고 있습니다…</div>
+                    ) : (
+                      <>
+                        <div><strong>⚠ {failedStudentIds.length}명은 AI 채점에 실패했습니다.</strong> 답안 분량이 커서 <strong>토큰 용량을 초과</strong>했습니다(서버 응답 지연). 나머지 학생의 채점 결과는 정상 반영됐습니다.</div>
+                        <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: 'white', border: '1px solid #FECACA', color: '#475569', lineHeight: 1.7 }}>
+                          실패한 <strong>{failedStudentIds.length}명</strong>은 <strong>미채점</strong>으로 자동 되돌려집니다.
+                          올린 답안지는 <strong>그대로 보관</strong>되어 있어 파일을 다시 올리지 않고 이어서 채점할 수 있습니다.
+                        </div>
+                        <div style={{ marginTop: 4, color: '#B45309' }}>잠시 후 [다시 시도]를 누르거나, 계속 실패하면 서비스팀에 문의해 주세요.</div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button type="button" onClick={retryFailed}
+                            style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>↻ 다시 시도</button>
+                          <button type="button" onClick={() => setToast('서비스팀 문의: 1544-0000 · support@neolab.net')}
+                            style={{ ...ghostBtn, padding: '6px 14px' }}>서비스팀 문의</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {partiallyGradedCount > 0 && (
+                  <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 12px', maxWidth: 620, margin: '0 auto 10px', lineHeight: 1.6 }}>
+                    ⚠ <strong>{partiallyGradedCount}명</strong>은 일부 문항만 채점되어 <strong>미채점에 남습니다.</strong> 빠진 답안지를 스캔해 다시 실행하면 이어서 채점됩니다.
+                  </div>
+                )}
+                <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46', background: 'white', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 14px', display: 'inline-block' }}>
+                  [확인]을 누르면 <strong>전 문항이 채점된 {confirmCount}명</strong>이 「채점 확인」 단계로 이동합니다.
+                </div>
               </div>
-              {partiallyGradedCount > 0 && (
-                <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 12px', maxWidth: 620, margin: '0 auto 10px', lineHeight: 1.6 }}>
-                  ⚠ <strong>{partiallyGradedCount}명</strong>은 일부 문항만 채점되어 <strong>미채점 탭에 그대로 남습니다.</strong> 누락된 답안지를 스캔해 다시 실행하면 이어서 채점됩니다.
-                </div>
-              )}
-              {shortGradedCount > 0 && (
-                <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 12px', maxWidth: 620, margin: '0 auto 10px', lineHeight: 1.6 }}>
-                  ⚠ <strong>{shortGradedCount}건</strong>은 기준 장수보다 <strong>적은 장수로 채점</strong>되었습니다. 답안지가 빠진 것이라면 해당 문항을 다시 스캔해 채점해 주세요.
-                </div>
-              )}
-              {replacedCount > 0 && (
-                <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#9A3412', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 8, padding: '8px 12px', maxWidth: 620, margin: '0 auto 10px' }}>
-                  🔄 교체된 학생의 <strong>기존 답안은 이력에 보관</strong>되며, 미채점 상세(SCR-02)에서 확인할 수 있습니다.
-                </div>
-              )}
-              <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46', background: 'white', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 14px', display: 'inline-block' }}>
-                [확인]을 누르면 <strong>전 문항이 채점된 {fullyGradedStudentIds.length}명</strong>이 「채점 확인」 단계로 이동합니다.
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
-        {/* 푸터 */}
-        <div style={{ padding: '14px 24px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>
+        {/* 푸터 — SCR-07과 같은 규칙: 왼쪽 = 지금 막힌 이유 / 오른쪽 = 이전 · 다음 */}
+        <div style={{ padding: '14px 24px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', minWidth: 0 }}>
             {step === 'grading' && '💡 창을 닫아도 채점은 계속 진행되며, 하단 알림으로 다시 열 수 있습니다.'}
-            {step === 'review' && startBlocked && (
-              <span style={{ color: '#B45309' }}>⚠ {startBlockReason}</span>
+            {step === 'upload' && files.length === 0 && '스캔 파일을 1개 이상 올려야 다음 단계로 넘어갑니다.'}
+            {step === 'upload' && files.length > 0 && <span title="답안지 학생정보·문항 번호 판독에 AI OCR을 사용합니다">💡 데이터 매핑을 시작하면 올린 답안지 수만큼 <strong>AI OCR</strong>이 차감됩니다.</span>}
+            {step === 'mapping' && !reading && startBlocked && <span style={{ color: '#B45309' }}>⚠ {startBlockReason}</span>}
+            {/* [v4.9] 결석생 제외 고지 — SCR-07 「학생 {n}명이 채점 대상에서 제외됩니다」와 같은 문구 */}
+            {step === 'mapping' && !reading && !startBlocked && absentStudents.length > 0 && (
+              <span style={{ color: '#B45309' }}>⚠ 학생 {absentStudents.length}명이 채점 대상에서 제외됩니다 — 올린 파일에서 이 학생들의 답안지를 찾지 못했습니다.{unassignedScans.length > 0 && ` 미분류 답안지 ${unassignedScans.length}장도 제외됩니다.`}</span>
+            )}
+            {step === 'mapping' && !reading && !startBlocked && absentStudents.length === 0 && unassignedScans.length > 0 && (
+              <span style={{ color: '#B45309' }}>⚠ 미분류 답안지 {unassignedScans.length}장은 채점에서 제외됩니다 — 누구의 답안인지 확인해 직접 지정해 주세요.</span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {step === 'upload' && (
               <>
-                <button onClick={handleCloseAttempt} style={{ padding: '9px 18px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>취소</button>
-                <button onClick={startMatching} disabled={!files.length}
-                  style={{ padding: '9px 18px', borderRadius: 8, background: files.length ? '#2A75F3' : '#CBD5E1', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: files.length ? 'pointer' : 'not-allowed' }}>
-                  🔎 OCR 판별 시작
+                <button onClick={() => onClose?.()} style={ghostBtn}>취소</button>
+                <button onClick={startMatching} disabled={!files.length} style={primaryBtn(files.length > 0)}>
+                  🔗 데이터 매핑 시작
                 </button>
               </>
             )}
-            {step === 'review' && (
+            {step === 'mapping' && !reading && (
               <>
                 <button onClick={() => { resetUploads(); setStep('upload'); }}
                   title="업로드한 파일과 판별 결과를 모두 비우고 처음부터 다시 선택합니다."
-                  style={{ padding: '9px 18px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>← 파일 다시 선택</button>
-                <button onClick={requestGrading} disabled={startBlocked}
-                  style={{ padding: '9px 18px', borderRadius: 8, background: startBlocked ? '#CBD5E1' : '#2A75F3', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: startBlocked ? 'not-allowed' : 'pointer' }}
-                  title={startBlocked ? startBlockReason : undefined}>
-                  🤖 채점 시작
-                </button>
+                  style={ghostBtn}>← 파일 다시 선택</button>
+                <button onClick={requestGrading} disabled={startBlocked} title={startBlocked ? startBlockReason : undefined}
+                  style={primaryBtn(!startBlocked)}>🤖 채점 시작</button>
               </>
             )}
             {step === 'completed' && (
-              <button onClick={handleConfirmComplete} style={{ padding: '9px 22px', borderRadius: 8, background: '#10B981', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-base)', cursor: 'pointer' }}>✓ 확인</button>
+              <button onClick={handleConfirmComplete} style={{ padding: '9px 22px', borderRadius: 8, background: '#10B981', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-base)', cursor: 'pointer', fontFamily: 'inherit' }}>✓ 확인</button>
             )}
           </div>
         </div>
       </div>
+
+      {/* [BRD-16] 이용불편 접수 — SCR-07과 같은 다이얼로그 */}
+      <IncidentReportDialog open={incidentOpen} onClose={() => setIncidentOpen(false)} onSubmitted={handleIncidentSubmitted}
+        context={{ source: '스캔 일괄 채점', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr',
+          task: taskTitle, group: groupLabel, studentCount: selectedStudents.length }} />
 
       {/* 파일 미리보기 모달 */}
       {previewFileId != null && (() => {
@@ -1428,7 +1773,7 @@ const ScanGradingModal = ({
               </div>
 
               {/* 리뷰 단계에서는 팝업에서 바로 학생·문항 지정 */}
-              {step === 'review' && r && (
+              {step === 'mapping' && !reading && r && (
                 <div style={{ padding: '12px 20px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', fontWeight: 700 }}>이 답안지의 학생·문항</span>
                   <select value={r.studentId ?? ''} onChange={(e) => updateAssign(r.fileId, { studentId: e.target.value ? Number(e.target.value) : null })}
@@ -1501,22 +1846,25 @@ const ScanGradingModal = ({
         </div>
       )}
 
-      {/* 종료 확인 */}
+      {/* 닫기 확인 — 매핑 단계에서만. [v4.8] SCR-07과 같은 제목·버튼 */}
       {confirmClose && (
-        <div onClick={(e) => { e.stopPropagation(); setConfirmClose(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', zIndex: 9800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: 420, padding: '20px 22px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>지금 닫으시겠습니까?</h3>
-            <p style={{ margin: '0 0 14px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.6 }}>
-              {step === 'grading' ? '채점이 진행 중입니다. 지금 닫으면 결과가 유실됩니다.' : '진행 중인 판별·검토가 초기화됩니다. 다시 파일을 업로드해야 합니다.'}
+        <div onClick={(e) => { e.stopPropagation(); setConfirmClose(false); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', zIndex: 9800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '22px 24px', width: 460, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225' }}>매핑을 취소하고 닫을까요?</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.7 }}>
+              답안지 판별 결과와 직접 지정한 내용이 모두 사라집니다.
+              <strong style={{ color: '#1E2225' }}> 다시 채점하려면 스캔 파일을 다시 올려야 합니다.</strong>
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setConfirmClose(false)} style={{ padding: '8px 16px', borderRadius: 8, background: 'white', border: '1px solid #E2E8F0', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>계속 진행</button>
-              <button onClick={forceClose} style={{ padding: '8px 18px', borderRadius: 8, background: '#EF4444', border: 'none', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>닫기</button>
+              <button onClick={() => setConfirmClose(false)} style={ghostBtn}>계속 매핑하기</button>
+              <button onClick={forceClose} style={{ ...primaryBtn(true), background: '#EF4444' }}>닫기</button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };
 
