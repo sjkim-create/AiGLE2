@@ -7,6 +7,7 @@
  *
  * 4-Step Workflow — [SCR-05 v4.8] SCR-07 크래들 일괄 채점과 같은 결로 맞췄다
  *   1) upload      — 다중 스캔 파일 업로드 (PDF/PNG/JPG). 형식·용량·중복은 여기서 거른다
+ *                    [v4.10] 여러 쪽 PDF(자동 급지 스캐너의 일괄 스캔)는 **페이지 분리**를 거쳐 쪽마다 파일이 된다
  *   2) mapping     — 데이터 매핑. 읽는 중(OCR 판별) → 결과 검토가 **한 단계**다
  *                    (舊 `matching`·`review` 2단계 → 크래들의 「데이터 매핑」과 같은 1단계로 통합)
  *   3) grading     — AI 일괄 채점 진행 (채점 대상 슬롯만). 실패 학생은 [다시 시도]
@@ -61,10 +62,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import appLogger from './appLogger';
 import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 크래들과 같은 [🚨 이용불편 접수]
+import * as pdfjsLib from 'pdfjs-dist'; // [v4.10] 일괄 스캔 PDF 페이지 분리 — 쪽마다 JPG로 렌더
+
+/* pdf.js 워커 — TaskFileUploadWizard와 같은 CDN 경로. 이미 지정돼 있으면 건드리지 않는다 */
+if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+}
 
 const STEPS = [
   /* [v4.8] 단계 안내는 타이틀 호버 툴팁 — SCR-07 v2.7과 같은 방식 */
-  { key: 'upload', label: '파일 업로드', icon: '📁', hint: '스캔 파일을 올려 주세요. 파일명·순서는 상관없고, 누구의 몇 번 문항인지는 다음 단계에서 판별합니다.' },
+  { key: 'upload', label: '파일 업로드', icon: '📁', hint: '스캔 파일을 올려 주세요. 여러 쪽 PDF는 쪽마다 나눠 올리고, 누구의 몇 번 문항인지는 다음 단계에서 판별합니다.' },
   { key: 'mapping', label: '데이터 매핑', icon: '🔗' },
   { key: 'grading', label: 'AI 일괄 채점', icon: '🤖' },
   { key: 'completed', label: '완료', icon: '✓' },
@@ -72,6 +79,10 @@ const STEPS = [
 
 /* [v4.8] 업로드 제한 — 걸린 파일은 목록에 넣지 않고 사유만 안내한다 */
 const MAX_FILE_MB = 20;
+/* [v4.10] 일괄 스캔 PDF — 자동 급지 스캐너는 30쪽을 PDF 1개로 저장해 20MB를 쉽게 넘는다. 나눈 뒤 쪽마다 JPG가 되므로 원본 상한은 따로 둔다 */
+const MAX_SPLIT_MB = 200;
+const SPLIT_RENDER_W = 1600;  // 분리한 쪽 이미지 가로 픽셀 — OCR이 학생정보 손글씨를 읽을 수 있는 해상도
+const BLANK_RATIO = 0.004;    // 어두운 픽셀 비율이 이보다 낮으면 빈 페이지로 본다 (양면 스캔의 빈 뒷면)
 const ACCEPT_RE = /\.(pdf|png|jpe?g)$/i;
 
 /* [v4.8] 읽는 중 순환 타이틀 — SCR-07 v1.8과 같이 실제 단계와 묶지 않고 「하는 일」만 보인다 */
@@ -167,6 +178,10 @@ const ScanGradingModal = ({
   }, [reading]);
   // 업로드에서 걸러진 파일 — { name, reason }. 목록에 넣지 않고 사유만 보여 준다
   const [uploadErrors, setUploadErrors] = useState([]);
+  /* [v4.10] 페이지 분리 작업 — { id, name, size, status: 'splitting'|'done'|'failed', total, done, pages: [{ no, name, url, file, size, blank, selected, plan }], error } */
+  const [splitJobs, setSplitJobs] = useState([]);
+  const splitSeqRef = useRef(0);
+  const splitCancelRef = useRef(new Set());
   const [hoverStep, setHoverStep] = useState(null);
   const [toast, setToast] = useState('');
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
@@ -287,37 +302,142 @@ const ScanGradingModal = ({
   };
 
 
+  /* [v4.10] 목록에 파일을 붙인다 — id는 **그 순간의 목록**에서 이어 붙인다.
+   *   페이지 분리는 비동기로 끝나므로 렌더 시점의 seqRef를 쓰면 id가 겹칠 수 있다. */
+  const appendFiles = (entries) => {
+    if (!entries.length) return;
+    setFiles((prev) => {
+      let id = prev.length ? Math.max(...prev.map((f) => f.id)) + 1 : 1;
+      return [...prev, ...entries.map((e) => ({ ...e, id: id++ }))];
+    });
+  };
+  const toEntry = (f) => {
+    const isImage = (f.type || '').startsWith('image/') || /\.(png|jpe?g)$/i.test(f.name || '');
+    const isPdf = (f.type || '') === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+    return {
+      name: f.name || 'scan.jpg',
+      size: f.size || 1_200_000,
+      source: 'user',
+      kind: isImage ? 'image' : isPdf ? 'pdf' : 'unknown',
+      previewUrl: isImage ? URL.createObjectURL(f) : null,
+    };
+  };
+
   /* [v4.8] 업로드 검사 — 형식 · 용량 · 같은 파일 중복.
-   *   걸린 파일은 목록에 넣지 않는다. 넣어 두고 판별 단계에서 실패시키면 교사가 원인을 두 번 찾게 된다. */
+   *   걸린 파일은 목록에 넣지 않는다. 넣어 두고 판별 단계에서 실패시키면 교사가 원인을 두 번 찾게 된다.
+   * [v4.10] PDF는 곧바로 목록에 넣지 않고 **페이지 분리**로 보낸다. 자동 급지 스캐너는 한 번에 여러 장을
+   *   PDF 1개로 저장하므로 용량 상한도 PDF는 따로(MAX_SPLIT_MB) 둔다. 1쪽짜리 PDF는 나눌 것이 없어 그대로 들어간다. */
   const handleFilesAdd = (fileList) => {
     const rejected = [];
-    const known = new Set(files.map((f) => `${f.name}:${f.size}`));
-    const accepted = [];
+    const known = new Set([...files.map((f) => `${f.name}:${f.size}`), ...splitJobs.map((j) => `${j.name}:${j.size}`)]);
+    const images = [];
+    const pdfs = [];
     Array.from(fileList).forEach((f) => {
       const name = f.name || 'scan.jpg';
       if (!ACCEPT_RE.test(name)) { rejected.push({ name, reason: '지원하지 않는 형식입니다 (PDF · PNG · JPG만 가능)' }); return; }
-      if ((f.size || 0) > MAX_FILE_MB * 1024 * 1024) { rejected.push({ name, reason: `${MAX_FILE_MB}MB를 넘습니다 — 해상도를 낮춰 다시 스캔해 주세요` }); return; }
+      const isPdf = /\.pdf$/i.test(name);
+      const limit = isPdf ? MAX_SPLIT_MB : MAX_FILE_MB;
+      if ((f.size || 0) > limit * 1024 * 1024) { rejected.push({ name, reason: `${limit}MB를 넘습니다 — 해상도를 낮춰 다시 스캔해 주세요` }); return; }
       const sig = `${name}:${f.size || 0}`;
       if (known.has(sig)) { rejected.push({ name, reason: '이미 올린 파일입니다' }); return; }
       known.add(sig);
-      accepted.push(f);
-    });
-    const next = accepted.map((f, i) => {
-      const isImage = (f.type || '').startsWith('image/') || /\.(png|jpe?g)$/i.test(f.name || '');
-      const isPdf = (f.type || '') === 'application/pdf' || /\.pdf$/i.test(f.name || '');
-      return {
-        id: seqRef + i,
-        name: f.name || `scan_${i}.jpg`,
-        size: f.size || 1_200_000,
-        source: 'user',
-        kind: isImage ? 'image' : isPdf ? 'pdf' : 'unknown',
-        previewUrl: isImage ? URL.createObjectURL(f) : null,
-      };
+      (isPdf ? pdfs : images).push(f);
     });
     setUploadErrors(rejected);
     if (rejected.length) appLogger.error('scan-upload', '업로드 제외', { rejected });
-    setFiles((prev) => [...prev, ...next]);
+    appendFiles(images.map(toEntry));
+    pdfs.forEach(splitPdf);
   };
+
+  /* ─── [v4.10] 일괄 스캔 PDF 페이지 분리 ───
+   * 자동 급지 스캐너로 반 전체를 한 번에 스캔하면 **PDF 1개에 30쪽**이 들어 있다.
+   * OCR 판별·연결은 「답안지 1장 = 파일 1개」를 전제로 하므로, 판별 전에 쪽마다 JPG 파일로 나눈다.
+   * 브라우저 안에서만 처리한다(서버 전송 없음). 나눈 결과는 교사가 확인하고 **[업로드 목록에 추가]를 눌러야** 들어간다
+   * — 표지·빈 뒷면이 섞여 있으면 여기서 빼야 미분류가 불필요하게 늘지 않는다. */
+  const patchJob = (jobId, fn) => setSplitJobs((prev) => prev.map((j) => (j.id === jobId ? fn(j) : j)));
+
+  /** 빈 페이지 추정 — 작게 줄여 어두운 픽셀 비율을 본다. 양면 스캔의 빈 뒷면을 기본 제외하기 위함 */
+  const looksBlank = (canvas) => {
+    const w = 60; const h = Math.max(1, Math.round((canvas.height / canvas.width) * w));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(canvas, 0, 0, w, h);
+    const { data } = ctx.getImageData(0, 0, w, h);
+    let dark = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if ((data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) < 200) dark += 1;
+    }
+    return dark / (w * h) < BLANK_RATIO;
+  };
+
+  const splitPdf = async (file) => {
+    splitSeqRef.current += 1;
+    const jobId = splitSeqRef.current;
+    setSplitJobs((prev) => [...prev, { id: jobId, name: file.name, size: file.size, status: 'splitting', total: 0, done: 0, pages: [], error: null }]);
+    appLogger.info('scan-split', '페이지 분리 시작', { name: file.name, size: file.size });
+    try {
+      const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+      if (doc.numPages === 1) {
+        // 한 쪽짜리는 나눌 것이 없다 — 그대로 목록에
+        setSplitJobs((prev) => prev.filter((j) => j.id !== jobId));
+        appendFiles([toEntry(file)]);
+        return;
+      }
+      patchJob(jobId, (j) => ({ ...j, total: doc.numPages }));
+      const stem = file.name.replace(/\.pdf$/i, '');
+      for (let p = 1; p <= doc.numPages; p += 1) {
+        if (splitCancelRef.current.has(jobId)) return; // 교사가 [취소]했다
+        const page = await doc.getPage(p);
+        const base = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: Math.min(2.5, SPLIT_RENDER_W / base.width) });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        /* intent 'print' — 기본(display)은 requestAnimationFrame에 묶여 **탭이 가려지면 멈춘다**.
+         * 30쪽을 나누는 동안 교사가 다른 탭을 봐도 계속 진행되게 한다. */
+        await page.render({ canvasContext: ctx, viewport, canvas, intent: 'print' }).promise;
+        const blank = looksBlank(canvas);
+        const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+        const name = `${stem}_p${String(p).padStart(2, '0')}.jpg`;
+        const pageFile = new File([blob], name, { type: 'image/jpeg' });
+        const url = URL.createObjectURL(blob);
+        patchJob(jobId, (j) => ({ ...j, done: p, pages: [...j.pages, { no: p, name, file: pageFile, url, size: blob.size, blank, selected: !blank }] }));
+      }
+      patchJob(jobId, (j) => ({ ...j, status: 'done' }));
+      appLogger.info('scan-split', '페이지 분리 완료', { name: file.name, pages: doc.numPages });
+    } catch (err) {
+      const reason = err?.name === 'PasswordException'
+        ? '암호가 걸린 PDF라 페이지를 나눌 수 없습니다. 암호를 풀고 다시 올려 주세요.'
+        : '파일을 열 수 없습니다 (손상된 PDF). 다시 저장하거나 스캔해 주세요.';
+      patchJob(jobId, (j) => ({ ...j, status: 'failed', error: reason }));
+      appLogger.error('scan-split', '페이지 분리 실패', { name: file.name, error: { message: String(err?.message || err), name: err?.name } });
+    }
+  };
+
+  /** 분리 결과 버리기 — 진행 중이면 멈추고, 만든 미리보기 URL을 모두 해제한다 */
+  const dropSplitJob = (jobId, keepUrls = []) => {
+    splitCancelRef.current.add(jobId);
+    setSplitJobs((prev) => {
+      const job = prev.find((j) => j.id === jobId);
+      job?.pages.forEach((pg) => { if (pg.url && !keepUrls.includes(pg.url)) URL.revokeObjectURL(pg.url); });
+      return prev.filter((j) => j.id !== jobId);
+    });
+  };
+
+  /** 고른 쪽만 업로드 목록으로 — 미리보기 URL은 목록 파일이 이어받는다 */
+  const commitSplitJob = (job) => {
+    const picked = job.pages.filter((pg) => pg.selected);
+    appendFiles(picked.map((pg) => (pg.plan
+      ? { name: pg.name, size: pg.size, source: 'mock', kind: 'mock', previewUrl: null, _plan: pg.plan, _fromSplit: job.name }
+      : { name: pg.name, size: pg.size, source: 'user', kind: 'image', previewUrl: pg.url, _fromSplit: job.name })));
+    appLogger.info('scan-split', '분리한 쪽 목록에 추가', { name: job.name, added: picked.length, excluded: job.pages.length - picked.length });
+    dropSplitJob(job.id, picked.map((pg) => pg.url));
+  };
+
+  const togglePage = (jobId, no) => patchJob(jobId, (j) => ({ ...j, pages: j.pages.map((pg) => (pg.no === no ? { ...pg, selected: !pg.selected } : pg)) }));
+  const selectAllPages = (jobId, on) => patchJob(jobId, (j) => ({ ...j, pages: j.pages.map((pg) => ({ ...pg, selected: on })) }));
 
   const handleRemoveFile = (id) => {
     setFiles((prev) => {
@@ -334,6 +454,7 @@ const ScanGradingModal = ({
    * 갈아 끼울 때 메모리에 쌓이지 않는다. */
   const resetUploads = () => {
     files.forEach((f) => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+    splitJobs.forEach((j) => dropSplitJob(j.id)); // [v4.10] 분리 중·대기 중인 PDF도 함께 비운다
     setFiles([]);
     setMatchResults([]);
     setUploadErrors([]);
@@ -342,10 +463,10 @@ const ScanGradingModal = ({
     setPreviewFileId(null);
   };
 
-  // mock 파일 — 학생 × 문항 × 기준 장수만큼 생성하되, 일부러 상태를 흩뜨려
-  // 연결 결과 확인(Step 3)의 상태 그룹이 모두 채워지도록 만든다
-  const injectMockFiles = () => {
-    const seed = files.length + 1;
+  /* mock 답안지 계획 — 학생 × 문항 × 기준 장수만큼 만들되, 일부러 상태를 흩뜨려
+   * 데이터 매핑 결과의 상태 그룹이 모두 채워지도록 만든다.
+   * [v4.10] 낱장 데모와 일괄 스캔 PDF 데모가 **같은 계획**을 쓴다 — 결과 화면이 같아야 비교가 된다. */
+  const buildMockPlan = () => {
     const plan = [];
     // [v4.9] 결석생 시연 대상 — 초과·부족 시연(앞 2명)과 `답안 있음` 학생(기존 답안이 자리를 채움)을 피해 뒤에서부터 고른다
     const absentDemoId = [...targetStudents].reverse().find((s) => targetStudents.indexOf(s) >= 2 && !isAnswerStudent(s))?.id;
@@ -369,17 +490,51 @@ const ScanGradingModal = ({
     capped.push({ s: null, q: null, page: 1, fault: 'unread' });
     capped.push({ s: null, q: null, page: 1, fault: 'other_task' });
     capped.push({ s: null, q: null, page: 1, fault: 'not_in_roster' });
-    const mock = capped.map((it, i) => ({
-      id: seed + i,
-      name: `scan_${String(seed + i).padStart(4, '0')}.jpg`,
+    return capped;
+  };
+
+  const injectMockFiles = () => {
+    appendFiles(buildMockPlan().map((it, i) => ({
+      name: `scan_${String(files.length + i + 1).padStart(4, '0')}.jpg`,
       size: 1_000_000 + i * 40_000,
       source: 'mock',
       kind: 'mock',
       previewUrl: null,
       _plan: it,
-    }));
-    setFiles((prev) => [...prev, ...mock]);
+    })));
   };
+
+  /* [v4.10] 일괄 스캔 PDF 데모 — 자동 급지 스캐너가 만든 PDF 1개(30쪽)를 흉내 낸다.
+   *   답안지 사이에 **빈 뒷면 2쪽**을 끼워 「빈 페이지 기본 제외」를 보여 준다. 실제 파일은 splitPdf가 같은 화면을 쓴다. */
+  const injectMockBatchPdf = () => {
+    splitSeqRef.current += 1;
+    const jobId = splitSeqRef.current;
+    const plan = buildMockPlan();
+    const seq = [];
+    plan.forEach((it, i) => {
+      seq.push({ plan: it });
+      if (i === 9 || i === plan.length - 1) seq.push({ blank: true });
+    });
+    const name = `일괄스캔_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.pdf`;
+    const stem = name.replace(/\.pdf$/i, '');
+    setSplitJobs((prev) => [...prev, { id: jobId, name, size: 38_400_000, status: 'splitting', total: seq.length, done: 0, pages: [], error: null, demo: true }]);
+    let p = 0;
+    const iv = setInterval(() => {
+      if (splitCancelRef.current.has(jobId) || p >= seq.length) {
+        clearInterval(iv);
+        if (!splitCancelRef.current.has(jobId)) patchJob(jobId, (j) => ({ ...j, status: 'done' }));
+        return;
+      }
+      const it = seq[p]; p += 1;
+      const no = p;
+      patchJob(jobId, (j) => ({ ...j, done: no, pages: [...j.pages, {
+        no, name: `${stem}_p${String(no).padStart(2, '0')}.jpg`, size: 900_000 + no * 30_000,
+        url: null, plan: it.plan || null, blank: !!it.blank, selected: !it.blank,
+      }] }));
+    }, 70);
+  };
+
+  const pendingSplitJobs = splitJobs.filter((j) => j.status !== 'failed');
 
   /**
    * Step 2: OCR 판별 (mock)
@@ -913,7 +1068,11 @@ const ScanGradingModal = ({
                 <span style={{ fontSize: '2rem' }}>📁</span>
                 <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E3A8A' }}>스캔 파일을 끌어놓거나 선택하세요</div>
                 <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-                  PDF · PNG · JPG · {MAX_FILE_MB}MB 이하 · <strong>파일명·순서 무관</strong>
+                  PDF · PNG · JPG · 낱장 {MAX_FILE_MB}MB 이하 · <strong>파일명·순서 무관</strong>
+                </div>
+                {/* [v4.10] 자동 급지 스캐너로 한 번에 스캔한 PDF는 쪽마다 나눠 올린다 */}
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', fontWeight: 700 }}>
+                  📑 여러 쪽 PDF(자동 급지 일괄 스캔)는 쪽마다 나눈 뒤 올립니다 · {MAX_SPLIT_MB}MB 이하
                 </div>
                 <label style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 8, background: '#2A75F3', color: 'white', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
                   파일 선택
@@ -922,6 +1081,100 @@ const ScanGradingModal = ({
                     onChange={(e) => { handleFilesAdd(e.target.files); e.target.value = ''; }} />
                 </label>
               </div>
+
+              {/* [v4.10] 페이지 분리 — 여러 쪽 PDF를 쪽마다 JPG로 나누고, 교사가 확인한 쪽만 업로드 목록에 넣는다 */}
+              {splitJobs.map((job) => {
+                const sel = job.pages.filter((pg) => pg.selected).length;
+                const blanks = job.pages.filter((pg) => pg.blank).length;
+                const pct = job.total ? Math.round((job.done / job.total) * 100) : 0;
+                const failed = job.status === 'failed';
+                const splitting = job.status === 'splitting';
+                return (
+                  <div key={job.id} style={{ ...sectionCard, borderColor: failed ? '#FCA5A5' : '#BFDBFE', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '1.2rem' }}>📑</span>
+                      <strong style={{ fontSize: 'var(--neo-font-size-base)', color: '#1E293B', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '50%' }} title={job.name}>{job.name}</strong>
+                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{(job.size / 1024 / 1024).toFixed(1)}MB · 페이지 분리</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: failed ? '#B91C1C' : splitting ? '#1D4ED8' : '#166534' }}>
+                        {failed ? '분리 실패' : splitting ? (job.total ? `${job.done}/${job.total}쪽 나누는 중…` : 'PDF를 여는 중…') : `${job.total}쪽 → 선택 ${sel}장`}
+                      </span>
+                    </div>
+
+                    {failed && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#B91C1C', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
+                        ⚠ {job.name} — {job.error}
+                        <button type="button" onClick={() => dropSplitJob(job.id)} style={{ ...ghostBtn, marginLeft: 'auto', padding: '5px 12px' }}>닫기</button>
+                      </div>
+                    )}
+
+                    {splitting && (
+                      <div style={{ height: 6, borderRadius: 999, background: '#E2E8F0', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: '#2A75F3', transition: 'width 0.2s' }} />
+                      </div>
+                    )}
+
+                    {!failed && job.status === 'done' && (
+                      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569', lineHeight: 1.6 }}>
+                        쪽마다 답안지 1장이 됩니다. 표지·안내문처럼 <strong>답안지가 아닌 쪽은 눌러서 빼 주세요</strong> — 빼지 않으면 판별에서 미분류로 남습니다.
+                        {blanks > 0 && <span style={{ color: '#B45309', fontWeight: 700 }}> 빈 페이지로 보이는 {blanks}쪽은 미리 뺐습니다.</span>}
+                      </div>
+                    )}
+
+                    {job.pages.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8, maxHeight: 360, overflowY: 'auto', padding: 2 }}>
+                        {job.pages.map((pg) => (
+                          <button key={pg.no} type="button" onClick={() => togglePage(job.id, pg.no)} disabled={splitting}
+                            aria-pressed={pg.selected} aria-label={`${pg.no}쪽 ${pg.selected ? '포함' : '제외'}`}
+                            title={`${pg.name}${pg.blank ? ' · 빈 페이지로 보임' : ''} — 눌러서 ${pg.selected ? '빼기' : '넣기'}`}
+                            style={{ position: 'relative', padding: 0, borderRadius: 8, overflow: 'hidden', cursor: splitting ? 'default' : 'pointer', fontFamily: 'inherit',
+                              border: pg.selected ? '2px solid #2A75F3' : '2px dashed #CBD5E1', background: 'white' }}>
+                            <div style={{ aspectRatio: '1 / 1.414', width: '100%', background: 'white', opacity: pg.selected ? 1 : 0.4, display: 'flex', alignItems: 'stretch' }}>
+                              {pg.url ? (
+                                <img src={pg.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              ) : pg.blank ? null : (
+                                /* 데모 쪽 — 답안지 서식을 흉내 낸 자리 표시 */
+                                <div style={{ flex: 1, padding: '10px 8px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <div style={{ fontSize: 9, fontWeight: 800, color: '#1E3A8A' }}>QiGLE</div>
+                                  <div style={{ border: '1px dashed #FBBF24', borderRadius: 3, padding: '2px 4px', fontSize: 9, color: '#78350F', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {pg.plan?.s ? `${studentNo(pg.plan.s)} ${pg.plan.s.name}` : '(   )학년 (   )반'}
+                                  </div>
+                                  <div style={{ fontSize: 9, color: '#475569' }}>{pg.plan?.q ? `${pg.plan.q.title} · ${pg.plan.page}장` : '문항 __'}</div>
+                                  {Array.from({ length: 6 }, (_, i) => <div key={i} style={{ borderBottom: '1px solid #E2E8F0', height: 8 }} />)}
+                                </div>
+                              )}
+                            </div>
+                            <span style={{ position: 'absolute', top: 4, left: 4, padding: '0 6px', borderRadius: 999, background: 'rgba(15,23,42,0.75)', color: 'white', fontSize: 10, fontWeight: 800 }}>{pg.no}</span>
+                            <span style={{ position: 'absolute', top: 4, right: 4, width: 16, height: 16, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900,
+                              background: pg.selected ? '#2A75F3' : 'white', border: `1.5px solid ${pg.selected ? '#2A75F3' : '#94A3B8'}`, color: 'white' }}>{pg.selected ? '✓' : ''}</span>
+                            {pg.blank && (
+                              <span style={{ position: 'absolute', left: 4, right: 4, bottom: 4, padding: '1px 0', borderRadius: 4, background: '#FEF3C7', color: '#92400E', fontSize: 10, fontWeight: 800, textAlign: 'center' }}>빈 페이지</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {!failed && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {job.status === 'done' && (
+                          <>
+                            <button type="button" onClick={() => selectAllPages(job.id, true)} style={{ ...ghostBtn, padding: '5px 12px' }}>전체 선택</button>
+                            <button type="button" onClick={() => selectAllPages(job.id, false)} style={{ ...ghostBtn, padding: '5px 12px' }}>전체 해제</button>
+                          </>
+                        )}
+                        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                          <button type="button" onClick={() => dropSplitJob(job.id)} style={{ ...ghostBtn, padding: '7px 14px' }}>{splitting ? '분리 취소' : '버리기'}</button>
+                          {job.status === 'done' && (
+                            <button type="button" onClick={() => commitSplitJob(job)} disabled={!sel} style={{ ...primaryBtn(sel > 0), padding: '7px 14px' }}>
+                              선택한 {sel}장 업로드 목록에 추가
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* 요약 카드 — SCR-07 「거치 n/30 · 연결 완료 n」 자리 */}
               <div style={{ ...sectionCard, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -935,6 +1188,12 @@ const ScanGradingModal = ({
                       PDF <span style={{ color: '#10B981' }}>{kindCount('pdf')}</span>
                     </>
                   )}
+                  {pendingSplitJobs.length > 0 && (
+                    <>
+                      <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
+                      분리 대기 PDF <span style={{ color: '#2A75F3' }}>{pendingSplitJobs.length}개</span>
+                    </>
+                  )}
                   {uploadErrors.length > 0 && (
                     <>
                       <span style={{ color: '#94A3B8', fontWeight: 400, margin: '0 8px' }}>·</span>
@@ -943,9 +1202,10 @@ const ScanGradingModal = ({
                   )}
                 </div>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                  <button onClick={injectMockFiles} style={{ ...ghostBtn, padding: '7px 14px' }}>🧪 데모 파일</button>
-                  <button onClick={resetUploads} disabled={!files.length}
-                    style={{ ...ghostBtn, padding: '7px 14px', opacity: files.length ? 1 : 0.45, cursor: files.length ? 'pointer' : 'not-allowed' }}>전체 삭제</button>
+                  <button onClick={injectMockFiles} style={{ ...ghostBtn, padding: '7px 14px' }}>🧪 데모 낱장</button>
+                  <button onClick={injectMockBatchPdf} title="자동 급지 스캐너로 반 전체를 스캔한 PDF 1개를 흉내 냅니다" style={{ ...ghostBtn, padding: '7px 14px' }}>🧪 데모 일괄 스캔 PDF</button>
+                  <button onClick={resetUploads} disabled={!files.length && !splitJobs.length}
+                    style={{ ...ghostBtn, padding: '7px 14px', opacity: (files.length || splitJobs.length) ? 1 : 0.45, cursor: (files.length || splitJobs.length) ? 'pointer' : 'not-allowed' }}>전체 삭제</button>
                 </div>
               </div>
 
@@ -1640,8 +1900,12 @@ const ScanGradingModal = ({
         <div style={{ padding: '14px 24px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', minWidth: 0 }}>
             {step === 'grading' && '💡 창을 닫아도 채점은 계속 진행되며, 하단 알림으로 다시 열 수 있습니다.'}
-            {step === 'upload' && files.length === 0 && '스캔 파일을 1개 이상 올려야 다음 단계로 넘어갑니다.'}
-            {step === 'upload' && files.length > 0 && <span title="답안지 학생정보·문항 번호 판독에 AI OCR을 사용합니다">💡 데이터 매핑을 시작하면 올린 답안지 수만큼 <strong>AI OCR</strong>이 차감됩니다.</span>}
+            {/* [v4.10] 나눈 쪽을 목록에 넣지 않은 채 넘어가면 그 PDF가 통째로 빠진다 — 먼저 정리하게 한다 */}
+            {step === 'upload' && pendingSplitJobs.length > 0 && (
+              <span style={{ color: '#B45309' }}>⚠ 페이지 분리한 PDF {pendingSplitJobs.length}개를 아직 목록에 넣지 않았습니다 — [업로드 목록에 추가] 또는 [버리기]를 눌러 주세요.</span>
+            )}
+            {step === 'upload' && !pendingSplitJobs.length && files.length === 0 && '스캔 파일을 1개 이상 올려야 다음 단계로 넘어갑니다.'}
+            {step === 'upload' && !pendingSplitJobs.length && files.length > 0 && <span title="답안지 학생정보·문항 번호 판독에 AI OCR을 사용합니다">💡 데이터 매핑을 시작하면 올린 답안지 수만큼 <strong>AI OCR</strong>이 차감됩니다.</span>}
             {step === 'mapping' && !reading && startBlocked && <span style={{ color: '#B45309' }}>⚠ {startBlockReason}</span>}
             {/* [v4.9] 결석생 제외 고지 — SCR-07 「학생 {n}명이 채점 대상에서 제외됩니다」와 같은 문구 */}
             {step === 'mapping' && !reading && !startBlocked && absentStudents.length > 0 && (
@@ -1655,7 +1919,7 @@ const ScanGradingModal = ({
             {step === 'upload' && (
               <>
                 <button onClick={() => onClose?.()} style={ghostBtn}>취소</button>
-                <button onClick={startMatching} disabled={!files.length} style={primaryBtn(files.length > 0)}>
+                <button onClick={startMatching} disabled={!files.length || pendingSplitJobs.length > 0} style={primaryBtn(files.length > 0 && !pendingSplitJobs.length)}>
                   🔗 데이터 매핑 시작
                 </button>
               </>
