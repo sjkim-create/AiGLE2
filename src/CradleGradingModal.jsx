@@ -661,31 +661,15 @@ const CradleGradingModal = ({
     () => connectedPens.filter((p) => verdicts[p.id]?.type === 'duplicate'),
     [connectedPens, verdicts]
   );
-  /* 목록 정렬 — 확인이 필요한 펜을 맨 위로(POP-28 #9), 나머지는 슬롯 순서.
-   * 교사가 할 일이 목록 아래에 묻히지 않게 하는 것이 유일한 정렬 기준이다.
-   * [SCR-07 v1.5] 크래들 3대(30자루)가 되면서 「아무 필기 없음」·「다른 그룹」처럼 1단계에서
-   * 걸린 펜이 수십 자루 생긴다. 이들은 기재란을 고쳐 써도 풀 수 없어 교사가 할 일이 없으므로
-   * 조치 가능한 펜(중복·2단계) → 정상 → 1단계 순으로 내린다. */
-  /* [SCR-07 v2.4] 정렬은 **판정이 끝난 시점에 한 번만** 고정한다.
-   *   직접 매칭으로 상태가 바뀔 때마다 다시 정렬하면 방금 만진 행이 아래로 튀어 교사가 눈으로 따라가지 못한다.
-   *   그 자리에서 배지·문구만 바뀌고, 순서는 [다시 읽기]로 판정을 다시 돌릴 때만 새로 잡는다. */
-  const [listOrder, setListOrder] = useState([]);
-  useEffect(() => {
-    if (reading || step !== 'mapping') return;
-    const rank = (p) => {
-      const v = verdicts[p.id];
-      if (['ok', 'grading', 'uploaded'].includes(v?.type)) return 1;
-      return v?.stage === 1 ? 2 : 0;
-    };
-    setListOrder([...connectedPens].sort((x, y) => rank(x) - rank(y) || x.slot - y.slot).map((p) => p.id));
-    // 판정 종료(reading false) 시점에만 순서를 잡는다 — 판정 결과(verdicts)는 그 렌더에서 이미 새 값이다
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reading, step]);
-  const listedPens = useMemo(() => {
-    const pos = new Map(listOrder.map((id, i) => [id, i]));
-    // 판정 이후 새로 꽂힌 펜(순서에 없음)은 맨 아래에 슬롯 순으로 붙는다
-    return [...connectedPens].sort((x, y) => (pos.has(x.id) ? pos.get(x.id) : 1e6 + x.slot) - (pos.has(y.id) ? pos.get(y.id) : 1e6 + y.slot));
-  }, [connectedPens, listOrder]);
+  /* [SCR-07 v4.28] 목록 순서 = **슬롯 오름차순** (1-1 → 1-10 → 2-1 → … → 3-10).
+   *   크래들은 눈앞에 놓인 실물이고 목록은 그 사본이므로, 둘의 순서가 어긋나면 교사가 매번 눈으로 찾아야 한다.
+   *   舊 v1.5~v2.4는 「조치 가능한 펜 → 정상 → 1단계 실패」로 올려 세우고 판정 시점에 순서를 고정했다.
+   *   그 정렬은 «할 일이 묻히지 않게» 하려는 것이었지만, 지금은 카운트(확인 필요 {n})와 배지 색이 그 몫을 한다.
+   *   슬롯 순은 판정·매칭으로 상태가 바뀌어도 행이 움직이지 않으므로(v2.4가 지키려던 것) 순서를 따로 고정할 필요도 없다. */
+  const listedPens = useMemo(
+    () => [...connectedPens].sort((x, y) => x.slot - y.slot),
+    [connectedPens]
+  );
   /* [SCR-07 v1.3] 마지막 판정 이후 크래들 구성이 바뀌었는가 —
    *   새로 꽂힌 펜(아직 안 읽음) 또는 빠진 펜(판정이 남아 있으나 이제 없음). */
   const unreadPens = useMemo(
