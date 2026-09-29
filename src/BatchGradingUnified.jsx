@@ -294,12 +294,13 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   }, [source, step, connector]);
 
   /* [확인] — 목록에서 들어왔으면 채점된 학생을 「채점 확인」으로 넘기고 목록으로 돌아간다 */
+  /* 채점 완료 = 실패하지 않은 학생 (스캔은 전 문항이 채점된 학생만) */
+  const doneSids = source === 'scan'
+    ? gradedList.filter((g) => g.full && !failedIds.includes(g.sid)).map((g) => g.sid)
+    : gradedIds.filter((id) => !failedIds.includes(id));
   const finishDone = () => {
     if (!fromList) { resetAll(source); return; }
-    const done = source === 'scan'
-      ? gradedList.filter((g) => g.full && !failedIds.includes(g.sid)).map((g) => g.sid)
-      : gradedIds.filter((id) => !failedIds.includes(id));
-    onCompleted?.(done);
+    onCompleted?.(doneSids);
     onExit();
   };
 
@@ -1363,7 +1364,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /* ════════════ 렌더 ════════════ */
   const T = { cradle: '🖊 크래들 일괄 채점', scan: '📷 스캔 일괄 채점' }[source];
   return (
-    <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
+    /* main-wrapper가 overflow: hidden이라 본문이 직접 스크롤해야 한다 — 안 그러면 아래 푸터(다음 단계 버튼)가 잘린다 */
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 24px 0', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
       {/* 헤더 — 공통 */}
       <div style={{ ...card, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         {fromList && (
@@ -1436,7 +1438,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           <>
             {renderSummaryBar()}
             {/* 3단 — 목록(크래들은 맨 위 미니맵) | 매핑(조치) | 미리보기. 각 열이 따로 스크롤한다 */}
-            <div style={{ height: 'max(600px, calc(100vh - 300px))', display: 'flex', gap: 10 }}>
+            <div style={{ height: 'max(480px, calc(100vh - 400px))', display: 'flex', gap: 10 }}>
               {source === 'cradle' ? renderPenList() : renderStudentList()}
               <div style={{ ...card, flex: '1 1 0', minWidth: 0, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
                 {source === 'cradle' ? renderCradleAction() : renderScanAction()}
@@ -1461,33 +1463,6 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                   style={{ ...primaryBtn(true), marginLeft: 10, padding: '5px 12px' }}>창 닫고 다른 작업 하기</button>
               </div>
             )}
-            {/* 대상별 진행 — 크래들은 펜(슬롯), 스캔은 학생. 채점이 정상 완료된 펜만 「데이터 삭제」 */}
-            <div style={{ maxWidth: 720, margin: '18px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
-                {source === 'cradle' && <span style={{ width: 60 }}>슬롯</span>}
-                <span style={{ width: 150 }}>학생</span>
-                {source === 'cradle' ? <span style={{ width: 110 }}>펜 데이터 상태</span> : <span style={{ width: 110 }}>답안지</span>}
-                <span style={{ flex: 1 }}>상세 내용</span>
-              </div>
-              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                {gradedList.map((g) => {
-                  const st = studentById(g.sid);
-                  const failed = failedIds.includes(g.sid);
-                  const done = step === 'done' || gradingDone;
-                  const deleted = source === 'cradle' && deletedPens.includes(g.penId);
-                  return (
-                    <div key={g.sid} style={{ display: 'flex', alignItems: 'center', padding: '7px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
-                      {source === 'cradle' && <span style={{ width: 60, fontWeight: 700 }}>{slotShort(g.slot)}</span>}
-                      <span style={{ width: 150, color: '#475569' }}>{st.no} {st.name}</span>
-                      <span style={{ width: 110 }}>{source === 'cradle'
-                        ? <span style={pill(deleted ? { bg: '#F5F3FF', border: '#DDD6FE', color: '#6D28D9' } : failed && done ? BADGE.check : BADGE.ok)}>{deleted ? '데이터 삭제' : '정상'}</span>
-                        : <span style={{ color: '#64748B' }}>{g.sheets}장</span>}</span>
-                      <span style={{ flex: 1, fontWeight: 700, color: !done ? '#1D4ED8' : failed ? '#B91C1C' : '#047857' }}>{!done ? 'AI 채점중' : failed ? 'AI 채점 실패 — 토큰 용량 초과' : 'AI 채점 완료'}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         )}
 
@@ -1496,8 +1471,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
             <div style={{ fontSize: '2.2rem' }}>🎉</div>
             <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-lg)', color: '#065F46' }}>완료</div>
             <div style={{ color: '#047857', margin: '8px 0 14px' }}>
-              채점 문항 <strong>{(gradedIds.length - failedIds.length) * QUESTIONS.length}건</strong> · 학생 <strong>{gradedIds.length - failedIds.length}명</strong>
-              {failedIds.length > 0 && <span style={{ color: '#B91C1C' }}> · 실패 <strong>{failedIds.length}명</strong></span>}
+              {/* 완료 화면은 숫자만 — 학생별 목록은 두지 않는다 */}
+              채점 완료 문항 <strong>{doneSids.length * QUESTIONS.length}건</strong> · 학생 <strong>{doneSids.length}명</strong>
             </div>
             {(failedIds.length > 0 || retrying) && (
               <div style={{ maxWidth: 620, margin: '0 auto 14px', textAlign: 'left', ...noteBox('warn'), fontSize: 'var(--neo-font-size-sm)' }}>
@@ -1522,36 +1497,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               </div>
             )}
             <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#065F46' }}>
-              {source === 'scan'
-                ? <>[확인]을 누르면 <strong>전 문항이 채점된 {gradedList.filter((g) => g.full && !failedIds.includes(g.sid)).length}명</strong>이 「채점 확인」 단계로 이동합니다.</>
-                : '[확인]을 누르면 「채점 확인」 단계로 이동합니다.'}
-            </div>
-            {/* 대상별 진행 — 크래들은 펜(슬롯), 스캔은 학생. 채점이 정상 완료된 펜만 「데이터 삭제」 */}
-            <div style={{ maxWidth: 720, margin: '14px auto 0', textAlign: 'left', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', padding: '8px 14px', background: '#F8FAFC', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
-                {source === 'cradle' && <span style={{ width: 60 }}>슬롯</span>}
-                <span style={{ width: 150 }}>학생</span>
-                {source === 'cradle' ? <span style={{ width: 110 }}>펜 데이터 상태</span> : <span style={{ width: 110 }}>답안지</span>}
-                <span style={{ flex: 1 }}>상세 내용</span>
-              </div>
-              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                {gradedList.map((g) => {
-                  const st = studentById(g.sid);
-                  const failed = failedIds.includes(g.sid);
-                  const done = step === 'done' || gradingDone;
-                  const deleted = source === 'cradle' && deletedPens.includes(g.penId);
-                  return (
-                    <div key={g.sid} style={{ display: 'flex', alignItems: 'center', padding: '7px 14px', borderTop: '1px solid #F1F5F9', fontSize: 'var(--neo-font-size-sm)' }}>
-                      {source === 'cradle' && <span style={{ width: 60, fontWeight: 700 }}>{slotShort(g.slot)}</span>}
-                      <span style={{ width: 150, color: '#475569' }}>{st.no} {st.name}</span>
-                      <span style={{ width: 110 }}>{source === 'cradle'
-                        ? <span style={pill(deleted ? { bg: '#F5F3FF', border: '#DDD6FE', color: '#6D28D9' } : failed && done ? BADGE.check : BADGE.ok)}>{deleted ? '데이터 삭제' : '정상'}</span>
-                        : <span style={{ color: '#64748B' }}>{g.sheets}장</span>}</span>
-                      <span style={{ flex: 1, fontWeight: 700, color: !done ? '#1D4ED8' : failed ? '#B91C1C' : '#047857' }}>{!done ? 'AI 채점중' : failed ? 'AI 채점 실패 — 토큰 용량 초과' : 'AI 채점 완료'}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              [확인]을 누르면 채점이 완료된 학생 <strong>{doneSids.length}명</strong>이 「채점 확인」 단계로 이동합니다.
             </div>
 
           </div>
@@ -1559,7 +1505,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       </div>
 
       {/* 푸터 — 공통. 왼쪽 버튼(되돌아가기)만 입력 방식별 */}
-      <div style={{ ...card, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* 다음 단계 버튼은 늘 보이도록 아래에 붙인다 */}
+      <div style={{ ...card, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0, zIndex: 15, marginBottom: 16, boxShadow: '0 -6px 16px rgba(15,23,42,0.08)' }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
           {step === 'import' && source === 'cradle' && !connected.length && <span style={{ color: '#94A3B8' }}>크래들에 펜을 1자루 이상 거치해야 다음 단계로 넘어갑니다.</span>}
           {step === 'import' && source === 'scan' && pendingSplit.length > 0 && <>⚠ 페이지 분리한 PDF {pendingSplit.length}개를 아직 목록에 넣지 않았습니다 — [업로드 목록에 추가] 또는 [버리기]를 눌러 주세요.</>}
