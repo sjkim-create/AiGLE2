@@ -921,8 +921,11 @@ const CradleGradingModal = ({
                       : (available ? dockPen(slot) : null))}
                     disabled={!pen && !available}
                     aria-label={`${slotLabel(slot)}${pen ? ` — ${pen.id}` : ' — 비어 있음'}`}
+                    /* [SCR-07 v4.26] 거치된 펜에 호버하면 **저장 잔량만** 말한다.
+                       누르면 무엇이 되는지(제거·답안 확인)는 단계마다 이미 화면이 안내하고 있어,
+                       툴팁까지 같은 말을 반복하면 정작 궁금한 값(잔량)이 묻힌다. */
                     title={pen
-                      ? (step === 'connect' ? `${slotLabel(slot)} — 펜 제거` : `${pen.id} 답안 확인`)
+                      ? `저장 잔량 ${capacityOf(pen)}%`
                       : (available ? `${slotLabel(slot)} — 펜 거치` : '이 슬롯에 거치할 펜이 없습니다')}
                     style={{
                       width: '100%', height: wellH, padding: 0, cursor: (step === 'connect' ? available : !!pen) ? 'pointer' : 'default',
@@ -971,7 +974,7 @@ const CradleGradingModal = ({
                         background: LINK_TOKEN.linking.bg, color: LINK_TOKEN.linking.color }}>{LINK_TOKEN.linking.label}</div>
                     )}
                     {pen && step === 'connect' && pen.link === 'connected' && (
-                      <div title={`저장 잔량 ${capacityOf(pen)}% — 펜에 쌓인 필기가 차지하고 남은 공간입니다.`}
+                      <div title={`저장 잔량 ${capacityOf(pen)}%`}
                         style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, display: 'inline-block', whiteSpace: 'nowrap',
                           background: capacityToken(capacityOf(pen)).bg, color: capacityToken(capacityOf(pen)).color }}>{capacityOf(pen)}%</div>
                     )}
@@ -1664,9 +1667,9 @@ const CradleGradingModal = ({
                 그중 대부분은 펜이 멀쩡히 연결돼 있지만 주인을 못 찾은 경우다. 세는 대상을 그대로 말하고, 조치를 붙인다. */}
             {step === 'mapping' && !reading && !startBlocked && unmappedStudents.length > 0 && (
               <span style={{ color: '#B45309' }}>
-                ⚠ 학생 {unmappedStudents.length}명이 채점 대상에서 빠집니다
+                ⚠ 학생 {unmappedStudents.length}명이 채점 대상에서 제외됩니다
                 {matchablePens > 0
-                  ? <> — 주인을 찾지 못한 답안 {matchablePens}자루는 답안을 보고 직접 매칭하면 채점됩니다.</>
+                  ? <> — 답안을 보고 직접 매칭해 주세요.</>
                   : <> — 거치된 펜에서 이 학생들의 답안을 찾지 못했습니다.</>}
               </span>
             )}
