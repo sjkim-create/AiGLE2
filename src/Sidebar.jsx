@@ -163,6 +163,13 @@ const Sidebar = ({
                                 >
                                     ⊙ 채점 관리 2 <span className="n-badge" style={{ background: '#7C3AED' }}>퇴고</span>
                                 </div>
+                                {/* 크래들·스캔 일괄 채점 통합 구조 시안 */}
+                                <div
+                                    className={`nav-sub-item ${activeSubMenu === '일괄 채점 통합' ? 'active' : ''}`}
+                                    onClick={() => setActiveSubMenu('일괄 채점 통합')}
+                                >
+                                    ⊙ 일괄 채점 통합 <span className="n-badge" style={{ background: '#6D28D9' }}>시안</span>
+                                </div>
                             </div>
                         )}
                         {/* [BRD-16] 게시판 — 공지사항 / 장애신고(시스템 관리자) */}

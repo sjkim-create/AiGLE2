@@ -49,6 +49,7 @@ import NoticePopupDemo from './NoticePopupDemo';
 import TaskDetail from './TaskDetail';
 import TaskDeleteDialog from './TaskDeleteDialog';
 import MyInfo from './MyInfo';
+import BatchGradingUnified from './BatchGradingUnified'; // 채점 관리 › 일괄 채점 통합 (크래들·스캔 통합 구조 시안)
 
 // ─────────────────────────────────────────────
 // 해시 기반 딥링크 라우트 맵
@@ -71,6 +72,8 @@ const HASH_ROUTES = {
   '#/grading':              { menu: '채점 관리', sub: '채점 관리' },
   // [SCR-06] 퇴고 지원판
   '#/grading2':             { menu: '채점 관리', sub: '채점 관리 2' },
+  // 크래들·스캔 일괄 채점 통합 구조 시안
+  '#/batch-grading':        { menu: '채점 관리', sub: '일괄 채점 통합' },
   '#/task-management':      { menu: '과제 관리', sub: '과제 관리' },
   '#/task-registration':    { menu: '과제 관리', sub: '과제 등록' },
   '#/shared-assignments':   { menu: '과제 관리', sub: '공유된 과제' },
@@ -663,6 +666,9 @@ function Setting() {
           activeSubMenu === '채점 관리 2' ? (
             /* [SCR-06] 채점 관리 2 — 기존 기능 + 퇴고(1차/2차 차수 관리·점수 추이) */
             <GradingManagement activeSubMenu={activeSubMenu} variant="v2" />
+          ) : activeSubMenu === '일괄 채점 통합' ? (
+            /* 크래들·스캔 일괄 채점을 한 구조로 묶은 시안 — 1단계만 입력 방식별, 데이터 매핑부터 공통 구조 */
+            <BatchGradingUnified />
           ) : (
             <GradingManagement activeSubMenu="채점 관리" />
           )
