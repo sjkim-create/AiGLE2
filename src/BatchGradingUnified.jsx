@@ -264,6 +264,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const [manual, setManual] = useState({});      // { penId: sid } 직접 매칭
   const [dupPick, setDupPick] = useState({});    // { sid: penId } 중복 해소 — 고른 펜
   const [assignPick, setAssignPick] = useState({});
+  const [changePen, setChangePen] = useState(null); // 정상 펜 「학생 변경」 펼침
   const [fwDone, setFwDone] = useState({});
   const [fwProg, setFwProg] = useState({});      // 펌웨어 업데이트 진행률 { penId: % }
   const [deletedPens, setDeletedPens] = useState([]); // 채점 성공으로 데이터가 지워진 펜 — 배지 「데이터 삭제」 · 잔량 회복
@@ -1062,7 +1063,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </select>
         의 답안으로
         <button type="button" disabled={!pick} style={{ ...primaryBtn(!!pick), padding: '5px 14px' }}
-          onClick={() => { addTarget(pick); setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
+          onClick={() => { addTarget(pick); setChangePen(null); setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
       </div>
     );
   };
@@ -1092,6 +1093,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           {st && <span style={{ color: '#94A3B8' }}>{st.grade}</span>}
           <span style={pill(k)}>{k.label}{info.kind === 'dup' ? ' — 중복 데이터' : ''}</span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {/* 정상 펜도 학생을 바꿀 수 있다 — OCR이 맞게 읽었다고 판단해도 실제로는 다른 학생일 수 있다 */}
+            {info.kind === 'ok' && <button type="button" aria-expanded={changePen === pen.id} style={{ ...ghostBtn, padding: '4px 10px', ...(changePen === pen.id ? { background: '#EFF6FF', borderColor: '#2A75F3', color: '#1D4ED8' } : {}) }} onClick={() => setChangePen(changePen === pen.id ? null : pen.id)}>학생 변경</button>}
             {info.manual && <button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} onClick={() => setManual((m) => { const n = { ...m }; delete n[pen.id]; return n; })}>매칭 해제</button>}
           </span>
         </div>
@@ -1115,6 +1118,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {info.kind === 'empty' && <div style={noteBox('muted')}>이 펜에는 필기가 없습니다. 채점 대상이 아닙니다.</div>}
         {info.kind === 'unread' && <div style={noteBox('info')}>판정 이후에 꽂은 펜이라 아직 읽지 않았습니다. 위의 [↻ 다시 매칭]을 눌러 주세요.</div>}
         {info.kind === 'ok' && <div style={noteBox('ok')}>✓ {st.name}의 답안으로 채점됩니다.{info.manual ? ' (직접 매칭)' : ''}</div>}
+        {info.kind === 'ok' && changePen === pen.id && (
+          <div style={{ ...noteBox('info'), display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div>미리보기의 답안이 <strong>{st.name}</strong>의 것이 아니면 실제 학생을 골라 바로잡으세요. {st.name}에게 다른 펜이 없으면 {st.name}은(는) 채점에서 제외됩니다.</div>
+            {assignRow(pen.id)}
+          </div>
+        )}
       </>
     );
   };
@@ -1269,13 +1278,13 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>다른 자리로</span>
                       <select value={pick('ms')} onChange={(e) => setPick('ms', e.target.value)} style={{ flex: '1 1 120px', padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
-                        <option value="">학생</option>{ROSTER.map((st) => <option key={st.id} value={st.id}>{st.no} {st.name}</option>)}
+                        <option value="">학생</option>{studentOptions()}
                       </select>
                       <select value={pick('mq')} onChange={(e) => setPick('mq', e.target.value)} style={{ flex: '0 1 90px', padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
                         <option value="">문항</option>{QUESTIONS.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
                       </select>
                       <button type="button" disabled={!pick('ms') || !pick('mq') || r.origin === 'existing'} title={r.origin === 'existing' ? '기존 답안은 제 자리로만 돌아갑니다' : undefined}
-                        onClick={() => { moveRow(r, pick('ms'), Number(pick('mq'))); setRowMenu(null); }} style={{ ...primaryBtn(!!(pick('ms') && pick('mq')) && r.origin !== 'existing'), padding: '4px 12px' }}>옮기기</button>
+                        onClick={() => { addTarget(pick('ms')); moveRow(r, pick('ms'), Number(pick('mq'))); setRowMenu(null); }} style={{ ...primaryBtn(!!(pick('ms') && pick('mq')) && r.origin !== 'existing'), padding: '4px 12px' }}>옮기기</button>
                     </div>
                   </div>
                 )];
