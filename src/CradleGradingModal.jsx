@@ -38,7 +38,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import RequiredProgramModal from './RequiredProgramModal';
-import CapacityHelpTip, { CapacityBlinkStyle } from './CapacityHelpTip'; // [SCR-07 v4.32] 저장 잔량 ? 툴팁
+import CapacityHelpTip, { CapacityBlinkStyle } from './CapacityHelpTip';
+import CradleImage from './CradleImage'; // [SCR-07 v4.33 시안] 크래들 · 펜 실물 이미지 // [SCR-07 v4.32] 저장 잔량 ? 툴팁
 import appLogger from './appLogger';
 import IncidentReportDialog from './IncidentReportDialog'; // [BRD-16] 舊 LogDownloadDialog·PenDataDownloadDialog(⋯ 메뉴) → [🚨 장애신고]
 import { recordGradingSession } from './lib/penRawStore'; // [BRD-16 v1.7] 채점 때마다 펜 원본을 로컬에 쌓는다 (장애신고 zip 첨부용)
@@ -856,7 +857,51 @@ const CradleGradingModal = ({
    * ──────────────────────────────────────────────────────────── */
   /* [SCR-07 v1.5] 크래들 3대를 나란히 그린다. 폭이 모자라면 줄바꿈해 2+1로 내려간다.
    *   슬롯 폭은 10구 1대 기준(52px)보다 좁혀 1600px 화면에서 3대가 한 줄에 들어가게 했다. */
+  /* [SCR-07 v4.33 시안] 크래들 연결 단계 — 실물 이미지 크래들. 폭에 따라 비율대로 줄고(최소 폭 유지) 펜 LED 색만 코드로 켠다.
+     LED: 연결 중 = 노랑 깜박임 · 연결 = 초록 · 빨강 = 데이터 없음 / 배터리 부족(30% 미만) / 저장 잔량 부족(20% 미만) */
+  const renderCradleImages = () => (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center', paddingBottom: 8 }}>
+      {Array.from({ length: CRADLE_COUNT }, (_, ci) => ci + 1).map((cradleNo) => {
+        const slots = Array.from({ length: SLOTS_PER_CRADLE }, (_, i) => (cradleNo - 1) * SLOTS_PER_CRADLE + i + 1).map((slot) => {
+          const pen = docked[slot];
+          const available = penPool.some((p) => p.slot === slot);
+          const linking = pen && pen.link === 'linking';
+          const cap = pen ? capacityOf(pen) : 100;
+          const redWhy = pen && !linking ? [
+            !pen.books.length && '데이터 없음',
+            pen.battery < 30 && `배터리 부족 ${pen.battery}%`,
+            cap < CAPACITY_LOW && `저장 잔량 부족 ${cap}%`,
+          ].filter(Boolean) : [];
+          return {
+            slot, pen, available, linking, picked: pen && selectedPenId === pen.id,
+            led: linking ? '#FBBF24' : redWhy.length ? '#EF4444' : '#22C55E',
+            ariaLabel: `${slotLabel(slot)}${pen ? ` — ${pen.id}` : ' — 비어 있음'}`,
+            title: pen ? (redWhy.length ? `● 빨간 LED — ${redWhy.join(' · ')}` : `저장 잔량 ${cap}% · 배터리 ${pen.battery}%`) : (available ? `${slotLabel(slot)} — 펜 거치` : '이 슬롯에 거치할 펜이 없습니다'),
+            onClick: () => (pen ? (step === 'connect' ? undockPen(slot) : pickPen(pen.id)) : (available ? dockPen(slot) : null)),
+            below: pen ? (linking
+              ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: LINK_TOKEN.linking.bg, color: LINK_TOKEN.linking.color }}>{LINK_TOKEN.linking.label}</span>
+              : <span title={`저장 잔량 ${cap}%`} className={cap < CAPACITY_LOW ? 'cap-blink' : undefined} style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: capacityToken(cap).bg, color: capacityToken(cap).color }}>{cap}%</span>) : null,
+          };
+        });
+        const dockedIn = dockedPens.filter((p) => cradleOf(p.slot) === cradleNo).length;
+        return (
+          <CradleImage key={cradleNo} slots={slots}
+            header={(
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '0 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
+                <span>◈ NEO SMARTPEN 크래들 {cradleNo}</span>
+                {connectorState === 'ready'
+                  ? <span style={{ color: '#16A34A' }}>● {dockedIn}/{SLOTS_PER_CRADLE}</span>
+                  : <span style={{ color: '#D97706' }}>● 확인 중</span>}
+              </div>
+            )} />
+        );
+      })}
+    </div>
+  );
+
   const renderCradle = ({ compact = false } = {}) => {
+    // 시안 비교용 — 주소에 ?cssCradle 을 붙이면 舊 CSS 크래들로 그린다
+    if (!compact && !window.location.search.includes('cssCradle')) return renderCradleImages();
     /* compact(2단계 왼쪽 열) — 3대가 열 폭 절반(~640px) 안에 들어가도록 슬롯 16px */
     const wellH = compact ? 40 : 136;
     const penH = compact ? 50 : 190;

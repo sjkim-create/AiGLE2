@@ -17,7 +17,8 @@ import RequiredProgramModal, { isConnectDownloaded, markConnectDownloaded } from
 import appLogger from './appLogger';
 import { recordGradingSession } from './lib/penRawStore'; // [BRD-16] 펜 원본 진단 파일 (이용불편 접수 zip 첨부용)
 import { openPdf, renderPages, splitErrorReason } from './lib/pdfSplit';
-import CapacityHelpTip, { CapacityBlinkStyle } from './CapacityHelpTip'; // [SCR-07 v4.32] 저장 잔량 ? 툴팁
+import CapacityHelpTip, { CapacityBlinkStyle } from './CapacityHelpTip';
+import CradleImage from './CradleImage'; // 크래들 · 펜 실물 이미지 (채점 관리 크래들 일괄 채점과 같은 그림) // [SCR-07 v4.32] 저장 잔량 ? 툴팁
 
 /* ─────────────── 공통 목 데이터 ─────────────── */
 const BASE_TASK = { team: '미래혁신융합인재육성 프로젝트팀', title: '[국어] 작품의 주제와 인물의 심리 변화 분석하기', group: '1학년 1반', groupShort: '1-1반' };
@@ -703,9 +704,42 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         )}
         <div style={{ ...card, padding: '18px 16px 0' }}>
           <CapacityBlinkStyle />
-          <CradleStrip docked={docked} pool={PEN_POOL} dotOf={() => null} onSlot={(slot) => (docked[slot] ? undockPen(slot) : dockPen(slot))}
-            labelOf={(pen) => (pen.link === 'linking' ? { text: '연결 중', bg: '#FEF3C7', color: '#B45309' }
-              : { text: `${capacityOf(pen)}%`, blink: capacityOf(pen) < 20, bg: capacityOf(pen) < 10 ? '#FEE2E2' : capacityOf(pen) < 20 ? '#FEF3C7' : '#DCFCE7', color: capTone(capacityOf(pen)).color })} />
+          {/* [SCR-08 v1.15] 크래들 연결 — 실물 이미지 크래들(채점 관리 크래들 일괄 채점과 같은 그림).
+              LED: 연결 중 = 노랑 깜박임 · 초록 = 정상 · 빨강 = 데이터 없음 / 배터리 부족(30% 미만) / 저장 잔량 부족(20% 미만) */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center', paddingBottom: 12 }}>
+            {Array.from({ length: CRADLES }, (_, ci) => ci + 1).map((cn) => {
+              const slots = Array.from({ length: SLOTS }, (_, i) => (cn - 1) * SLOTS + i + 1).map((slot) => {
+                const pen = docked[slot];
+                const available = PEN_POOL.some((p) => p.slot === slot);
+                const linking = pen && pen.link === 'linking';
+                const cap = pen ? capacityOf(pen) : 100;
+                const redWhy = pen && !linking ? [
+                  !penPageCount(pen) && '데이터 없음',
+                  pen.battery < 30 && `배터리 부족 ${pen.battery}%`,
+                  cap < 20 && `저장 잔량 부족 ${cap}%`,
+                ].filter(Boolean) : [];
+                return {
+                  slot, pen, available, linking,
+                  led: linking ? '#FBBF24' : redWhy.length ? '#EF4444' : '#22C55E',
+                  ariaLabel: `슬롯 ${slotShort(slot)}${pen ? '' : ' 비어 있음'}`,
+                  title: pen ? (redWhy.length ? `${slotShort(slot)} · ● 빨간 LED — ${redWhy.join(' · ')}` : `${slotShort(slot)} · 저장 잔량 ${cap}% · 배터리 ${pen.battery}%`) : (available ? `${slotShort(slot)} — 펜 거치` : `${slotShort(slot)} — 빈 슬롯`),
+                  onClick: () => (pen ? undockPen(slot) : dockPen(slot)),
+                  below: pen ? (linking
+                    ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: '#FEF3C7', color: '#B45309' }}>연결 중</span>
+                    : <span className={cap < 20 ? 'cap-blink' : undefined} style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: cap < 10 ? '#FEE2E2' : cap < 20 ? '#FEF3C7' : '#DCFCE7', color: capTone(cap).color }}>{cap}%</span>) : null,
+                };
+              });
+              return (
+                <CradleImage key={cn} slots={slots}
+                  header={(
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '0 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
+                      <span>크래들 {cn}</span>
+                      <span style={{ color: '#16A34A' }}>● {Object.values(docked).filter((x) => cradleOf(x.slot) === cn).length}/{SLOTS}</span>
+                    </div>
+                  )} />
+              );
+            })}
+          </div>
         </div>
         <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <strong style={{ fontSize: 'var(--neo-font-size-base)' }}>연결된 펜 <span style={{ color: '#2A75F3' }}>{connected.length}</span>자루</strong>
