@@ -89,7 +89,7 @@ const buildPens = () => {
   GROUP.forEach((s, i) => {
     if (i === 5) return;                                                      // 결석 — 펜 없음
     if (i === 1) return add({ scenario: 'no_ident', owner: s.id, pages: fullPages(), extraBooks: otherClasses });
-    if (i === 3) return add({ scenario: 'ok', owner: s.id, identSid: GROUP[4].id, pages: fullPages() }); // 친구 답안지에 씀 → 중복
+    if (i === 3) return add({ scenario: 'ok', owner: s.id, identSid: GROUP[4].id, pages: fullPages() }); // 답안지엔 최도윤 — OCR이 정서연으로 잘못 읽음 → 중복
     if (i === 8) return add({ scenario: 'no_answer', owner: s.id, identSid: s.id, pages: {} });
     return add({ scenario: 'ok', owner: s.id, identSid: s.id, pages: fullPages() });
   });
@@ -1118,7 +1118,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
         {info.kind === 'dup' && (
           <div style={{ ...noteBox('warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div><strong>⚠ 같은 학생에 두 펜이 붙었습니다.</strong> 이 펜과 슬롯 {rivals.map((r) => slotShort(r.slot)).join(' · ')} 펜이 모두 {st.name}(으)로 읽혔습니다. 답안지에 적힌 이름은 같아도 <strong>답안 내용과 글씨</strong>가 다릅니다 — 미리보기에서 두 펜을 번갈아 보고 정해 주세요.</div>
+            <div><strong>⚠ 같은 학생에 두 펜이 붙었습니다.</strong> 이 펜과 슬롯 {rivals.map((r) => slotShort(r.slot)).join(' · ')} 펜이 모두 {st.name}(으)로 읽혔습니다. OCR이 학생정보를 잘못 읽었을 수 있습니다 — 미리보기에서 <strong>답안지 학생정보</strong>를 확인하고, {st.name}의 답안이 아니면 적힌 학생으로 매칭해 주세요.</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button type="button" style={{ ...primaryBtn(true), padding: '5px 14px' }} onClick={() => setDupPick((d) => ({ ...d, [info.sid]: pen.id }))}>이 펜이 {st.name}의 답안입니다</button>
               <span style={{ color: '#94A3B8' }}>또는</span>
@@ -1341,7 +1341,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       if (!pen) return [];
       const info = cradleModel.penInfo[pen.id] || {};
       const handLabel = pen.scenario === 'no_ident' ? '' : (pen.scenario === 'other_group' || pen.scenario === 'other_task') ? pen.ownerLabel : pen.scenario === 'not_in_roster' ? pen.read
-        : (() => { const s = studentById(pen.identSid || pen.owner); return s ? `${s.grade} ${s.name}` : ''; })();
+        /* 답안지에는 실제로 쓴 학생(owner)이 적혀 있다 — OCR이 다른 학생으로 잘못 읽으면(identSid ≠ owner) 중복이 생긴다 */
+        : (() => { const s = studentById(pen.owner || pen.identSid); return s ? `${s.grade} ${s.name}` : ''; })();
       const own = QUESTIONS.flatMap((q) => Array.from({ length: pen.pages[q.id] || 0 }, (_, i) => ({
         id: `${pen.id}-${q.id}-${i}`, label: `${q.title}-${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: handLabel, question: q.title, sheetNo: i + 1, kind: info.kind,
         writer: pen.owner ? GROUP.findIndex((g) => g.id === pen.owner) : pen.slot, // 실제로 쓴 사람 — 답안지에 적힌 이름과 다를 수 있다
@@ -1558,9 +1559,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {step === 'import' && <button type="button" disabled={!canStartMapping} onClick={startReading} style={primaryBtn(canStartMapping)}>🔗 데이터 매핑 시작</button>}
         {step === 'mapping' && !reading && (
           <>
-            <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); if (source === 'scan') { setRows([]); } }}>
-              {source === 'cradle' ? '← 펜 다시 거치' : '↰ 파일 다시 선택'}
-            </button>
+            {/* 크래들은 매핑 화면에서 바로 거치·빼기(미니맵)와 [↻ 다시 매칭]을 하므로 되돌아가기 버튼을 두지 않는다 */}
+            {source === 'scan' && (
+              <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 파일 다시 선택</button>
+            )}
             <button type="button" disabled={model?.blocked} onClick={requestGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
           </>
         )}

@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_GUIDE_SAMPLE } from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
@@ -925,18 +925,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       ✓ 검토 완료 처리 ({bulkReviewCompleteIds.length}명)
                     </button>
                   )}
-                  {/* 채점 확인·결과 발송 탭 (수학 한정) — 일괄 과정 분석 */}
-                  {activeTab !== '미채점' && bulkHwEligibleIds.length > 0 && currentTask.type === '수학' && (
-                    <button
-                      className="btn-bulk-grading"
-                      style={{ background: '#8B5CF6', ...(isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
-                      onClick={handleBulkHandwritingEvaluation}
-                      disabled={isAnyBgActive}
-                      title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
-                    >
-                      ✎ 일괄 과정 분석 ({bulkHwEligibleIds.length}명)
-                    </button>
-                  )}
+                  {/* [SCR-01 v4.25] 舊 「✎ 일괄 과정 분석」 버튼 삭제 — 과정 분석은 등급평가에 통합돼 채점 확인 상세(SCR-03)에서 학생별로만 실행한다 */}
                   {/* 결과 발송 탭 — 결과발송 */}
                   {bulkPreSendIds.length > 0 && (
                     <button
@@ -1426,7 +1415,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <input type="checkbox" checked disabled />
                     교사 피드백 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(고정)</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 과정 분석이 완료된 학생에게만 실립니다 (캐릭터 · 총평 · 학습 행동 밀착 가이드).">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 과정 분석이 완료된 학생에게만 실립니다 (캐릭터 · 총평).">
                     <input type="checkbox" checked={exportContentOptions.process} onChange={() => toggleContentOption('process')} />
                     과정 분석 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(완료 학생만)</span>
                   </label>
@@ -1632,8 +1621,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <div style={{ marginBottom: '0.75rem' }}>제시된 조건에 따라 모든 가능한 경우의 수를 빠짐없이 서술하였으므로 추가적인 보완점은 보이지 않습니다. 완벽한 답변이에요.</div>
                         <div style={{ fontWeight: 700, color: '#2A75F3', marginBottom: '0.25rem' }}>함께 성장해요</div>
                         <div style={{ marginBottom: '0.75rem' }}>앞으로도 이처럼 각 도형의 내각의 합과 한 내각의 크기 공식을 활용하여 평면을 채우는 테셀레이션 원리를 탐구해본다면 수학적 사고력이 더욱 깊어질 거예요.</div>
-                        <div style={{ fontWeight: 700, color: '#8B5CF6', marginBottom: '0.25rem' }}>내용 분석</div>
-                        <div>정삼각형, 정육각형, 정십이각형의 한 내각의 크기 / 270°를 구성할 수 있는 조합 찾기: <strong>매우 우수(A)</strong> — 학생은 정삼각형, 정육각형, 정십이각형의 한 내각의 크기를 정확히 명시하였으며, 이를 조합하여 270°를 만드는 두 가지 방법(150°+ 60°+ 60°, 150°+ 120°)을 모두 정확하게 찾아내고 그 이유를 논리적으로 설명하였습니다.</div>
                       </div>
 
                       {/* 4. 과정 분석 [조건부 — 포함 항목 체크 + 과정 분석 완료 학생만] */}
@@ -1671,20 +1658,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                                 </div>
                               );
                             })()}
-                            {/* 강점·개선·성장 제안은 등급평가 피드백에 합쳐졌으므로 여기서는 총평과 밀착 가이드만 싣는다 */}
+                            {/* 강점·개선·성장 제안은 등급평가 피드백에 합쳐졌으므로 여기서는 캐릭터와 총평만 싣는다 (舊 학습 행동 밀착 가이드 삭제) */}
                             {!previewStudent.handwritingEvaluation.insufficient && (() => {
                               const hw = previewStudent.handwritingEvaluation;
-                              const g = hw.guide || PROCESS_GUIDE_SAMPLE;
                               return (<>
                                 <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>총평</div>
-                                <div style={{ marginBottom: '0.75rem' }}>{hw.evaluationSummary?.totalEvaluation || '-'}</div>
-                                <div style={{ fontWeight: 700, color: '#8B5CF6', marginBottom: '0.35rem' }}>학습 행동 밀착 가이드</div>
-                                <div style={{ borderLeft: '2px solid #DDD6FE', paddingLeft: '12px' }}>
-                                  <div style={{ fontWeight: 700, color: '#1E293B', marginBottom: '0.15rem' }}>문제 해석</div>
-                                  <div style={{ marginBottom: '0.6rem' }}>{g.interpretation}</div>
-                                  <div style={{ fontWeight: 700, color: '#1E293B', marginBottom: '0.15rem' }}>문제 접근 방법</div>
-                                  <div>{g.approach}</div>
-                                </div>
+                                <div>{hw.evaluationSummary?.totalEvaluation || '-'}</div>
                               </>);
                             })()}
                           </div>
