@@ -679,8 +679,8 @@ const GradingReviewModal = ({
 
                 {/* 본문 — 좌(채점 결과) : 우(피드백/원본) */}
                 <div style={{ flex: 1, display: 'flex', gap: 16, padding: 16, minHeight: 0 }}>
-                    {/* ── 좌측 ── */}
-                    <div style={{ flex: '0 0 46%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    {/* ── 좌측 ── [v5.13] 폭을 절반으로(46% → 23%, 최소 360px) — 피드백·채점 근거를 넓게 */}
+                    <div style={{ flex: '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                         <div style={{ display: 'flex', gap: 4, paddingLeft: 4 }}>
                             {questions.map(q => (
                                 <div key={q.id} className={`q-tab ${activeQuestion === q.id ? 'active' : ''}`} onClick={() => setActiveQuestion(q.id)} style={{ padding: '0.55rem 1.1rem', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>
@@ -765,62 +765,101 @@ const GradingReviewModal = ({
                                     )}
                                 </div>
                                 </>)}
-                                {/* [v5.2] 채점 근거로 바로 가기 — 판독 못 한 글자가 있으면 경고를 함께 */}
-                                <button type="button" onClick={() => setRightTab('basis')}
-                                    style={{ marginTop: 10, border: 'none', background: 'none', padding: 0, color: '#2563EB', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>채점 근거 보기 ›</button>
-                                {gradeFb.basis?.unreadable && (
-                                    <div style={{ marginTop: 8, padding: '8px 12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: T.rLg, fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C' }}>판독하지 못한 글자가 있어 원본 확인이 필요할 수 있습니다.</div>
-                                )}
                             </div>
 
-                            {/* AI 재채점 — 결과 발송 단계에서는 숨김 */}
+                            {/* [v5.12] AI 채점 이력 — 舊 「AI 재채점」 「채점 히스토리」 두 구역을 하나로.
+                                재채점은 이력을 하나 더 만드는 일이라 이력 제목 줄의 작은 버튼으로 두고,
+                                이력은 회차를 위아래로 견주기 쉬운 한 줄 목록으로 둔다. 결과 발송 단계에서는 숨김 */}
                             {!isStep3 && (
                                 <div style={{ paddingTop: 18, borderTop: `1px solid ${T.lineSoft}` }}>
-                                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                                        <div style={secTitle}>AI 재채점</div>
-                                        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted }}>남은 횟수 1/1</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                        <div style={{ ...secTitle, marginBottom: 0 }}>AI 채점 이력</div>
+                                        <span style={pill(T.surface, T.sub)}>{gradingHistory.length}건</span>
+                                        {/* [v5.14] AI 채점은 문항마다 최대 {aiGradingLimitPerRound}회(첫 채점 포함) — 이력 수만큼 썼다. 다 쓰면 재채점 불가 */}
+                                        {(() => {
+                                            const left = Math.max(0, aiGradingLimitPerRound - gradingHistory.length);
+                                            return (
+                                                <button type="button" className="btn-regrading" disabled={left === 0}
+                                                    title={left === 0
+                                                        ? `AI 채점을 ${aiGradingLimitPerRound}회 모두 진행해 더 이상 재채점할 수 없습니다. 이력에서 반영할 결과를 고르세요.`
+                                                        : '기존 채점 결과는 유지되고 새 결과가 이력에 추가됩니다.'}
+                                                    style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 'var(--neo-font-size-sm)', ...(left === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
+                                                    ✦ AI 재채점 <span style={{ fontWeight: 400, opacity: 0.8 }}>· {left === 0 ? '횟수 소진' : `${left}회 남음`}</span>
+                                                </button>
+                                            );
+                                        })()}
                                     </div>
-                                    <div style={{ ...hint, marginBottom: 10 }}>기존 채점 결과는 유지되며 새로운 결과로 업데이트 됩니다. 재채점은 1회만 가능합니다.</div>
-                                    <button className="btn-regrading" style={{ width: '100%' }}>✦ AI 재채점 시작</button>
-                                </div>
-                            )}
-
-                            {/* 채점 히스토리 */}
-                            {!isStep3 && (
-                                <div style={{ paddingTop: 18, borderTop: `1px solid ${T.lineSoft}` }}>
-                                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                                        <div style={secTitle}>채점 히스토리</div>
-                                        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted }}>{gradingHistory.length}건</span>
-                                    </div>
-                                    {/* [SCR-03] 채점 회차 카드는 횡배열 —
-                                        회차는 «비교» 대상이라 나란히 놓여야 등급 변화가 한눈에 읽힌다.
-                                        종배열은 카드가 늘어날수록 아래로 밀려 직전 회차와 눈이 멀어졌다.
-                                        카드가 좁아지므로 내부는 라벨/시각/등급을 세로로 쌓는다. */}
-                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'stretch' }}>
-                                        {gradingHistory.map(h => (
-                                            <div key={h.id} style={{ flex: '1 1 180px', minWidth: 0, border: `1px solid ${reflectedHistoryId === h.id ? '#93C5FD' : T.line}`, background: reflectedHistoryId === h.id ? '#F5F9FF' : 'white', borderRadius: T.rLg, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                                                    <strong style={{ fontSize: 'var(--neo-font-size-sm)' }}>{h.label}</strong>
-                                                    <button onClick={() => setReflectedHistoryId(h.id)} style={{ border: `1px solid ${reflectedHistoryId === h.id ? '#2A75F3' : T.line}`, background: 'white', color: reflectedHistoryId === h.id ? '#2A75F3' : T.sub, borderRadius: 'var(--neo-radius-md, 6px)', padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
-                                                        {reflectedHistoryId === h.id ? '✓ 반영됨' : '반영'}
+                                    <div style={{ border: `1px solid ${T.lineSoft}`, borderRadius: T.rLg, overflow: 'hidden' }}>
+                                        {gradingHistory.map((h, idx) => {
+                                            const on = reflectedHistoryId === h.id;
+                                            const pts = activeCriteria.length
+                                                ? (on ? sum(activeCriteria.map((c) => c.ai)) : (gradeToPoints(h.level, activeMax) ?? '-'))
+                                                : null;
+                                            return (
+                                                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderTop: idx ? `1px solid ${T.lineSoft}` : 'none', background: on ? '#F5F9FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', fontSize: 'var(--neo-font-size-sm)', fontVariantNumeric: 'tabular-nums' }}>
+                                                    <strong style={{ width: 24, flex: 'none' }}>{h.label}</strong>
+                                                    <span style={{ flex: 1, minWidth: 0, color: T.sub, fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.timestamp || '2026. 09. 16. 오후 06:03'}</span>
+                                                    <span style={{ flex: 'none' }}>
+                                                        {pts !== null
+                                                            ? <><strong>{pts}</strong><span style={{ color: T.sub }}> / {activeMax}점</span></>
+                                                            : <strong>{fmt(h.level, h.score)}</strong>}
+                                                    </span>
+                                                    <button type="button" onClick={() => setReflectedHistoryId(h.id)} disabled={on}
+                                                        style={{ flex: 'none', width: 72, border: `1px solid ${on ? '#2A75F3' : T.line}`, background: on ? '#2A75F3' : 'white', color: on ? 'white' : T.sub, borderRadius: 'var(--neo-radius-md, 6px)', padding: '3px 0', fontSize: 'var(--neo-font-size-xs)', fontWeight: 600, cursor: on ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                                                        {on ? '✓ 반영됨' : '반영'}
                                                     </button>
                                                 </div>
-                                                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub }}>{h.timestamp || '2026. 09. 16. 오후 06:03'}</div>
-                                                <div style={{ fontSize: 'var(--neo-font-size-sm)', marginTop: 'auto' }}>
-                                                    {activeCriteria.length
-                                                        ? <><span style={{ color: T.sub }}>총점</span> <strong style={{ marginLeft: 6 }}>{reflectedHistoryId === h.id && activeCriteria.length ? sum(activeCriteria.map((c) => c.ai)) : (gradeToPoints(h.level, activeMax) ?? '-')}</strong><span style={{ color: T.sub }}> / {activeMax}점</span></>
-                                                        : <><span style={{ color: T.sub }}>채점 등급</span> <strong style={{ marginLeft: 6 }}>{fmt(h.level, h.score)}</strong></>}
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
+                                    <div style={{ ...hint, fontSize: 'var(--neo-font-size-xs)', marginTop: 8 }}>반영한 회차의 AI 점수와 피드백이 오른쪽에 보입니다.</div>
                                 </div>
                             )}
 
                             {/* [v5.10] 舊 좌측 「AI 과정 분석」 실행 카드 삭제 — 과정 분석은 AI 채점에 통합됐다 */}
+
+                            {/* [v5.16] 채점 근거 보기 — 왼쪽 카드 맨 아래. 판독 경고를 버튼 바로 위에 붙이고, 버튼은 채운 색으로 눈에 띄게 */}
+                            {/* 카드가 스크롤돼도 늘 보이도록 카드 바닥에 붙인다 (카드 안쪽 여백 20px만큼 내려 붙임) */}
+                            <div style={{ marginTop: 'auto', position: 'sticky', bottom: -20, zIndex: 2, background: 'white', padding: '10px 0 20px', marginBottom: -20, borderTop: `1px solid ${T.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {gradeFb.basis?.unreadable && (
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '8px 10px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--neo-radius-md, 6px)', fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', lineHeight: 1.5 }}>
+                                        <span aria-hidden>⚠</span><span>판독하지 못한 글자가 있어 원본 확인이 필요할 수 있습니다.</span>
+                                    </div>
+                                )}
+                                <button type="button" onClick={() => setRightTab('basis')} aria-pressed={rightTab === 'basis'}
+                                    style={{ width: '100%', border: 'none', background: rightTab === 'basis' ? '#1E40AF' : '#2563EB', padding: '10px 12px', borderRadius: 'var(--neo-radius-md, 6px)', color: 'white', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 2px 6px rgba(37,99,235,0.25)' }}>☑ 채점 근거 보기 ›</button>
+                            </div>
                         </div>
 
-                        {/* 하단 버튼 */}
+                    </div>
+
+                    {/* ── 우측 ── */}
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text }}>
+                                {qLabel} {rightTab === 'feedback' ? '피드백 보기' : rightTab === 'basis' ? '채점 근거' : '원본 보기'}
+                                {rightTab === 'basis' && (<>
+                                    <span title="AI가 채점 기준마다 충족 여부를 판단한 근거입니다. 학생에게 발송되는 리포트에는 싣지 않습니다." style={{ width: 18, height: 18, borderRadius: '50%', border: `1px solid ${T.line}`, color: T.sub, fontSize: 'var(--neo-font-size-xs)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>i</span>
+                                    <span style={pill('#1E293B', 'white')}>교사에게만 표시</span>
+                                </>)}
+                            </div>
+                            <div style={{ display: 'inline-flex', borderRadius: T.rLg, overflow: 'hidden' }}>
+                                {tabBtn('feedback', '피드백 보기', '🗨')}
+                                {tabBtn('original', '원본 보기', '▤')}
+                                {tabBtn('basis', '채점 근거', '☑')}
+                            </div>
+                        </div>
+                        {rightTab === 'feedback' && (
+                            <div style={{ ...hint, marginBottom: 8 }}>채점이 완료되면 AI 피드백이 제공되며, 필요에 따라 내용을 직접 수정하여 완성할 수 있습니다.</div>
+                        )}
+                        <div style={{ ...card, flex: 1, overflow: 'auto' }}>
+                            {rightTab === 'feedback' ? renderFeedback() : rightTab === 'basis' ? renderBasis() : renderOriginal()}
+                        </div>
+                    </div>
+                </div>
+
+                {/* [v5.13] 하단 버튼 — 화면 전체 폭 (舊 좌측 칼럼 아래) */}
+                <div style={{ padding: '0 16px 14px', flexShrink: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, flexShrink: 0 }}>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 {isStep3 && !isSent && (
@@ -868,31 +907,6 @@ const GradingReviewModal = ({
                                 )}
                             </div>
                         </div>
-                    </div>
-
-                    {/* ── 우측 ── */}
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text }}>
-                                {qLabel} {rightTab === 'feedback' ? '피드백 보기' : rightTab === 'basis' ? '채점 근거' : '원본 보기'}
-                                {rightTab === 'basis' && (<>
-                                    <span title="AI가 채점 기준마다 충족 여부를 판단한 근거입니다. 학생에게 발송되는 리포트에는 싣지 않습니다." style={{ width: 18, height: 18, borderRadius: '50%', border: `1px solid ${T.line}`, color: T.sub, fontSize: 'var(--neo-font-size-xs)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>i</span>
-                                    <span style={pill('#1E293B', 'white')}>교사에게만 표시</span>
-                                </>)}
-                            </div>
-                            <div style={{ display: 'inline-flex', borderRadius: T.rLg, overflow: 'hidden' }}>
-                                {tabBtn('feedback', '피드백 보기', '🗨')}
-                                {tabBtn('original', '원본 보기', '▤')}
-                                {tabBtn('basis', '채점 근거', '☑')}
-                            </div>
-                        </div>
-                        {rightTab === 'feedback' && (
-                            <div style={{ ...hint, marginBottom: 8 }}>채점이 완료되면 AI 피드백이 제공되며, 필요에 따라 내용을 직접 수정하여 완성할 수 있습니다.</div>
-                        )}
-                        <div style={{ ...card, flex: 1, overflow: 'auto' }}>
-                            {rightTab === 'feedback' ? renderFeedback() : rightTab === 'basis' ? renderBasis() : renderOriginal()}
-                        </div>
-                    </div>
                 </div>
 
                 {/* [SCR-06] 퇴고 요청 확인 모달 (학생 단위) */}
