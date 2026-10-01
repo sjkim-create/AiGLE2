@@ -3,7 +3,7 @@
  * 채점 확인 상세 화면 — 교사 검토 진행중 / 결과 발송
  *
  * [v5.0 · 2026-09-21] 상용 화면 기준으로 재구성
- *   · 좌측: 문항 탭 → 채점 결과(AI/교사) → AI 재채점 → 채점 히스토리 → AI 과정 분석(실행 상태) → 하단 버튼
+ *   · 좌측: 문항 탭 → 채점 결과(AI/교사) → AI 재채점 → 채점 히스토리 → 하단 버튼  ([v5.10] AI 과정 분석 실행 카드 삭제)
  *   · 우측: 「피드백 보기」 「원본 보기」 「채점 근거」 세 탭 (상용의 「AI 과정 분석 결과 보기」 탭은 피드백 보기에 합친다)
  *   · 피드백 보기 = 등급평가 피드백(공통 영역) + 아래쪽 「AI 과정 분석」 전용 영역
  *       공통 영역: 등급 · 이런 점이 좋아요 · 조금만 더 노력해볼까요 · 함께 성장해요
@@ -261,7 +261,6 @@ const GradingReviewModal = ({
     const [critPicks, setCritPicks] = useState({});
     const fmt = (grade, score) => formatResult(grade, { resultMode, maxPoints, score });
     const [rightTab, setRightTab] = useState('feedback'); // 'feedback' | 'basis' | 'original'
-    const [processEvalState, setProcessEvalState] = useState('idle'); // 'idle' | 'processing' | 'completed'
     const [isSaved, setIsSaved] = useState(false);
 
     // 원본 보기 — 재생·페이지·전체화면
@@ -310,7 +309,6 @@ const GradingReviewModal = ({
         setIsPlaybackMode(false); setIsPlaying(false); setRightTab('feedback');
         setTeacherGrade(isStep3 && selectedStudent?.teacherGrade && selectedStudent.teacherGrade !== '-' ? selectedStudent.teacherGrade : '선택 안함');
         setTeacherScore(selectedStudent?.teacherScore ?? (isStep3 ? (gradeToPoints(selectedStudent?.teacherGrade, maxPoints) ?? '') : ''));
-        setProcessEvalState(selectedStudent?.handwritingEvaluation ? 'completed' : 'idle');
         setCritPicks(selectedStudent?.teacherCriteria || {});
     }, [selectedStudent?.id, isOpen]);
 
@@ -343,21 +341,21 @@ const GradingReviewModal = ({
         window._feedbackSaveTimer = setTimeout(() => setIsSaved(true), 1000);
     };
 
-    /* ── AI 과정 분석 실행 ── */
-    const handleStartProcessEval = () => {
-        setProcessEvalState('processing');
-        setTimeout(() => {
-            const insufficient = isPenDataInsufficient(selectedStudent?.penStats);
-            const result = insufficient
-                ? { insufficient: true, message: PROCESS_INSUFFICIENT_MESSAGE, penStats: selectedStudent.penStats,
-                    systemDataLog: { processPattern: '분석불가-필기부족', metricsCode: '-', gradeLevel: '-' },
-                    evaluationSummary: { diagnosedPattern: '분석불가-필기부족', totalEvaluation: PROCESS_INSUFFICIENT_MESSAGE },
-                    finalFeedback: { whatsGood: '', whatNeedsWork: '', letsGrowTogether: '', contentBottleneckAnalysis: '' } }
-                : { ...PROCESS_RESULT_SAMPLE, systemDataLog: { ...PROCESS_RESULT_SAMPLE.systemDataLog, gradeLevel: gradeFb.letter } };
-            setProcessEvalState('completed');
-            if (onHandwritingEvaluated && selectedStudent) onHandwritingEvaluated(selectedStudent.id, result);
-        }, 2500);
-    };
+    /* ── AI 과정 분석 — [v5.10] 별도 실행 없음 ──
+       과정 분석은 AI 채점(등급평가)에 통합됐다. 수학 과제는 채점 결과에 과정 분석이 함께 딸려 오므로
+       교사가 따로 [AI 과정 분석 시작]을 누르지 않는다. 프로토타입은 상세를 열 때 결과를 붙여 흉내 낸다. */
+    useEffect(() => {
+        if (!isOpen || !isProcessEvalSupported || !selectedStudent || selectedStudent.handwritingEvaluation) return;
+        const insufficient = isPenDataInsufficient(selectedStudent.penStats);
+        const result = insufficient
+            ? { insufficient: true, message: PROCESS_INSUFFICIENT_MESSAGE, penStats: selectedStudent.penStats,
+                systemDataLog: { processPattern: '분석불가-필기부족', metricsCode: '-', gradeLevel: '-' },
+                evaluationSummary: { diagnosedPattern: '분석불가-필기부족', totalEvaluation: PROCESS_INSUFFICIENT_MESSAGE },
+                finalFeedback: { whatsGood: '', whatNeedsWork: '', letsGrowTogether: '', contentBottleneckAnalysis: '' } }
+            : { ...PROCESS_RESULT_SAMPLE, systemDataLog: { ...PROCESS_RESULT_SAMPLE.systemDataLog, gradeLevel: gradeFb.letter } };
+        if (onHandwritingEvaluated) onHandwritingEvaluated(selectedStudent.id, result);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, selectedStudent?.id, isProcessEvalSupported]);
 
     // 학생 네비게이션
     const currentIndex = students.findIndex(s => s.id === selectedStudent?.id);
@@ -399,61 +397,17 @@ const GradingReviewModal = ({
     const activeAllPicked = activePicks.every(isPicked);
     const shownTotal = activePicks.some(isPicked) ? sum(activePicks) : '–';
 
-    /* ── 좌측: AI 과정 분석 카드 ── */
-    const renderProcessCard = () => {
-        const badge = !isProcessEvalSupported ? pill('#F1F5F9', T.sub)
-            : processEvalState === 'completed' ? pill('#ECFDF5', '#059669')
-            : processEvalState === 'processing' ? pill('#EEF2FF', '#4F46E5') : null;
-        const badgeText = !isProcessEvalSupported ? '수학 교과만' : processEvalState === 'completed' ? '완료' : processEvalState === 'processing' ? '진행 중' : '';
-        return (
-            <div>
-                <div style={{ ...secTitle, display: 'flex', alignItems: 'center', gap: 8 }}>AI 과정 분석 {badge && <span style={badge}>{badgeText}</span>}</div>
-                <div style={{ ...hint, marginBottom: 10 }}>학생의 풀이과정을 분석하여 학습 행동 패턴을 진단합니다.</div>
-                <div style={{ border: '1px solid #CBD5E1', borderRadius: T.rLg, minHeight: 96, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, textAlign: 'center' }}>
-                    {!isProcessEvalSupported && (
-                        <div style={hint}>수학 교과 과제에서만 실행할 수 있습니다. <span style={{ color: T.muted }}>(본 과제: {taskSubject || '-'})</span></div>
-                    )}
-                    {isProcessEvalSupported && processEvalState === 'idle' && (<>
-                        <button onClick={handleStartProcessEval} style={{ background: '#EEF2FF', color: '#4338CA', border: 'none', padding: '8px 16px', borderRadius: T.rLg, fontWeight: 600, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>✎ AI 과정 분석 시작</button>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted }}>1회만 실행할 수 있으며 결과는 수정할 수 없습니다.</div>
-                    </>)}
-                    {isProcessEvalSupported && processEvalState === 'processing' && (<>
-                        <style>{`@keyframes pulse-ind { 0%,100%{opacity:1} 50%{opacity:.35} }`}</style>
-                        <div style={{ fontSize: '1.6rem', animation: 'pulse-ind 1.4s ease-in-out infinite' }}>✎</div>
-                        <div style={hint}>필기 데이터를 분석하고 학습 행동 패턴을 진단하는 중입니다.</div>
-                    </>)}
-                    {isProcessEvalSupported && processEvalState === 'completed' && (() => {
-                        const code = hw?.patternCode || patternCodeOf(hw?.systemDataLog?.metricsCode);
-                        const img = !hwInsufficient && code && PATTERN_CHARACTERS[code];
-                        const name = hw?.evaluationSummary?.diagnosedPattern || hw?.systemDataLog?.processPattern;
-                        return (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                {img && <img src={img} alt={name} style={{ width: 56, height: 56, objectFit: 'contain' }} />}
-                                <div style={{ textAlign: 'left' }}>
-                                    {name && <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: T.text }}>{name}</div>}
-                                    <div style={hint}>결과는 오른쪽에서 확인해보세요.</div>
-                                </div>
-                            </div>
-                        );
-                    })()}
-                </div>
-            </div>
-        );
-    };
-
     /* ── 우측: 피드백 보기 (등급평가 공통 + 과정 분석 전용 영역) ── */
     const renderFeedback = () => (
         <div style={{ padding: '4px 20px 20px' }}>
-            {/* 등급 — 점수 모드 과제는 등급 대신 「n점 / 만점」 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 6px' }}>
-                {isScoreMode ? (<>
-                    <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: '#2A75F3' }}>{aiPoints ?? '-'}점</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>/ {maxPoints}점 만점 · 점수제 과제</span>
-                </>) : (<>
+            {/* [v5.11] 점수 - 등급 — 문항 점수(AI)와 등급을 한 줄에 함께 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 6px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: '#2A75F3', fontVariantNumeric: 'tabular-nums' }}>{activeCriteria.length ? sum(activeCriteria.map((c) => c.ai)) : (aiPoints ?? '-')}점</span>
+                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>/ {activeCriteria.length ? activeMax : maxPoints}점</span>
+                <span style={{ width: 1, height: 16, background: T.lineSoft }} />
                 <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: gradeColorMap[gradeFb.label] || '#2A75F3' }}>{gradeFb.letter}</span>
                 <span style={pill(gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#FEE2E2' : '#DCFCE7', gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#B91C1C' : '#15803D')}>{gradeFb.label}</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>{gradeFb.scale}</span>
-                </>)}
                 {isSaved && <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#059669', fontWeight: 600 }}>✓ 저장됨</span>}
             </div>
 
@@ -524,34 +478,24 @@ const GradingReviewModal = ({
                 </div>
             )}
 
-            {/* ── AI 과정 분석 전용 영역 ── */}
+            {/* ── AI 필기 분석 — [v5.11] 피드백 맨 끝(학습 안내 다음). 모든 과제에 둔다.
+                   분석 내용이 있으면 캐릭터 카드 + 총평, 없으면(미분석 · 필기 부족) 안내 문구 ── */}
             <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px dashed #CBD5E1' }}>
                 <div style={{ ...secTitle, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    AI 과정 분석
-                    {hw && <span style={pill(hwInsufficient ? '#FEF3C7' : '#ECFDF5', hwInsufficient ? '#92400E' : '#059669')}>{hwInsufficient ? '필기 부족' : '완료'}</span>}
+                    AI 필기 분석
+                    {hw && !hwInsufficient && <span style={pill('#ECFDF5', '#059669')}>완료</span>}
                 </div>
-                {!isProcessEvalSupported && (
-                    <div style={{ ...hint, padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>수학 교과 과제에서만 과정 분석 결과가 제공됩니다.</div>
-                )}
-                {isProcessEvalSupported && processEvalState === 'idle' && (
-                    <div style={{ ...hint, padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>왼쪽의 [AI 과정 분석 시작]을 누르면 풀이 과정 진단 결과가 여기에 표시됩니다.</div>
-                )}
-                {isProcessEvalSupported && processEvalState === 'processing' && (
-                    <div style={{ ...hint, padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>필기 데이터를 분석하는 중입니다…</div>
-                )}
-                {isProcessEvalSupported && processEvalState === 'completed' && hw && hwInsufficient && (
+                {(!hw || hwInsufficient) && (
                     <div style={{ padding: '14px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: T.rLg }}>
-                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7, marginBottom: 10 }}>{hw.message || PROCESS_INSUFFICIENT_MESSAGE}</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.sub }}>진단된 학습 행동 패턴 :</div>
-                        <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text }}>분석불가-필기부족</div>
-                        {hw.penStats && (
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>{hw?.message || PROCESS_INSUFFICIENT_MESSAGE}</div>
+                        {hw?.penStats && (
                             <div style={{ fontSize: 'var(--neo-font-size-xs)', color: T.muted, marginTop: 4 }}>
                                 획수 {hw.penStats.strokes}획 · 필기 {hw.penStats.durationSec}초 — 분석 기준 {PROCESS_MIN_STROKES}획 · {PROCESS_MIN_DURATION_SEC}초 이상
                             </div>
                         )}
                     </div>
                 )}
-                {isProcessEvalSupported && processEvalState === 'completed' && hw && !hwInsufficient && (
+                {hw && !hwInsufficient && (
                     <div style={{ padding: '14px 16px', background: T.surface, borderRadius: T.rLg }}>
                         {(() => {
                             const code = hw.patternCode || patternCodeOf(hw.systemDataLog?.metricsCode);
@@ -873,7 +817,7 @@ const GradingReviewModal = ({
                                 </div>
                             )}
 
-                            {renderProcessCard()}
+                            {/* [v5.10] 舊 좌측 「AI 과정 분석」 실행 카드 삭제 — 과정 분석은 AI 채점에 통합됐다 */}
                         </div>
 
                         {/* 하단 버튼 */}

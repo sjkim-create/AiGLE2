@@ -100,7 +100,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const [exportStatus, setExportStatus] = useState('ready'); // ready | processing | done
   const [exportProgress, setExportProgress] = useState(0);
   const [previewStudent, setPreviewStudent] = useState(null);
-  // 내보내기 포함 항목 — 교사 피드백은 필수(고정), 문항/답안/과정 분석은 선택
+  // 내보내기 포함 항목 — 교사 피드백은 필수(고정), 지문+문항 / 학생 답안 / 과정 분석은 선택 (POP-19 v2.9)
   //   과정 분석은 기본 켬 — 분석이 끝난 학생에게만 실리고, 미실행 학생은 항목 자체가 빠진다
   const [exportContentOptions, setExportContentOptions] = useState({
     question: false,
@@ -925,7 +925,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       ✓ 검토 완료 처리 ({bulkReviewCompleteIds.length}명)
                     </button>
                   )}
-                  {/* [SCR-01 v4.27] 舊 「✎ 일괄 과정 분석」 버튼 삭제 — 과정 분석은 등급평가에 통합돼 채점 확인 상세(SCR-03)에서 학생별로만 실행한다 */}
+                  {/* [SCR-01 v4.27] 舊 「✎ 일괄 과정 분석」 버튼 삭제 — 과정 분석은 AI 채점에 통합돼 따로 실행하지 않는다(SCR-03 v5.10) */}
                   {/* 결과 발송 탭 — 결과발송 */}
                   {bulkPreSendIds.length > 0 && (
                     <button
@@ -1324,10 +1324,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           setExportContentOptions(prev => ({ ...prev, [key]: !prev[key] }));
         };
         const includedSectionLabels = [
-          exportContentOptions.question && '문항',
-          exportContentOptions.answer && '답안',
-          exportContentOptions.feedback && '교사 피드백',
-          exportContentOptions.process && '과정 분석'
+          exportContentOptions.question && '지문+문항',
+          exportContentOptions.answer && '학생 답안',
+          exportContentOptions.process && '과정 분석',
+          exportContentOptions.feedback && '교사 피드백'
         ].filter(Boolean);
         const startExport = () => {
           if (exportSelectedIds.length === 0) return;
@@ -1381,7 +1381,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
               {exportStatus !== 'processing' && <button className="btn-modal-close" onClick={closeModal}>×</button>}
               <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', marginBottom: '0.5rem' }}>📤 채점 결과 내보내기</h2>
               <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: '1rem' }}>
-                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 과정 분석은 포함 항목에서 선택하며, 완료된 학생의 PDF에만 실립니다.
+                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 지문+문항 · 학생 답안 · 과정 분석은 포함 항목에서 고르고, 교사 피드백은 항상 실립니다. 과정 분석은 결과가 있는 학생의 PDF에만 실립니다.
               </p>
 
               {/* [v2.2] 출력 형식 라디오 — 형식 선택에 따라 옵션 영역 동적 분기 */}
@@ -1403,21 +1403,22 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
               {exportStatus === 'ready' && exportFormat === 'pdf' && (
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center', padding: '10px 14px', background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: '8px', marginBottom: '1rem', fontSize: 'var(--neo-font-size-sm)' }}>
                   <span style={{ fontWeight: 700, color: '#1E2225' }}>📋 PDF 포함 항목</span>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }}>
+                  {/* [POP-19 v2.9] 순서: 지문+문항 → 학생 답안 → 과정 분석 (선택) → 교사 피드백 (고정) */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="문항의 지문과 문항 내용을 싣습니다.">
                     <input type="checkbox" checked={exportContentOptions.question} onChange={() => toggleContentOption('question')} />
-                    문항
+                    지문+문항
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="학생 답안을 답안마다 한 페이지로 싣습니다.">
                     <input type="checkbox" checked={exportContentOptions.answer} onChange={() => toggleContentOption('answer')} />
-                    답안
+                    학생 답안
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 과정 분석 결과가 있는 학생에게만 실립니다 (캐릭터 · 총평).">
+                    <input type="checkbox" checked={exportContentOptions.process} onChange={() => toggleContentOption('process')} />
+                    과정 분석 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(결과 있는 학생만)</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'not-allowed', color: '#64748B' }} title="교사 피드백은 항상 포함됩니다.">
                     <input type="checkbox" checked disabled />
                     교사 피드백 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(고정)</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 과정 분석이 완료된 학생에게만 실립니다 (캐릭터 · 총평).">
-                    <input type="checkbox" checked={exportContentOptions.process} onChange={() => toggleContentOption('process')} />
-                    과정 분석 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(완료 학생만)</span>
                   </label>
                 </div>
               )}
@@ -1600,10 +1601,14 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         </tbody>
                       </table>
 
-                      {/* 2. 문항 내용 [조건부] */}
+                      {/* 2. 지문 + 문항 [조건부 — 「지문+문항」 체크 시] */}
                       {exportContentOptions.question && (
                         <>
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 문항 내용</h3>
+                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 지문 + 문항</h3>
+                          <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>지문</div>
+                          <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px dashed #CBD5E1', marginBottom: '0.75rem' }}>
+                            테셀레이션은 같은 모양의 도형을 겹치거나 빈틈없이 이어 붙여 평면을 덮는 것이다. 정다각형으로 평면을 채우려면 한 꼭짓점에 모이는 각의 합이 360°가 되어야 한다.
+                          </div>
                           <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>1번 문항</div>
                           <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E5E7EB' }}>
                             세 종류의 정다각형(정삼각형·정육각형·정십이각형)을 사용하여 한 점에서 만나는 각의 합이 360°가 되도록 평면을 채우려고 한다. 한 점에서 90°가 이미 채워져 있다고 할 때, 남은 270°를 만들 수 있는 정다각형의 조합을 모두 찾고 그 이유를 서술하시오.
