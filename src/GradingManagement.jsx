@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf } from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
@@ -1381,7 +1381,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
               {exportStatus !== 'processing' && <button className="btn-modal-close" onClick={closeModal}>×</button>}
               <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', marginBottom: '0.5rem' }}>📤 채점 결과 내보내기</h2>
               <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: '1rem' }}>
-                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 지문+문항 · 학생 답안 · 과정 분석은 포함 항목에서 고르고, 교사 피드백은 항상 실립니다. 과정 분석은 결과가 있는 학생의 PDF에만 실립니다.
+                결과 발송 단계의 학생 리포트를 <strong>PDF(학생별 개별, ZIP 묶음)</strong> 또는 <strong>엑셀(전체 명단 1파일)</strong>로 내보냅니다. 지문+문항 · 학생 답안 · 과정 분석은 포함 항목에서 고르고, 교사 피드백(학습 안내 포함)은 항상 실립니다.
               </p>
 
               {/* [v2.2] 출력 형식 라디오 — 형식 선택에 따라 옵션 영역 동적 분기 */}
@@ -1412,9 +1412,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <input type="checkbox" checked={exportContentOptions.answer} onChange={() => toggleContentOption('answer')} />
                     학생 답안
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 과정 분석 결과가 있는 학생에게만 실립니다 (캐릭터 · 총평).">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 필기 분석을 싣습니다 — 결과가 있으면 캐릭터 · 총평, 없으면 안내 문구.">
                     <input type="checkbox" checked={exportContentOptions.process} onChange={() => toggleContentOption('process')} />
-                    과정 분석 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>(결과 있는 학생만)</span>
+                    과정 분석
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'not-allowed', color: '#64748B' }} title="교사 피드백은 항상 포함됩니다.">
                     <input type="checkbox" checked disabled />
@@ -1626,25 +1626,30 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <div style={{ marginBottom: '0.75rem' }}>제시된 조건에 따라 모든 가능한 경우의 수를 빠짐없이 서술하였으므로 추가적인 보완점은 보이지 않습니다. 완벽한 답변이에요.</div>
                         <div style={{ fontWeight: 700, color: '#2A75F3', marginBottom: '0.25rem' }}>함께 성장해요</div>
                         <div style={{ marginBottom: '0.75rem' }}>앞으로도 이처럼 각 도형의 내각의 합과 한 내각의 크기 공식을 활용하여 평면을 채우는 테셀레이션 원리를 탐구해본다면 수학적 사고력이 더욱 깊어질 거예요.</div>
+                        {/* [POP-19 v2.10] 학습 안내 — 상세 피드백 보기와 같은 순서(성장해요 다음) */}
+                        <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
+                        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '10px 14px' }}>
+                          <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '4px' }}>정다각형으로 평면 채우기</div>
+                          <ul style={{ margin: 0, paddingLeft: '16px' }}>
+                            <li>한 꼭짓점에 모이는 각의 합이 360°가 되는지 먼저 확인해요.</li>
+                            <li>정n각형 한 내각의 크기 = 180° × (n − 2) ÷ n 을 이용해 각을 구해요.</li>
+                            <li>가능한 조합을 빠짐없이 찾았는지 표로 정리해 검토해요.</li>
+                          </ul>
+                        </div>
                       </div>
 
-                      {/* 4. 과정 분석 [조건부 — 포함 항목 체크 + 과정 분석 완료 학생만] */}
-                      {exportContentOptions.process && previewStudent.handwritingEvaluation && (
+                      {/* 4. AI 필기 분석 [조건부 — 포함 항목 「과정 분석」 체크 시 모든 학생]
+                          [POP-19 v2.10] 결과가 있으면 캐릭터 + 총평, 없으면(미분석 · 필기 부족) 안내 문구 — 상세 피드백 보기와 같다 */}
+                      {exportContentOptions.process && (
                         <>
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 과정 분석</h3>
+                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ AI 필기 분석</h3>
                           <div style={{ background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
                             {/* 유형 캐릭터 — 학생에게 가는 리포트에 상세 화면과 같은 캐릭터를 싣는다 */}
                             {(() => {
                               const hw = previewStudent.handwritingEvaluation;
-                              if (hw.insufficient) {
-                                /* 필기 부족 — 캐릭터 대신 안내 문구만 (상세 화면과 동일) */
-                                return (
-                                  <div style={{ padding: '12px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', marginBottom: '0.9rem' }}>
-                                    <div style={{ marginBottom: '6px' }}>{hw.message}</div>
-                                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#86198F', fontWeight: 700 }}>진단된 학습 행동 패턴</div>
-                                    <div style={{ fontWeight: 800, color: '#1E293B' }}>분석불가-필기부족</div>
-                                  </div>
-                                );
+                              if (!hw || hw.insufficient) {
+                                /* 분석 내용 없음(미분석 · 필기 부족) — 캐릭터 대신 안내 문구만 (상세 화면과 동일) */
+                                return <div>{hw?.message || PROCESS_INSUFFICIENT_MESSAGE}</div>;
                               }
                               const code = hw.patternCode || patternCodeOf(hw.systemDataLog?.metricsCode);
                               const img = code && PATTERN_CHARACTERS[code];
@@ -1664,7 +1669,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                               );
                             })()}
                             {/* 강점·개선·성장 제안은 등급평가 피드백에 합쳐졌으므로 여기서는 캐릭터와 총평만 싣는다 (舊 학습 행동 밀착 가이드 삭제) */}
-                            {!previewStudent.handwritingEvaluation.insufficient && (() => {
+                            {previewStudent.handwritingEvaluation && !previewStudent.handwritingEvaluation.insufficient && (() => {
                               const hw = previewStudent.handwritingEvaluation;
                               return (<>
                                 <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>총평</div>

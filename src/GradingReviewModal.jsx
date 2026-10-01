@@ -208,6 +208,7 @@ const T = {
     line: 'var(--neo-grey-light, #cbd5e1)', lineSoft: 'var(--neo-grey-lighter, #e2e8f0)', surface: 'var(--neo-grey-lightest, #f1f5f9)',
     rLg: 'var(--neo-radius-lg, 8px)', rXl: 'var(--neo-radius-xl, 12px)', r2xl: 'var(--neo-radius-2xl, 16px)', rFull: 'var(--neo-radius-full, 9999px)',
 };
+const HEAD_H = 44; // [v5.18] 좌(문항 탭) · 우(제목 + 보기 탭) 머리줄 높이 — 같아야 아래 카드 위 끝이 맞는다
 const card = { background: 'white', borderRadius: T.rXl, border: `1px solid ${T.lineSoft}`, display: 'flex', flexDirection: 'column', minHeight: 0 };
 const secTitle = { fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text, marginBottom: 8 };
 const hint = { fontSize: 'var(--neo-font-size-sm)', color: T.sub, lineHeight: 1.6 };
@@ -399,9 +400,9 @@ const GradingReviewModal = ({
 
     /* ── 우측: 피드백 보기 (등급평가 공통 + 과정 분석 전용 영역) ── */
     const renderFeedback = () => (
-        <div style={{ padding: '4px 20px 20px' }}>
+        <div style={{ padding: '20px 22px' }}>
             {/* [v5.11] 점수 - 등급 — 문항 점수(AI)와 등급을 한 줄에 함께 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 6px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 6px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: '#2A75F3', fontVariantNumeric: 'tabular-nums' }}>{activeCriteria.length ? sum(activeCriteria.map((c) => c.ai)) : (aiPoints ?? '-')}점</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>/ {activeCriteria.length ? activeMax : maxPoints}점</span>
                 <span style={{ width: 1, height: 16, background: T.lineSoft }} />
@@ -607,7 +608,7 @@ const GradingReviewModal = ({
         const quoteOf = (q) => q.split('[판독불가]').flatMap((part, i) => (i ? [<mark key={i} style={{ background: '#FEF3C7', color: '#92400E', padding: '0 2px' }}>[판독불가]</mark>, part] : [part]));
         return (
             <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-                <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+                <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
                     <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 600, color: T.text, lineHeight: 1.6 }}>{b.criterion}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={pill('#ECFDF5', '#047857')}>{isScoreMode ? `${sum(activeCriteria.map((c) => c.ai))}점` : `${gradeFb.letter} (${gradeFb.label})`}</span>
@@ -681,7 +682,8 @@ const GradingReviewModal = ({
                 <div style={{ flex: 1, display: 'flex', gap: 16, padding: 16, minHeight: 0 }}>
                     {/* ── 좌측 ── [v5.13] 폭을 절반으로(46% → 23%, 최소 360px) — 피드백·채점 근거를 넓게 */}
                     <div style={{ flex: '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <div style={{ display: 'flex', gap: 4, paddingLeft: 4 }}>
+                        {/* [v5.18] 좌우 머리줄 높이를 같게(HEAD_H) — 아래 흰 카드의 위 끝이 좌우로 맞는다 */}
+                        <div style={{ display: 'flex', gap: 4, paddingLeft: 4, height: HEAD_H, alignItems: 'flex-end', flexShrink: 0 }}>
                             {questions.map(q => (
                                 <div key={q.id} className={`q-tab ${activeQuestion === q.id ? 'active' : ''}`} onClick={() => setActiveQuestion(q.id)} style={{ padding: '0.55rem 1.1rem', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>
                                     {activeQuestion === q.id ? '✓ ' : ''}문항 {q.id} <span style={{ fontWeight: 400, opacity: 0.8 }}>{q.score || 2}점</span>
@@ -818,11 +820,12 @@ const GradingReviewModal = ({
 
                             {/* [v5.10] 舊 좌측 「AI 과정 분석」 실행 카드 삭제 — 과정 분석은 AI 채점에 통합됐다 */}
 
-                            {/* [v5.16] 채점 근거 보기 — 왼쪽 카드 맨 아래. 판독 경고를 버튼 바로 위에 붙이고, 버튼은 채운 색으로 눈에 띄게 */}
+                            {/* [v5.16] 채점 근거 보기 — 왼쪽 카드 맨 아래. 판독 경고를 버튼 바로 위에 붙이고, 버튼은 채운 색으로 눈에 띄게.
+                                [v5.17] 경고는 배경·테두리 없이 빨간 글씨 설명으로만 — 상자로 두면 버튼처럼 보여 버튼과 한 묶음으로 읽히지 않는다 */}
                             {/* 카드가 스크롤돼도 늘 보이도록 카드 바닥에 붙인다 (카드 안쪽 여백 20px만큼 내려 붙임) */}
                             <div style={{ marginTop: 'auto', position: 'sticky', bottom: -20, zIndex: 2, background: 'white', padding: '10px 0 20px', marginBottom: -20, borderTop: `1px solid ${T.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {gradeFb.basis?.unreadable && (
-                                    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '8px 10px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--neo-radius-md, 6px)', fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', lineHeight: 1.5 }}>
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 600, lineHeight: 1.5 }}>
                                         <span aria-hidden>⚠</span><span>판독하지 못한 글자가 있어 원본 확인이 필요할 수 있습니다.</span>
                                     </div>
                                 )}
@@ -835,7 +838,7 @@ const GradingReviewModal = ({
 
                     {/* ── 우측 ── */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, height: HEAD_H, flexShrink: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text }}>
                                 {qLabel} {rightTab === 'feedback' ? '피드백 보기' : rightTab === 'basis' ? '채점 근거' : '원본 보기'}
                                 {rightTab === 'basis' && (<>
@@ -849,9 +852,7 @@ const GradingReviewModal = ({
                                 {tabBtn('basis', '채점 근거', '☑')}
                             </div>
                         </div>
-                        {rightTab === 'feedback' && (
-                            <div style={{ ...hint, marginBottom: 8 }}>채점이 완료되면 AI 피드백이 제공되며, 필요에 따라 내용을 직접 수정하여 완성할 수 있습니다.</div>
-                        )}
+                        {/* [v5.18] 舊 피드백 보기 설명글 「채점이 완료되면 AI 피드백이 제공되며…」 삭제 */}
                         <div style={{ ...card, flex: 1, overflow: 'auto' }}>
                             {rightTab === 'feedback' ? renderFeedback() : rightTab === 'basis' ? renderBasis() : renderOriginal()}
                         </div>
