@@ -1107,7 +1107,6 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const info = cradleModel.penInfo[pen.id] || { kind: 'unread' };
     const k = PEN_KIND[info.kind];
     const st = info.sid ? studentById(info.sid) : null;
-    const rivals = info.kind === 'dup' ? connected.filter((p) => p.id !== pen.id && cradleModel.penInfo[p.id]?.sid === info.sid && cradleModel.penInfo[p.id]?.kind === 'dup') : [];
     return (
       <>
         {renderLocationCard(pen)}
@@ -1124,7 +1123,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
         {info.kind === 'dup' && (
           <div style={{ ...noteBox('warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div><strong>⚠ 같은 학생에 두 펜이 붙었습니다.</strong> 이 펜과 슬롯 {rivals.map((r) => slotShort(r.slot)).join(' · ')} 펜이 모두 {st.name}(으)로 읽혔습니다. OCR이 학생정보를 잘못 읽었을 수 있습니다 — 미리보기에서 <strong>답안지 학생정보</strong>를 확인하고, {st.name}의 답안이 아니면 적힌 학생으로 매칭해 주세요.</div>
+            {/* [SCR-08 v1.14] 긴 설명문 삭제 — 상태 배지(확인 필요 — 중복 데이터)와 버튼만 */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button type="button" style={{ ...primaryBtn(true), padding: '5px 14px' }} onClick={() => setDupPick((d) => ({ ...d, [info.sid]: pen.id }))}>이 펜이 {st.name}의 답안입니다</button>
               <span style={{ color: '#94A3B8' }}>또는</span>
