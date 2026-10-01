@@ -56,6 +56,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const isUnified = variant === 'unified';
   const screenTitle = isV2 ? '채점 관리 2' : isUnified ? '일괄 채점 통합' : '채점 관리';
   const [unifiedSource, setUnifiedSource] = useState(null); // null(목록) | 'cradle' | 'scan'
+  // [SCR-08 v1.11] 왼쪽 메뉴 「일괄 채점 통합」을 누르면 진행 중인 흐름을 닫고 목록으로 돌아간다
+  useEffect(() => {
+    if (!isUnified) return undefined;
+    const back = (e) => { if (e.detail === '일괄 채점 통합') setUnifiedSource(null); };
+    window.addEventListener('aigle:submenu', back);
+    return () => window.removeEventListener('aigle:submenu', back);
+  }, [isUnified]);
   // ── 채점 관리 상태 ──
   const [selectedTask, setSelectedTask] = useState(1);
   // [v3.18] '전체' 탭 폐기 — 기본값 '미채점'

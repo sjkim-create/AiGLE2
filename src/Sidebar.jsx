@@ -166,7 +166,7 @@ const Sidebar = ({
                                 {/* 크래들·스캔 일괄 채점 통합 구조 시안 */}
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '일괄 채점 통합' ? 'active' : ''}`}
-                                    onClick={() => setActiveSubMenu('일괄 채점 통합')}
+                                    onClick={() => { setActiveSubMenu('일괄 채점 통합'); window.dispatchEvent(new CustomEvent('aigle:submenu', { detail: '일괄 채점 통합' })); /* 이미 이 메뉴여도 목록으로 */ }}
                                 >
                                     ⊙ 일괄 채점 통합 <span className="n-badge" style={{ background: '#6D28D9' }}>시안</span>
                                 </div>

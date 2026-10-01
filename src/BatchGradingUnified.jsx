@@ -852,7 +852,6 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
 
   /** 한 줄 요약 — 카운트 · 업로드 범위 · (크래들) 다시 매칭 */
   const renderSummaryBar = () => {
-    const changed = source === 'cradle' && (cradleModel?.unread.length > 0 || judged.some((id) => !connected.some((p) => p.id === id)));
     const counts = {
       ok: model.gradable.length,
       check: source === 'cradle' ? Object.values(cradleModel.penInfo).filter((x) => x.kind === 'dup' || x.kind === 'unc').length : model.students.filter((s) => s.badge === 'check').length,
@@ -866,13 +865,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <span style={{ color: '#94A3B8' }}>제외 {counts.none}명</span>
         <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '자루'}</span>
         <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500, flex: 1, minWidth: 200 }}>{model.manifest}</span>
-        {source === 'cradle' && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {changed && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#C2410C' }}>🔄 크래들 구성이 바뀌었습니다{cradleModel.unread.length > 0 && ` — 읽지 않은 펜 ${cradleModel.unread.length}자루`}</span>}
-            <button type="button" onClick={reread} title="판정을 다시 돌립니다. 직접 매칭 기록은 유지됩니다. 읽은 펜 수만큼 AI OCR이 차감됩니다."
-              style={{ ...ghostBtn, padding: '5px 12px', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1' }}>↻ 다시 매칭</button>
-          </span>
-        )}
+        {/* [SCR-08 v1.8] [↻ 다시 매칭]은 슬롯 그림(미니맵) 위로 옮겼다 */}
       </div>
     );
   };
@@ -961,8 +954,16 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   };
 
   /** 미니맵 — 검은 크래들 3대를 점 한 줄 높이로. 목록 맨 위에 고정 (약 90px) */
-  const renderMinimap = () => (
+  const renderMinimap = () => {
+    const changed = cradleModel.unread.length > 0 || judged.some((id) => !connected.some((p) => p.id === id));
+    return (
     <div style={{ padding: '8px 12px 6px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {/* [SCR-08 v1.9] 맨 위 한 줄 — 안내(있을 때만) + [↻ 다시 매칭]. 안내는 한 줄로 줄여 줄바꿈 없이 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, minHeight: 26 }}>
+        {changed && <span title={`크래들 구성이 바뀌었습니다${cradleModel.unread.length > 0 ? ` — 읽지 않은 펜 ${cradleModel.unread.length}자루` : ''}`} style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#C2410C', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>🔄 {cradleModel.unread.length > 0 ? `읽지 않은 펜 ${cradleModel.unread.length}자루` : '구성이 바뀌었습니다'}</span>}
+        <button type="button" onClick={reread} title="판정을 다시 돌립니다. 직접 매칭 기록은 유지됩니다. 읽은 펜 수만큼 AI OCR이 차감됩니다."
+          style={{ ...ghostBtn, marginLeft: 'auto', flex: 'none', padding: '3px 10px', fontSize: 'var(--neo-font-size-xs)', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1' }}>↻ 다시 매칭</button>
+      </div>
       {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
         <div key={cn} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 14, fontSize: 10, fontWeight: 800, color: '#64748B', textAlign: 'right' }}>{cn}</span>
@@ -970,15 +971,16 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           <span style={{ width: 30, fontSize: 10, color: '#94A3B8', textAlign: 'right' }}>{Object.values(docked).filter((x) => cradleOf(x.slot) === cn).length}/{SLOTS}</span>
         </div>
       ))}
-      {/* 범례 — 펜 머리 LED 색의 뜻 */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2, paddingLeft: 20, fontSize: 10, color: '#64748B' }}>
-        {[['ok', '정상'], ['dup', '확인 필요'], ['unc', '미분류'], ['unread', '읽지 않음'], ['empty', '대상 아님']].map(([kk, l]) => (
-          <span key={kk} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: PEN_KIND[kk].dot }} />{l}</span>
-        ))}
-        <span>＋ 빈 슬롯(눌러서 거치)</span>
+      {/* [SCR-08 v1.9] 크래들 제목은 그림 아래 한 줄 — LED 색 범례는 뺀다(색의 뜻은 펜 목록 배지가 말한다) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, paddingLeft: 20, fontSize: 10, color: '#64748B' }}>
+        <strong style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>크래들</strong>
+        <span>＋ 빈 슬롯을 누르면 거치</span>
       </div>
+      {/* [SCR-08 v1.10] 펜 오류는 크래들에 표시되지 않는다 — 실물 크래들과 같다 */}
+      <div style={{ paddingLeft: 20, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>※ 오류가 난 펜은 크래들에 표시되지 않습니다 — 꽂혀 있는데 빈 칸이면 뺐다가 다시 꽂아 주세요.</div>
     </div>
-  );
+    );
+  };
 
   /** 위치 줄 — 고른 펜이 실물 크래들 어디에 있는지. 그림은 좌측 미니맵이 맡고, 여기는 말과 조치만 */
   const renderLocationCard = (pen) => (
@@ -995,14 +997,15 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const nNone = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'none').length + cradleModel.absent.length;
     const show = (p) => tab === 'all' || (infos[p.id] && penTab(infos[p.id]) === tab);
     return (
-      <div style={{ ...card, width: 320, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', gap: 6, padding: 10, borderBottom: '1px solid #F1F5F9' }}>
+      <div style={{ ...card, flex: '1 1 300px', minWidth: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 */}
+        {renderMinimap()}
+        {/* [SCR-08 v1.8] 필터는 미니맵 아래 — 아래 목록을 거르는 버튼이라 목록과 한 묶음 */}
+        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid #F1F5F9' }}>
           {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['none', '제외', nNone]].map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
           ))}
         </div>
-        {renderMinimap()}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* 목록은 한 줄로 이어진다(스캔 목록과 같은 모양). 슬롯 순서 */}
           {pens.filter(show).map(penRow)}
@@ -1036,7 +1039,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length],
       ['answer', '기존 답안', model.students.filter((s) => s.badge === 'answer').length], ['none', '제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
-      <div style={{ ...card, width: 320, flex: 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ ...card, flex: '1 1 300px', minWidth: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 */}
         <div style={{ display: 'flex', gap: 6, padding: 10, flexWrap: 'wrap', borderBottom: '1px solid #F1F5F9' }}>
           {tabs.map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
@@ -1483,10 +1486,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
             {/* 3단 — 목록(크래들은 맨 위 미니맵) | 매핑(조치) | 미리보기. 각 열이 따로 스크롤한다 */}
             <div style={{ height: 'max(480px, calc(100vh - 400px))', display: 'flex', gap: 10 }}>
               {source === 'cradle' ? renderPenList() : renderStudentList()}
-              <div style={{ ...card, flex: '1 1 0', minWidth: 0, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+              <div style={{ ...card, flex: '1 1 300px', minWidth: 0, boxSizing: 'border-box', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
                 {source === 'cradle' ? renderCradleAction() : renderScanAction()}
               </div>
-              <div style={{ ...card, flex: '1.15 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ ...card, flex: '1.15 1 345px', minWidth: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {renderPreviewPane()}
               </div>
             </div>

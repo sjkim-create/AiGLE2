@@ -47,11 +47,11 @@ export const isPenDataInsufficient = (penStats) =>
     !!penStats && (penStats.strokes < PROCESS_MIN_STROKES || penStats.durationSec < PROCESS_MIN_DURATION_SEC);
 
 /* [v5.19] AI 채점에 딸려 오는 AI 필기 분석 결과 (프로토타입 흉내) — 상세 화면과 리포트가 같은 결과를 쓴다.
-   수학 과제만 분석한다. 필기가 부족하면 「분석불가-필기부족」, 아니면 샘플 결과 */
+   [v5.20] 교과와 무관하게 펜 필기로 분석한다. 필기가 부족하면 「분석불가-필기부족」, 아니면 샘플 결과(캐릭터) */
+// eslint-disable-next-line no-unused-vars
 export const processResultFor = (student, subject, gradeLetter) => {
     if (!student) return null;
     if (student.handwritingEvaluation) return student.handwritingEvaluation;
-    if (subject !== '수학') return null;
     if (isPenDataInsufficient(student.penStats)) {
         return { insufficient: true, message: PROCESS_INSUFFICIENT_MESSAGE, penStats: student.penStats,
             systemDataLog: { processPattern: '분석불가-필기부족', metricsCode: '-', gradeLevel: '-' },
@@ -379,7 +379,7 @@ const GradingReviewModal = ({
        과정 분석은 AI 채점(등급평가)에 통합됐다. 수학 과제는 채점 결과에 과정 분석이 함께 딸려 오므로
        교사가 따로 [AI 과정 분석 시작]을 누르지 않는다. 프로토타입은 상세를 열 때 결과를 붙여 흉내 낸다. */
     useEffect(() => {
-        if (!isOpen || !isProcessEvalSupported || !selectedStudent || selectedStudent.handwritingEvaluation) return;
+        if (!isOpen || !selectedStudent || selectedStudent.handwritingEvaluation) return; // [v5.20] 교과 무관
         const result = processResultFor(selectedStudent, taskSubject, gradeFb.letter);
         if (result && onHandwritingEvaluated) onHandwritingEvaluated(selectedStudent.id, result);
         // eslint-disable-next-line react-hooks/exhaustive-deps
