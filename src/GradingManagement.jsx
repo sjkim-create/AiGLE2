@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE } from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE, processResultFor, learningFeedbackOf } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
@@ -1601,44 +1601,47 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         </tbody>
                       </table>
 
-                      {/* 2. 지문 + 문항 [조건부 — 「지문+문항」 체크 시] */}
-                      {exportContentOptions.question && (
-                        <>
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 지문 + 문항</h3>
-                          <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>지문</div>
-                          <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px dashed #CBD5E1', marginBottom: '0.75rem' }}>
-                            테셀레이션은 같은 모양의 도형을 겹치거나 빈틈없이 이어 붙여 평면을 덮는 것이다. 정다각형으로 평면을 채우려면 한 꼭짓점에 모이는 각의 합이 360°가 되어야 한다.
-                          </div>
-                          <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>1번 문항</div>
-                          <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E5E7EB' }}>
-                            세 종류의 정다각형(정삼각형·정육각형·정십이각형)을 사용하여 한 점에서 만나는 각의 합이 360°가 되도록 평면을 채우려고 한다. 한 점에서 90°가 이미 채워져 있다고 할 때, 남은 270°를 만들 수 있는 정다각형의 조합을 모두 찾고 그 이유를 서술하시오.
-                          </div>
-                        </>
-                      )}
-
-                      {/* 3. 등급평가 — 항상 노출 (舊 교사 피드백) */}
+                      {/* 2. 등급평가 — 항상 노출 (舊 교사 피드백) · 순서: 좋아요 → 노력 → 성장 → 학습 안내 */}
                       <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 등급평가 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>(항상 노출, 문항별)</span></h3>
-                      <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>1번 문항</div>
-                      <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155' }}>
-                        <div style={{ fontWeight: 700, color: '#10B981', marginBottom: '0.25rem' }}>이런 점이 좋아요</div>
-                        <div style={{ marginBottom: '0.75rem' }}>정삼각형(60°), 정육각형(120°), 정십이각형(150°)의 한 내각의 크기를 정확히 구하고, 남은 각 270°를 채우는 두 가지 조합을 완벽하게 찾아냈어요. 논리적인 설명이 매우 훌륭합니다!</div>
-                        <div style={{ fontWeight: 700, color: '#F59E0B', marginBottom: '0.25rem' }}>조금만 더 노력해볼까요</div>
-                        <div style={{ marginBottom: '0.75rem' }}>제시된 조건에 따라 모든 가능한 경우의 수를 빠짐없이 서술하였으므로 추가적인 보완점은 보이지 않습니다. 완벽한 답변이에요.</div>
-                        <div style={{ fontWeight: 700, color: '#2A75F3', marginBottom: '0.25rem' }}>함께 성장해요</div>
-                        <div style={{ marginBottom: '0.75rem' }}>앞으로도 이처럼 각 도형의 내각의 합과 한 내각의 크기 공식을 활용하여 평면을 채우는 테셀레이션 원리를 탐구해본다면 수학적 사고력이 더욱 깊어질 거예요.</div>
-                        {/* [POP-19 v2.10] 학습 안내 — 상세 피드백 보기와 같은 순서(성장해요 다음) */}
-                        <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
-                        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '10px 14px' }}>
-                          <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '4px' }}>정다각형으로 평면 채우기</div>
-                          <ul style={{ margin: 0, paddingLeft: '16px' }}>
-                            <li>한 꼭짓점에 모이는 각의 합이 360°가 되는지 먼저 확인해요.</li>
-                            <li>정n각형 한 내각의 크기 = 180° × (n − 2) ÷ n 을 이용해 각을 구해요.</li>
-                            <li>가능한 조합을 빠짐없이 찾았는지 표로 정리해 검토해요.</li>
-                          </ul>
-                        </div>
-                      </div>
+                      {/* [POP-19 v2.12] 상세 「피드백 보기」의 학습 피드백을 그대로 싣는다 (舊 고정 예시 문장 폐기) */}
+                      {(() => {
+                        const fb = learningFeedbackOf(previewStudent, processResultFor(previewStudent, currentTask.type));
+                        const para = (t) => t.split('\n').map((line, k) => <div key={k}>{line}</div>);
+                        return (
+                          <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155' }}>
+                            <div style={{ fontWeight: 700, color: '#65A30D', marginBottom: '0.25rem' }}>이런 점이 좋아요</div>
+                            <div style={{ marginBottom: '0.75rem' }}>{para(fb.good)}</div>
+                            <div style={{ fontWeight: 700, color: '#F97316', marginBottom: '0.25rem' }}>조금만 더 노력해볼까요</div>
+                            <div style={{ marginBottom: '0.75rem' }}>{para(fb.effort)}</div>
+                            <div style={{ fontWeight: 700, color: '#2563EB', marginBottom: '0.25rem' }}>함께 성장해요</div>
+                            <div style={{ marginBottom: '0.75rem' }}>{para(fb.grow)}</div>
+                            {fb.guide && (<>
+                              <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
+                              <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '10px 14px', marginBottom: '0.75rem' }}>
+                                <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '4px' }}>{fb.guide.title}</div>
+                                <ul style={{ margin: 0, paddingLeft: '16px' }}>{fb.guide.points.map((pt, k) => <li key={k}>{pt}</li>)}</ul>
+                              </div>
+                              {fb.guide.items.map((it, k) => (
+                                <div key={k} style={{ marginBottom: '0.75rem', breakInside: 'avoid' }}>
+                                  <div style={{ fontWeight: 700, color: '#1E293B', marginBottom: '0.3rem' }}>{k + 1}. {it.ask}</div>
+                                  <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '6px 10px', marginBottom: '0.3rem' }}>
+                                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>학생이 작성한 내용 </span>{it.written}
+                                  </div>
+                                  <div style={{ background: '#F5F9FF', border: '1px solid #DBEAFE', borderRadius: '6px', padding: '6px 10px', marginBottom: '0.3rem' }}>
+                                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', fontWeight: 700 }}>이렇게 해봐요</div>
+                                    <div>{it.whenTo}</div>
+                                    <div>{it.example}</div>
+                                    {it.tip && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#2A75F3' }}>{it.tip}</div>}
+                                  </div>
+                                  <div><span style={{ fontWeight: 700, color: '#64748B' }}>확인 </span>{it.check}</div>
+                                </div>
+                              ))}
+                            </>)}
+                          </div>
+                        );
+                      })()}
 
-                      {/* 4. AI 필기 분석 [조건부 — 포함 항목 「과정 분석」 체크 시 모든 학생]
+                      {/* 3. AI 필기 분석 [조건부 — 포함 항목 「과정 분석」 체크 시 모든 학생]
                           [POP-19 v2.10] 결과가 있으면 캐릭터 + 총평, 없으면(미분석 · 필기 부족) 안내 문구 — 상세 피드백 보기와 같다 */}
                       {exportContentOptions.process && (
                         <>
@@ -1646,7 +1649,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <div style={{ background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
                             {/* 유형 캐릭터 — 학생에게 가는 리포트에 상세 화면과 같은 캐릭터를 싣는다 */}
                             {(() => {
-                              const hw = previewStudent.handwritingEvaluation;
+                              // [POP-19 v2.12] 상세 화면과 같은 결과 — 상세를 열어 보지 않은 학생도 AI 채점에 딸려 온 분석이 있으면 캐릭터가 실린다
+                              const hw = processResultFor(previewStudent, currentTask.type);
                               if (!hw || hw.insufficient) {
                                 /* 분석 내용 없음(미분석 · 필기 부족) — 캐릭터 대신 안내 문구만 (상세 화면과 동일) */
                                 return <div>{hw?.message || PROCESS_INSUFFICIENT_MESSAGE}</div>;
@@ -1669,13 +1673,29 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                               );
                             })()}
                             {/* 강점·개선·성장 제안은 등급평가 피드백에 합쳐졌으므로 여기서는 캐릭터와 총평만 싣는다 (舊 학습 행동 밀착 가이드 삭제) */}
-                            {previewStudent.handwritingEvaluation && !previewStudent.handwritingEvaluation.insufficient && (() => {
-                              const hw = previewStudent.handwritingEvaluation;
+                            {(() => {
+                              const hw = processResultFor(previewStudent, currentTask.type);
+                              if (!hw || hw.insufficient) return null;
                               return (<>
                                 <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>총평</div>
                                 <div>{hw.evaluationSummary?.totalEvaluation || '-'}</div>
                               </>);
                             })()}
+                          </div>
+                        </>
+                      )}
+
+                      {/* 5. 지문 + 문항 [조건부 — 「지문+문항」 체크 시] — [POP-19 v2.11] 리포트 맨 끝(AI 필기 분석 다음) */}
+                      {exportContentOptions.question && (
+                        <>
+                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 지문 + 문항</h3>
+                          <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>지문</div>
+                          <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px dashed #CBD5E1', marginBottom: '0.75rem' }}>
+                            테셀레이션은 같은 모양의 도형을 겹치거나 빈틈없이 이어 붙여 평면을 덮는 것이다. 정다각형으로 평면을 채우려면 한 꼭짓점에 모이는 각의 합이 360°가 되어야 한다.
+                          </div>
+                          <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>1번 문항</div>
+                          <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E5E7EB' }}>
+                            세 종류의 정다각형(정삼각형·정육각형·정십이각형)을 사용하여 한 점에서 만나는 각의 합이 360°가 되도록 평면을 채우려고 한다. 한 점에서 90°가 이미 채워져 있다고 할 때, 남은 270°를 만들 수 있는 정다각형의 조합을 모두 찾고 그 이유를 서술하시오.
                           </div>
                         </>
                       )}

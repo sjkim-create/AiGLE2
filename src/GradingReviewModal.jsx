@@ -46,6 +46,22 @@ export const PROCESS_INSUFFICIENT_MESSAGE =
 export const isPenDataInsufficient = (penStats) =>
     !!penStats && (penStats.strokes < PROCESS_MIN_STROKES || penStats.durationSec < PROCESS_MIN_DURATION_SEC);
 
+/* [v5.19] AI 채점에 딸려 오는 AI 필기 분석 결과 (프로토타입 흉내) — 상세 화면과 리포트가 같은 결과를 쓴다.
+   수학 과제만 분석한다. 필기가 부족하면 「분석불가-필기부족」, 아니면 샘플 결과 */
+export const processResultFor = (student, subject, gradeLetter) => {
+    if (!student) return null;
+    if (student.handwritingEvaluation) return student.handwritingEvaluation;
+    if (subject !== '수학') return null;
+    if (isPenDataInsufficient(student.penStats)) {
+        return { insufficient: true, message: PROCESS_INSUFFICIENT_MESSAGE, penStats: student.penStats,
+            systemDataLog: { processPattern: '분석불가-필기부족', metricsCode: '-', gradeLevel: '-' },
+            evaluationSummary: { diagnosedPattern: '분석불가-필기부족', totalEvaluation: PROCESS_INSUFFICIENT_MESSAGE },
+            finalFeedback: { whatsGood: '', whatNeedsWork: '', letsGrowTogether: '', contentBottleneckAnalysis: '' } };
+    }
+    // eslint-disable-next-line no-use-before-define
+    return { ...PROCESS_RESULT_SAMPLE, systemDataLog: { ...PROCESS_RESULT_SAMPLE.systemDataLog, gradeLevel: gradeLetter || PROCESS_RESULT_SAMPLE.systemDataLog.gradeLevel } };
+};
+
 /* 등급평가 피드백 샘플 — 등급별. (프로토타입 고정 문안, 실제는 AI 응답) */
 const GRADE_FEEDBACK = {
     '우수': {
@@ -167,9 +183,26 @@ const GRADE_FEEDBACK = {
     },
 };
 const GRADE_LETTER = { '매우우수': 'A', '매우 우수': 'A', '우수': 'B', '보통': 'C', '노력': 'D', '매우 노력': 'E' };
-const gradeFeedbackOf = (grade) => {
+export const gradeFeedbackOf = (grade) => {
     const base = GRADE_FEEDBACK[grade] || GRADE_FEEDBACK['우수'];
     return { ...base, label: grade || '우수', letter: GRADE_FEEDBACK[grade] ? base.letter : (GRADE_LETTER[grade] || base.letter) };
+};
+
+/* [v5.19] 학생에게 가는 학습 피드백 — 상세 「피드백 보기」와 리포트(POP-19)가 같은 내용을 쓴다.
+   교사가 상세에서 고친 문장(student.feedbackDraft)이 있으면 그것을, 없으면 AI 피드백(+ 과정 분석 병기)을 쓴다 */
+export const learningFeedbackOf = (student, hw) => {
+    const fb = gradeFeedbackOf(student?.aiGrade);
+    const edited = student?.feedbackDraft;
+    if (edited) return { ...edited, guide: fb.guide, letter: fb.letter, label: fb.label, scale: fb.scale };
+    if (hw && !hw.insufficient && hw.finalFeedback) {
+        return {
+            good: `[과제 수행] ${fb.good}\n[학습 태도] ${hw.finalFeedback.whatsGood}`,
+            effort: `[과제 수행] ${fb.effort}\n[학습 태도] ${hw.finalFeedback.whatNeedsWork}`,
+            grow: hw.finalFeedback.letsGrowTogether || fb.grow,
+            guide: fb.guide, letter: fb.letter, label: fb.label, scale: fb.scale,
+        };
+    }
+    return { good: fb.good, effort: fb.effort, grow: fb.grow, guide: fb.guide, letter: fb.letter, label: fb.label, scale: fb.scale };
 };
 
 /* 과정 분석 결과 샘플 — 학습 행동 밀착 가이드(문제 해석·접근 방법)는 문항 단위 고정 문안. 단계별 풀이(steps)는 화면에 싣지 않는다 */
@@ -347,14 +380,8 @@ const GradingReviewModal = ({
        교사가 따로 [AI 과정 분석 시작]을 누르지 않는다. 프로토타입은 상세를 열 때 결과를 붙여 흉내 낸다. */
     useEffect(() => {
         if (!isOpen || !isProcessEvalSupported || !selectedStudent || selectedStudent.handwritingEvaluation) return;
-        const insufficient = isPenDataInsufficient(selectedStudent.penStats);
-        const result = insufficient
-            ? { insufficient: true, message: PROCESS_INSUFFICIENT_MESSAGE, penStats: selectedStudent.penStats,
-                systemDataLog: { processPattern: '분석불가-필기부족', metricsCode: '-', gradeLevel: '-' },
-                evaluationSummary: { diagnosedPattern: '분석불가-필기부족', totalEvaluation: PROCESS_INSUFFICIENT_MESSAGE },
-                finalFeedback: { whatsGood: '', whatNeedsWork: '', letsGrowTogether: '', contentBottleneckAnalysis: '' } }
-            : { ...PROCESS_RESULT_SAMPLE, systemDataLog: { ...PROCESS_RESULT_SAMPLE.systemDataLog, gradeLevel: gradeFb.letter } };
-        if (onHandwritingEvaluated) onHandwritingEvaluated(selectedStudent.id, result);
+        const result = processResultFor(selectedStudent, taskSubject, gradeFb.letter);
+        if (result && onHandwritingEvaluated) onHandwritingEvaluated(selectedStudent.id, result);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, selectedStudent?.id, isProcessEvalSupported]);
 
@@ -899,11 +926,11 @@ const GradingReviewModal = ({
                                                 const teacherCriteria = Object.fromEntries(questions.map((q) => [q.id, picksOf(q)]));
                                                 // 등급명을 함께 저장해 등급 기반 화면(목록·추이·통계)이 그대로 동작하게 한다. [v5.5] 등급 과제는 점수를 저장하지 않는다
                                                 const teacherGrade = scoreToGrade(total, maxPoints, 5);
-                                                if (onReviewComplete) onReviewComplete({ ...selectedStudent, ...(isScoreMode ? { teacherScore: total } : {}), teacherCriteria, teacherGrade }); else onClose();
+                                                if (onReviewComplete) onReviewComplete({ ...selectedStudent, ...(isScoreMode ? { teacherScore: total } : {}), teacherCriteria, teacherGrade, feedbackDraft: draft }); else onClose();
                                                 return;
                                             }
                                             if (teacherGrade === '선택 안함') { alert('교사 채점을 먼저 선택해 주세요. 교사 채점이 선택되어야 결과 발송 단계로 이동할 수 있습니다.'); return; }
-                                            if (onReviewComplete) onReviewComplete({ ...selectedStudent, teacherGrade }); else onClose();
+                                            if (onReviewComplete) onReviewComplete({ ...selectedStudent, teacherGrade, feedbackDraft: draft }); else onClose();
                                         }}>검토 완료</button>
                                 )}
                             </div>
