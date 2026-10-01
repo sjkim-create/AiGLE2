@@ -925,7 +925,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       ✓ 검토 완료 처리 ({bulkReviewCompleteIds.length}명)
                     </button>
                   )}
-                  {/* [SCR-01 v4.25] 舊 「✎ 일괄 과정 분석」 버튼 삭제 — 과정 분석은 등급평가에 통합돼 채점 확인 상세(SCR-03)에서 학생별로만 실행한다 */}
+                  {/* [SCR-01 v4.27] 舊 「✎ 일괄 과정 분석」 버튼 삭제 — 과정 분석은 등급평가에 통합돼 채점 확인 상세(SCR-03)에서 학생별로만 실행한다 */}
                   {/* 결과 발송 탭 — 결과발송 */}
                   {bulkPreSendIds.length > 0 && (
                     <button
