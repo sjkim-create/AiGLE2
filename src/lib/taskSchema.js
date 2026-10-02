@@ -67,6 +67,27 @@ export const buildFileUploadTask = ({
   },
 });
 
+// 「파일로 과제 생성」 출력(lib/taskFromFile) → BASE_TASKS 호환 + 부족한 항목(issues) 보존
+//   AI가 채운 과제라 바로 등록하되 「작성중」으로 시작한다 — 교사가 issues를 확인한 뒤 배포
+export const buildFileGenerateTask = ({ id, draft, issues }) => {
+  const { meta } = draft;
+  return {
+    id: id ?? Date.now(),
+    status: '작성중',
+    visibility: '비공유',
+    lastUpdate: todayISO(),
+    title: draft.title,
+    schoolLevel: formatSchoolLevel(meta.schoolLevelName, meta.gradeLabel),
+    subject: meta.curriculumName,
+    subSubject: meta.subjectName,
+    questions: draft.questions.length,
+    points: computeTotalPoints('self', draft.questions),
+    competencies: formatCompetencies(meta.competencies.map((c) => c.name)),
+    source: 'file_generate',
+    detail: { ...draft, evalMode: 'self', issues },
+  };
+};
+
 // 「직접 입력」 wizard 출력 → BASE_TASKS 호환 + source 메타 보존
 export const buildDirectInputTask = ({
   id, basicInfo, passage, questions,

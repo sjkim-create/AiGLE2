@@ -335,6 +335,30 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                     </span>
                                     <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
                                 </button>
+                                <button
+                                    role="menuitem"
+                                    onClick={() => handleRegisterMethod('generate')}
+                                    style={{
+                                        width: '100%', textAlign: 'left',
+                                        display: 'flex', alignItems: 'flex-start', gap: '12px',
+                                        padding: '12px 14px',
+                                        background: 'transparent', border: '1px solid transparent',
+                                        borderRadius: '10px', cursor: 'pointer',
+                                        transition: 'background 0.12s, border-color 0.12s',
+                                        fontFamily: 'inherit',
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#FFFBEB'; e.currentTarget.style.borderColor = '#FDE68A'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
+                                >
+                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>📄</span>
+                                    <span style={{ flex: 1 }}>
+                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>파일로 과제 생성</span>
+                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>
+                                            평가 문항 자료(PDF/이미지)를 올리면 AI가 문항·채점 기준을 읽어 바로 과제로 등록합니다.
+                                        </span>
+                                    </span>
+                                    <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
+                                </button>
                             </div>
                         </div>
                     </div>

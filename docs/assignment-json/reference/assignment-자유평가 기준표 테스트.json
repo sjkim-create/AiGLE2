@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "kind": "direct",
+  "basicInfo": {
+    "problemType": "서술형",
+    "title": "자유평가 기준표 테스트",
+    "schoolLevelCode": 3,
+    "gradeId": 3,
+    "gradeLabel": "1-3학년",
+    "curriculumId": 13,
+    "subjectId": 15,
+    "competencyIds": []
+  },
+  "passage": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"attrs\":{\"textAlign\":null,\"lineHeight\":\"1.5\"},\"content\":[{\"type\":\"text\",\"text\":\"ㄴ\"}]}]}",
+  "areas": [],
+  "questions": [
+    {
+      "id": "q-1642",
+      "content": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"attrs\":{\"textAlign\":null,\"lineHeight\":\"1.5\"},\"content\":[{\"type\":\"text\",\"text\":\"ㄴㅇㄹ\"}]}]}",
+      "evaluationAreas": [
+        126
+      ],
+      "standards": [
+        528
+      ],
+      "modelAnswer": {
+        "html": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"attrs\":{\"textAlign\":null,\"lineHeight\":\"1.5\"},\"content\":[{\"type\":\"text\",\"text\":\"ㄴㅇㄹ\"}]}]}",
+        "imageBytes": 0
+      },
+      "autoRubric": {
+        "897:897": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3585,
+          "text": "다항식 사칙연산의 원리 (덧셈/뺄셈: 동류항 정리, 곱셈: 분배법칙, 나눗셈: 제수와 몫의 관계)를 정확히 이해하고 설명할 수 있다."
+        },
+        "897:898": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3586,
+          "text": "다항식 사칙연산의 계산 규칙은 알고 있으나, 계산 원리의 논리적 근거를 설명하는 데 미흡하다."
+        },
+        "897:899": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3587,
+          "text": "다항식 사칙연산의 기초 원리 이해가 불완전하다."
+        },
+        "899:897": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3593,
+          "text": "주어진 다항식의 사칙연산을 오류 없이 정확하게 수행하고, 나눗셈에서 조립제법을 활용하여 몫과 나머지를 구할 수 있다."
+        },
+        "899:898": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3594,
+          "text": "다항식의 사칙연산을 수행할 수 있으나, 나눗셈이나 복잡한 식의 정리 과정에서 오류가 발생할 수 있다."
+        },
+        "899:899": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3595,
+          "text": "다항식 사칙연산 계산 기능 수행이 미흡하다."
+        },
+        "901:897": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3601,
+          "text": "다항식 계산 과정에서 체계적으로 사고하여 정확한 결과를 얻으려는 태도를 보인다."
+        },
+        "901:898": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3602,
+          "text": "다항식 연산에 흥미를 갖고, 체계적인 과정을 따르려 노력한다."
+        },
+        "901:899": {
+          "rubricId": 225,
+          "rubricDescriptorId": 3603,
+          "text": "다항식 계산의 체계적 사고의 중요성을 인식하지 못한다."
+        }
+      },
+      "selectedAutoRubricId": 225,
+      "autoScore": 10,
+      "selfTotal": null,
+      "selfTotalSource": null,
+      "selfCriteria": [
+        {
+          "id": "q-1642-crit-1",
+          "name": "",
+          "points": 0,
+          "steps": 3,
+          "interval": 1,
+          "rows": [
+            {
+              "score": 0,
+              "content": ""
+            },
+            {
+              "score": 0,
+              "content": ""
+            },
+            {
+              "score": 0,
+              "content": ""
+            }
+          ],
+          "contentEpoch": 0
+        }
+      ],
+      "answerSheetCopies": 1
+    }
+  ],
+  "evaluationMode": "auto",
+  "gradingScale": 3,
+  "selfScale": 3,
+  "blockCopyPaste": true,
+  "shared": false
+}

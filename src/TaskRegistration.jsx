@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import './index.css';
 import TaskFileUploadWizard from './TaskFileUploadWizard';
 import TaskDirectInputWizard from './TaskDirectInputWizard';
+import TaskFileGenerate from './TaskFileGenerate';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
 import NumberTagPreviewModal from './NumberTagPreviewModal';
 
 const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) => {
-  // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard)
+  // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (파일로 과제 생성)
   // [v3.6] initialMode prop으로 TaskManagement 슬라이딩 패널에서 선택된 모드로 바로 진입 가능
   const [registrationMode, setRegistrationMode] = useState(initialMode);
   const [formData, setFormData] = useState({
@@ -306,12 +307,12 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) 
           <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>새 과제 등록</h1>
         </header>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-          <div style={{ maxWidth: '720px', width: '100%' }}>
+          <div style={{ maxWidth: '760px', width: '100%' }}>
             <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, textAlign: 'center', marginBottom: '8px' }}>등록 방식을 선택해 주세요</h2>
             <p style={{ fontSize: 'var(--neo-font-size-base)', color: '#64748B', textAlign: 'center', marginBottom: '32px' }}>
               과제를 어떤 방식으로 만드시겠습니까?
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
               <button
                 onClick={() => setRegistrationMode('direct')}
                 style={{
@@ -360,6 +361,22 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) 
                   기존 종이 양식(PDF/이미지)을 업로드하여 그대로 학생 문답지로 사용합니다.
                 </span>
               </button>
+              <button
+                onClick={() => setRegistrationMode('generate')}
+                style={{
+                  background: 'white', border: '2px solid #E2E8F0', borderRadius: '16px',
+                  padding: '32px 24px', textAlign: 'center', cursor: 'pointer',
+                  transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#F59E0B'; e.currentTarget.style.background = '#FFFBEB'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}
+              >
+                <span style={{ fontSize: '3rem' }}>📄</span>
+                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>파일로 과제 생성</span>
+                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
+                  평가 문항 자료(PDF/이미지)를 올리면 AI가 문항·채점 기준을 읽어 바로 과제로 등록합니다.
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -370,6 +387,11 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) 
   // [v3.5] 파일 업로드 Wizard 모드 — 저장 시 onAdd로 부모(목록)에 task 전달
   if (registrationMode === 'upload') {
     return <TaskFileUploadWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} />;
+  }
+
+  // 파일로 과제 생성 — 업로드 → 로딩 → 바로 등록 (부족한 항목 안내)
+  if (registrationMode === 'generate') {
+    return <TaskFileGenerate onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} />;
   }
 
   // 직접 입력 2 — 탭 단계형 Wizard 모드

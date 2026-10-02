@@ -1,22 +1,30 @@
 /**
  * TaskDetail.jsx
- * 과제 상세보기 — task.source('file_upload' | 'direct_input')에 따라 분기 렌더.
+ * 과제 상세보기 — task.source('file_upload' | 'direct_input' | 'file_generate')에 따라 분기 렌더.
  * BASE_TASKS의 mock 데이터(과제 1·2·3 등)는 source 미정의이므로 generic detail로 표시.
  */
 import React from 'react';
+import { IssueList } from './TaskFileGenerate';
+import { downloadAssignmentJson } from './lib/assignmentJson';
 
 const labelStyle = { fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', marginRight: 8 };
 const valueStyle = { fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', fontWeight: 700 };
 const sectionStyle = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '18px 20px', marginBottom: 16 };
 const sectionTitle = { fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B', marginBottom: 12 };
 
+const SOURCE_BADGE = {
+  file_upload: { label: '📷 파일 업로드 등록', bg: '#EFF6FF', color: '#1D4ED8' },
+  direct_input: { label: '📝 직접 입력 등록', bg: '#F5F3FF', color: '#7C3AED' },
+  file_generate: { label: '📄 파일로 생성', bg: '#FFFBEB', color: '#B45309' },
+};
+
 const HeaderBar = ({ task, onBack, onDelete }) => (
   <header style={{ position: 'sticky', top: 0, zIndex: 5, background: 'white', borderBottom: '1px solid #E2E8F0', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
     <button onClick={onBack} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>← 목록</button>
     <h1 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: 0, color: '#1E293B' }}>{task.title || '제목 없음'}</h1>
     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: task.status === '배포됨' ? '#D1FAE5' : '#FEF3C7', color: task.status === '배포됨' ? '#047857' : '#92400E' }}>{task.status}</span>
-    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: task.source === 'file_upload' ? '#EFF6FF' : task.source === 'direct_input' ? '#F5F3FF' : '#F1F5F9', color: task.source === 'file_upload' ? '#1D4ED8' : task.source === 'direct_input' ? '#7C3AED' : '#475569' }}>
-      {task.source === 'file_upload' ? '📷 파일 업로드 등록' : task.source === 'direct_input' ? '📝 직접 입력 등록' : '기존 등록'}
+    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: SOURCE_BADGE[task.source]?.bg || '#F1F5F9', color: SOURCE_BADGE[task.source]?.color || '#475569' }}>
+      {SOURCE_BADGE[task.source]?.label || '기존 등록'}
     </span>
     {/* [TSK v3.8] 과제 삭제 — 상세에서도 지울 수 있다. 확인창은 상위가 띄운다 */}
     {onDelete && (
@@ -157,6 +165,92 @@ const DirectInputTaskDetail = ({ task, onBack, onDelete }) => {
   );
 };
 
+// 「파일로 과제 생성」 상세 — 부족한 항목 + 성취기준 + 지문·문항·모범답안(그림) + 자율 평가 기준표
+const imgStyle = { maxWidth: 280, maxHeight: 200, borderRadius: 6, border: '1px solid #E2E8F0', objectFit: 'contain', background: 'white' };
+const FileGenerateTaskDetail = ({ task, onBack, onDelete }) => {
+  const d = task.detail || {};
+  const { meta = {}, passage, questions = [], issues = [], sourceFile } = d;
+  return (
+    <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
+      <HeaderBar task={task} onBack={onBack} onDelete={onDelete} />
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px' }}>
+        <MetaRow task={task} />
+
+        <div style={sectionStyle}>
+          <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            🔎 부족한 항목 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700 }}>{sourceFile ? `원본: ${sourceFile.name} · ${sourceFile.pages}쪽` : ''}</span>
+            <button onClick={() => downloadAssignmentJson({ ...d, title: task.title })} title="상용 아이글 과제 생성의 「JSON 가져오기」에 올리는 파일"
+              style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>⬇️ JSON 내려받기</button>
+          </div>
+          <IssueList issues={issues} />
+        </div>
+
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>🎯 핵심평가영역 · 성취기준</div>
+          {(meta.standards || []).length ? meta.standards.map((st) => (
+            <div key={st.id} style={{ fontSize: 'var(--neo-font-size-sm)', color: '#334155', marginBottom: 6, lineHeight: 1.6 }}>
+              <span style={{ fontWeight: 800, color: '#047857', marginRight: 6 }}>{st.areaName}</span>
+              <b>{st.code}</b> {st.text}
+            </div>
+          )) : <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>선택된 성취기준이 없습니다.</div>}
+        </div>
+
+        {passage && (
+          <div style={sectionStyle}>
+            <div style={sectionTitle}>📖 지문</div>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{passage}</div>
+          </div>
+        )}
+
+        {questions.map((q, i) => (
+          <div key={q.id || i} style={sectionStyle}>
+            <div style={sectionTitle}>📝 문항 {i + 1} <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 700 }}>{q.points}점</span></div>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{q.content || '(내용 없음)'}</div>
+            {(q.contentImages || []).length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>{q.contentImages.map((im, k) => <img key={k} src={im.dataUrl} alt={im.label} title={im.label} style={imgStyle} />)}</div>
+            )}
+
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', margin: '16px 0 6px' }}>모범답안</div>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.7, background: '#F8FAFC', borderRadius: 8, padding: '10px 12px' }}>
+              {q.modelAnswer || '(없음)'}
+              {(q.modelAnswerImages || []).length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>{q.modelAnswerImages.map((im, k) => <img key={k} src={im.dataUrl} alt={im.label} title={im.label} style={imgStyle} />)}</div>
+              )}
+            </div>
+
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', margin: '16px 0 6px' }}>⚖️ 자율 평가 기준표</div>
+            {(q.criteria || []).length ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)', minWidth: 560 }}>
+                  <thead>
+                    <tr style={{ background: '#F1F5F9', color: '#475569' }}>
+                      <th style={{ padding: 8, textAlign: 'left', width: '22%' }}>채점 기준</th>
+                      {q.criteria[0].levels.map((l, k) => <th key={k} style={{ padding: 8, textAlign: 'left' }}>{l.label || `${k + 1}단계`} · {l.score}점</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {q.criteria.map((c) => (
+                      <tr key={c.id} style={{ borderTop: '1px solid #E2E8F0', verticalAlign: 'top' }}>
+                        <td style={{ padding: 8, fontWeight: 800, color: '#1E293B' }}>{c.name}<div style={{ fontWeight: 600, color: '#94A3B8', fontSize: 'var(--neo-font-size-xs)' }}>{c.maxPoints}점</div></td>
+                        {c.levels.map((l, k) => <td key={k} style={{ padding: 8, color: '#334155', lineHeight: 1.6 }}>{l.content}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {q.criteria.some((c) => c.feedback) && (
+                  <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.6 }}>
+                    {q.criteria.filter((c) => c.feedback).map((c) => <div key={c.id}>💬 {c.name}: {c.feedback}</div>)}
+                  </div>
+                )}
+              </div>
+            ) : <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>채점 기준이 없습니다.</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // 기존 BASE_TASKS(mock) — source 미정의 → generic detail
 const GenericTaskDetail = ({ task, onBack, onDelete }) => (
   <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
@@ -175,6 +269,7 @@ const TaskDetail = ({ task, onBack, onDelete }) => {
   if (!task) return null;
   if (task.source === 'file_upload') return <FileUploadTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
   if (task.source === 'direct_input') return <DirectInputTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
+  if (task.source === 'file_generate') return <FileGenerateTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
   return <GenericTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
 };
 
