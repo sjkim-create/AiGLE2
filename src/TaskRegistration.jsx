@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import './index.css';
 import TaskFileUploadWizard from './TaskFileUploadWizard';
 import TaskDirectInputWizard from './TaskDirectInputWizard';
-import TaskFileGenerate from './TaskFileGenerate';
+import SmartTaskRegistration from './SmartTaskRegistration';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
 import NumberTagPreviewModal from './NumberTagPreviewModal';
 
-const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange }) => {
-  // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (파일로 과제 생성)
+const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank }) => {
+  // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (✨ 스마트 과제 등록 — TSK-14) / 'generate-answer' (스마트 과제 등록을 정답형으로 바로 시작 — 문제 은행에서 진입)
   // [v3.6] initialMode prop으로 TaskManagement 슬라이딩 패널에서 선택된 모드로 바로 진입 가능
   const [registrationMode, setRegistrationMode] = useState(initialMode);
   const [formData, setFormData] = useState({
@@ -371,10 +371,10 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#F59E0B'; e.currentTarget.style.background = '#FFFBEB'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}
               >
-                <span style={{ fontSize: '3rem' }}>📄</span>
-                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>파일로 과제 생성</span>
+                <span style={{ fontSize: '3rem' }}>✨</span>
+                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>스마트 과제 등록</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
-                  평가 문항 자료(PDF/이미지)를 올리면 AI가 문항·채점 기준을 읽어 바로 과제로 등록합니다.
+                  평가 자료(PDF/이미지)를 올리면 AI가 읽어 과제로 만듭니다. 서·논술형은 바로 과제로, 정답형은 문항을 유형별로 분류해 문제 은행에 담습니다.
                 </span>
               </button>
             </div>
@@ -389,9 +389,10 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
     return <TaskFileUploadWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
   }
 
-  // 파일로 과제 생성 — 업로드 → 로딩 → 바로 등록 (부족한 항목 안내)
-  if (registrationMode === 'generate') {
-    return <TaskFileGenerate onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} />;
+  // ✨ 스마트 과제 등록 (TSK-14) — 서·논술형(바로 과제) / 정답형(문제 은행) 분기
+  if (registrationMode === 'generate' || registrationMode === 'generate-answer') {
+    return <SmartTaskRegistration initialKind={registrationMode === 'generate-answer' ? 'answer' : null}
+      onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onGoItemBank={onGoItemBank} />;
   }
 
   // 직접 입력 2 — 탭 단계형 Wizard 모드

@@ -24,6 +24,7 @@ import TaskManagement, { BASE_TASKS } from './TaskManagement';
 import TaskRegistration from './TaskRegistration';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
 import SharedAssignments from './SharedAssignments';
+import ItemBank from './ItemBank';
 import StudentManagement from './StudentManagement';
 import StudentRegistration from './StudentRegistration';
 import SmartpenMonitor from './SmartpenMonitor';
@@ -77,6 +78,8 @@ const HASH_ROUTES = {
   '#/task-management':      { menu: '과제 관리', sub: '과제 관리' },
   '#/task-registration':    { menu: '과제 관리', sub: '과제 등록' },
   '#/shared-assignments':   { menu: '과제 관리', sub: '공유된 과제' },
+  // [QBK-01] 문제 은행 — 스마트 과제 등록(정답형)으로 저장한 문항
+  '#/item-bank':            { menu: '과제 관리', sub: '문제 은행' },
   // [BRD-16] 게시판
   '#/notice':               { menu: '게시판', sub: '공지사항' },
   '#/incident-board':       { menu: '게시판', sub: '장애신고' },
@@ -736,7 +739,10 @@ function Setting() {
               initialMode={taskRegistrationMode}
               onLeaveGuardChange={setLeaveGuard}
               onAdd={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))}
+              onGoItemBank={() => setActiveSubMenu('문제 은행')}
             />
+          ) : activeSubMenu === '문제 은행' ? (
+            <ItemBank onGoRegister={() => { setTaskRegistrationMode('generate-answer'); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
               onNavigateToTaskManagement={() => setActiveSubMenu('과제 관리')}

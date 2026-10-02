@@ -1,5 +1,5 @@
 /**
- * TaskFileGenerate.jsx — 새 과제 등록 > 📄 파일로 과제 생성
+ * TaskFileGenerate.jsx — 새 과제 등록 > ✨ 스마트 과제 등록 > 서·논술형 (舊 「파일로 과제 생성」)
  *
  * 평가 문항 자료(PDF·이미지)를 올리면 로딩 후 바로 과제를 등록한다 (중간 확인 단계 없음).
  * 등록 결과 화면에서 「부족한 항목」(AI가 채우지 못했거나 확인이 필요한 부분)을 알려 주고,
@@ -40,13 +40,13 @@ export const IssueList = ({ issues = [] }) => {
   );
 };
 
-const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '28px 28px', width: '100%', maxWidth: 720, boxSizing: 'border-box' };
+const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '24px 24px', width: '100%', boxSizing: 'border-box' };
 const btn = (primary) => ({
   padding: '10px 18px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer',
   border: primary ? '1px solid #2A75F3' : '1px solid #E2E8F0', background: primary ? '#2A75F3' : 'white', color: primary ? 'white' : '#475569',
 });
 
-const TaskFileGenerate = ({ onBack, onAdd }) => {
+const TaskFileGenerate = ({ onBack, onAdd, embedded = false }) => {
   const [phase, setPhase] = useState('pick'); // pick | loading | done | error
   const [file, setFile] = useState(null);
   const [stepKey, setStepKey] = useState(null);
@@ -77,14 +77,17 @@ const TaskFileGenerate = ({ onBack, onAdd }) => {
 
   const stepIdx = STEPS.findIndex((s) => s.key === stepKey);
 
+  // [TSK-14] embedded — 「스마트 과제 등록 › 서·논술형」 안에 들어갈 때는 머리줄·바깥 여백을 상위가 그린다
   return (
-    <div style={{ minHeight: '100vh', background: '#F4F7FB', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ background: 'white', padding: '1rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <button onClick={onBack} disabled={phase === 'loading'} style={{ ...btn(false), opacity: phase === 'loading' ? 0.5 : 1, cursor: phase === 'loading' ? 'not-allowed' : 'pointer' }}>← 목록</button>
-        <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>파일로 과제 생성</h1>
-      </header>
+    <div style={embedded ? undefined : { minHeight: '100vh', background: '#F4F7FB', display: 'flex', flexDirection: 'column' }}>
+      {!embedded && (
+        <header style={{ background: 'white', padding: '1rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={onBack} disabled={phase === 'loading'} style={{ ...btn(false), opacity: phase === 'loading' ? 0.5 : 1, cursor: phase === 'loading' ? 'not-allowed' : 'pointer' }}>← 목록</button>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>스마트 과제 등록</h1>
+        </header>
+      )}
 
-      <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px' }}>
+      <div style={embedded ? undefined : { flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px' }}>
         {phase === 'pick' && (
           <div style={card}>
             <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: '0 0 6px' }}>평가 문항 자료를 올려 주세요</h2>

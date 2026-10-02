@@ -350,11 +350,11 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                     onMouseEnter={(e) => { e.currentTarget.style.background = '#FFFBEB'; e.currentTarget.style.borderColor = '#FDE68A'; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
                                 >
-                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>📄</span>
+                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>✨</span>
                                     <span style={{ flex: 1 }}>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>파일로 과제 생성</span>
+                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>스마트 과제 등록</span>
                                         <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>
-                                            평가 문항 자료(PDF/이미지)를 올리면 AI가 문항·채점 기준을 읽어 바로 과제로 등록합니다.
+                                            평가 자료(PDF/이미지)를 올리면 AI가 읽어 과제로 만듭니다. 서·논술형은 바로 과제로, 정답형은 문항을 유형별로 분류해 문제 은행에 담습니다.
                                         </span>
                                     </span>
                                     <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>

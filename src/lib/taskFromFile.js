@@ -126,7 +126,12 @@ const extractJson = (text) => {
   try { return JSON.parse(raw.slice(s, e + 1)); } catch { return null; }
 };
 
-export const analyzePages = async (pages) => {
+/**
+ * Gemini에 프롬프트 + 쪽 이미지를 보내 JSON을 받는다 (서·논술형·정답형 공용)
+ * 혼잡(503)·한도(429)·종료(404)면 MODELS 순서로 넘어가며 최대 3바퀴 재시도
+ * @returns {Promise<object>} 파싱된 JSON — 파싱 실패 시 GenerateError('AI_PARSE')
+ */
+export const callGeminiJson = async (prompt, pages) => {
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new GenerateError('NO_KEY', 'AI 분석을 쓸 수 없는 환경입니다 (Gemini API 키 없음).',
@@ -134,7 +139,7 @@ export const analyzePages = async (pages) => {
   }
   const genAI = new GoogleGenerativeAI(apiKey);
   const parts = [
-    { text: buildPrompt(pages.length) },
+    { text: prompt },
     ...pages.map((p) => ({ inlineData: { mimeType: 'image/jpeg', data: p.dataUrl.split(',')[1] } })),
   ];
   let text;
@@ -150,7 +155,7 @@ export const analyzePages = async (pages) => {
         break;
       } catch (err) {
         lastMsg = String(err?.message || '');
-        if (!/(503|429|404)|high demand|overloaded|quota|exhausted|not found|no longer available/i.test(lastMsg)) { fatal = true; break; } // 키·네트워크 문제는 다시 해도 안 됨
+        if (!/(503|429|404)|high demand|overloaded|quota|exhausted|not found|no longer available/i.test(lastMsg)) { fatal = true; break; } // 키·네트워크 문제는 다시 해도 안 됨
       }
     }
   }
@@ -162,8 +167,13 @@ export const analyzePages = async (pages) => {
   }
   const parsed = extractJson(text);
   if (!parsed) {
-    throw new GenerateError('AI_PARSE', 'AI 응답을 과제 형식으로 읽지 못했습니다.', '다시 시도해 주세요. 반복되면 쪽 수를 줄여 올려 주세요.');
+    throw new GenerateError('AI_PARSE', 'AI 응답을 형식에 맞게 읽지 못했습니다.', '다시 시도해 주세요. 반복되면 쪽 수를 줄여 올려 주세요.');
   }
+  return parsed;
+};
+
+export const analyzePages = async (pages) => {
+  const parsed = await callGeminiJson(buildPrompt(pages.length), pages);
   if (parsed.isAssignment === false || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
     throw new GenerateError('NOT_ASSIGNMENT', '파일에서 서·논술형 문항을 찾지 못했습니다.',
       parsed.reason || '문항(발문)이 들어 있는 평가 자료인지 확인해 주세요.');
@@ -190,7 +200,7 @@ const gradeBandFor = (level, studentGrade) => {
   return '';
 };
 
-const matchCatalog = (cat, ai, issues) => {
+export const matchCatalog = (cat, ai, issues) => {
   const codes = [...new Set([...(ai.standardCodes || []), ...(ai.questions || []).flatMap((q) => q.standardCodes || [])])];
   const standards = [];
   const missed = [];
@@ -261,7 +271,7 @@ const matchCatalog = (cat, ai, issues) => {
 };
 
 // ───────────────────── 4. 그림 자르기 ─────────────────────
-const cropImage = (pages, img) => {
+export const cropImage = (pages, img) => {
   const page = pages.find((p) => p.no === Number(img.page));
   const b = img.box_2d;
   if (!page || !Array.isArray(b) || b.length !== 4) return null;
