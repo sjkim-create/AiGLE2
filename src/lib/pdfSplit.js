@@ -27,8 +27,11 @@ const looksBlank = (canvas) => {
   return dark / (w * h) < BLANK_RATIO;
 };
 
+// pdfjs v5는 JBIG2·JPEG2000 이미지(사진 마스크 등) 디코더를 wasm으로 따로 받는다 — 없으면 그 이미지가 하얗게 빠진다
+const PDFJS_WASM_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/wasm/`;
+
 /** PDF 쪽 수만 읽는다 — 1쪽이면 나눌 필요가 없다 */
-export const openPdf = async (file) => pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+export const openPdf = async (file) => pdfjsLib.getDocument({ data: await file.arrayBuffer(), wasmUrl: PDFJS_WASM_URL }).promise;
 
 /**
  * 쪽마다 JPG로 렌더한다.
