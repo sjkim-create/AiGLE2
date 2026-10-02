@@ -198,6 +198,26 @@ const Sidebar = ({
                                 </div>
                             </div>
                         )}
+                        {/* [TSK-06·09·10] 학생 모드 — 학생 화면(내 과제) 미리보기 */}
+                        <div
+                            className={`nav-item ${activeMenu === '학생 모드' ? 'active' : ''}`}
+                            onClick={() => {
+                                handleMenuChange('학생 모드');
+                                if (activeMenu !== '학생 모드') setActiveSubMenu('내 과제');
+                            }}
+                        >
+                            🎒 학생 모드 <span className="arrow">▼</span>
+                        </div>
+                        {activeMenu === '학생 모드' && (
+                            <div className="nav-sub-menu">
+                                <div
+                                    className={`nav-sub-item ${activeSubMenu === '내 과제' ? 'active' : ''}`}
+                                    onClick={() => setActiveSubMenu('내 과제')}
+                                >
+                                    ⊙ 내 과제
+                                </div>
+                            </div>
+                        )}
                         <div className={`nav-item ${activeMenu === '스마트펜 모니터링' ? 'active' : ''}`} onClick={() => handleMenuChange('스마트펜 모니터링')}>
                             📡 스마트펜 모니터링
                         </div>

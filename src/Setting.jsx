@@ -49,6 +49,7 @@ import NoticePopupDemo from './NoticePopupDemo';
 import TaskDetail from './TaskDetail';
 import TaskDeleteDialog from './TaskDeleteDialog';
 import MyInfo from './MyInfo';
+import StudentMyTasks from './StudentMyTasks'; // [TSK-06·09·10] 학생 모드 › 내 과제
 
 // ─────────────────────────────────────────────
 // 해시 기반 딥링크 라우트 맵
@@ -79,6 +80,8 @@ const HASH_ROUTES = {
   // [BRD-16] 게시판
   '#/notice':               { menu: '게시판', sub: '공지사항' },
   '#/incident-board':       { menu: '게시판', sub: '장애신고' },
+  // [TSK-06·09·10] 학생 모드
+  '#/student-my-tasks':     { menu: '학생 모드', sub: '내 과제' },
 };
 const ROUTE_BY_STATE = Object.entries(HASH_ROUTES)
   .reduce((acc, [hash, { menu, sub }]) => {
@@ -698,6 +701,9 @@ function Setting() {
               onRequestDelete={(task) => setTaskToDelete(task)}
             />
           )
+        ) : activeMenu === '학생 모드' ? (
+          /* [TSK-06·09·10] 학생 모드 › 내 과제 — 목록 · 제출 완료 · 결과 확인 */
+          <StudentMyTasks />
         ) : activeMenu === '스마트펜 모니터링' ? (
           <SmartpenMonitor />
         ) : activeMenu === '게시판' ? (
