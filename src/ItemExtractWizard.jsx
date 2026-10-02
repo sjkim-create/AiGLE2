@@ -4,11 +4,12 @@
  * STEP 1 자료 올리기 → STEP 2 문항 분류(자동) → STEP 3 확인·선택 → STEP 4 문제 은행 저장
  * 저장한 문항은 문제 은행(QBK-01)에 쌓이고, 다음 단계 「과제 배치」에서 평가 문항으로 엮는다(준비 중).
  */
-import React, { useMemo, useRef, useState } from 'react';
-import { extractItemsFromFile, EXTRACT_STEPS } from './lib/itemExtract';
-import { isFileGenerateAvailable, GenerateError, MAX_PAGES, MAX_FILE_MB } from './lib/taskFromFile';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { extractItemsFromFile, EXTRACT_STEPS, unitOptionsFor } from './lib/itemExtract';
+import { isFileGenerateAvailable, GenerateError, MAX_PAGES, MAX_FILE_MB, loadCatalog } from './lib/taskFromFile';
 import { ITEM_TYPES, ITEM_TYPE_KEYS, hasAnswer, saveExtraction } from './lib/itemBank';
 import ItemCard from './ItemCard';
+import { BulkEditBar, WorkbookPicker } from './ItemBankParts';
 import { IssueList } from './TaskFileGenerate';
 
 const STEPS = ['자료 올리기', '문항 분류', '확인·선택', '문제 은행 저장'];
@@ -52,10 +53,18 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedCount, setSavedCount] = useState(0);
+  const [savedIds, setSavedIds] = useState([]);
+  const [wbOpen, setWbOpen] = useState(false);
+  const [wbDone, setWbDone] = useState(null); // 담은 문제집
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
   const available = isFileGenerateAvailable();
+  // 단원 선택지 — 자료의 과목에 속한 단원(핵심평가영역)
+  const [unitOptions, setUnitOptions] = useState([]);
+  useEffect(() => {
+    if (!result?.source?.curriculum?.subjectId) { setUnitOptions([]); return; }
+    loadCatalog().then((cat) => setUnitOptions(unitOptionsFor(cat, result.source.curriculum.subjectId)));
+  }, [result?.source?.curriculum?.subjectId]);
 
   const run = async (f) => {
     if (!f) return;
@@ -82,6 +91,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
   const allVisibleOn = visible.length > 0 && visible.every((it) => selected[it.id]);
 
   const updateItem = (next) => setResult((r) => ({ ...r, items: r.items.map((it) => (it.id === next.id ? next : it)) }));
+  const updateMany = (list) => { const byId = Object.fromEntries(list.map((x) => [x.id, x])); setResult((r) => ({ ...r, items: r.items.map((it) => byId[it.id] || it) })); };
   const toggleVisible = () => setSelected((s) => ({ ...s, ...Object.fromEntries(visible.map((it) => [it.id, !allVisibleOn])) }));
 
   const save = async () => {
@@ -94,7 +104,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
         passages: result.passages.filter((p) => usedPassageIds.has(p.id)),
         items: chosen.map((it) => ({ ...it, status: hasAnswer(it) && !(it.issues || []).some((i) => i.level === 'error') ? 'ready' : 'needs_review' })),
       });
-      setSavedCount(chosen.length);
+      setSavedIds(chosen.map((it) => it.id)); setWbDone(null);
       setStep(4);
     } catch (err) {
       setError(new GenerateError('SAVE', '문제 은행에 저장하지 못했습니다.', String(err?.message || err)));
@@ -112,7 +122,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
         <div style={card}>
           <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: '0 0 6px' }}>평가 자료를 올려 주세요</h2>
           <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', margin: '0 0 18px', lineHeight: 1.6 }}>
-            시험지·문제집·평가지를 올리면 AI가 문항을 찾아 <b>유형별로 분류</b>하고 정답·배점·성취기준을 정리합니다. 확인한 뒤 고른 문항만 <b>문제 은행</b>에 저장합니다.
+            시험지·문제집·평가지를 올리면 AI가 문항을 찾아 <b>유형별로 분류</b>하고 정답·배점·<b>단원</b>을 정리합니다. 성취기준은 단원에 따라 정해집니다. 확인한 뒤 고른 문항만 <b>문제 은행</b>에 저장합니다.
           </p>
           {!available && <div style={{ marginBottom: 14 }}><IssueList issues={[{ level: 'error', field: 'AI 분석', message: 'AI 분석을 쓸 수 없는 환경입니다 (Gemini API 키 없음). 로컬 개발 환경에서만 동작합니다.' }]} /></div>}
           <div role="button" tabIndex={0}
@@ -190,6 +200,16 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
                 <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} /> 확인 필요한 문항만
               </label>
             </div>
+            {(result.source.examScope?.units || []).length > 0 && (
+              <div style={{ marginTop: 10, fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
+                <b>시험 범위</b> {result.source.examScope.units.join(' · ')}
+              </div>
+            )}
+            <div style={{ marginTop: 6, fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
+              {result.source.track === 'basic'
+                ? <>🧩 <b>기초학력 자료</b>{result.source.skill ? ` · ${result.source.skill}` : ''} — 단원·성취기준 없이 등록하고 정답 대조로 채점합니다. 교과 문항이면 아래에서 「교과로」 바꾸세요.</>
+                : <>성취기준은 문항마다 고르지 않고 <b>단원</b>에 따라 정해집니다. 단원이 「추정」이면 맞는지 확인해 주세요.</>}
+            </div>
             {result.summaryIssues.length > 0 && <div style={{ marginTop: 12 }}><IssueList issues={result.summaryIssues} /></div>}
           </div>
 
@@ -199,9 +219,12 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
             </label>
             <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{visible.length}개 표시 중</span>
           </div>
+          <div style={{ padding: '0 4px' }}>
+            <BulkEditBar items={chosen} onApply={updateMany} unitOptions={unitOptions} skill={result.source.skill} />
+          </div>
           {visible.map((it) => (
             <ItemCard key={it.id} item={it} passage={passageById[it.passageId]} selectable checked={!!selected[it.id]}
-              onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} editable onChange={updateItem} />
+              onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} editable onChange={updateItem} unitOptions={unitOptions} />
           ))}
           {visible.length === 0 && <div style={{ ...card, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>조건에 맞는 문항이 없습니다.</div>}
 
@@ -220,16 +243,20 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
       {/* STEP 4 — 저장 완료 */}
       {step === 4 && (
         <div style={card}>
-          <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: '0 0 6px' }}>✅ 문제 은행에 {savedCount}개 문항을 저장했습니다</h2>
+          <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: '0 0 6px' }}>✅ 문제 은행에 {savedIds.length}개 문항을 저장했습니다</h2>
           <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', margin: '0 0 16px', lineHeight: 1.6 }}>
             저장한 문항은 <b>과제 관리 › 문제 은행</b>에서 유형·교과로 찾아볼 수 있습니다.
           </p>
           <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.7, marginBottom: 18 }}>
             <b>다음 단계 — 과제 배치</b> (준비 중)<br />
-            문제 은행의 문항을 골라 평가 문항으로 배치하고, Ncode 시험지로 출력해 채점합니다.
+            문제 은행의 문항이나 문제집을 골라 평가 문항으로 배치하고, Ncode 시험지로 출력해 채점합니다.
           </div>
+          {wbDone && <div style={{ marginBottom: 14, fontSize: 'var(--neo-font-size-sm)', color: '#047857', fontWeight: 700 }}>📚 「{wbDone.title}」 문제집에 담았습니다 (문항 {wbDone.itemIds.length}개). 문제 은행 › 문제집에서 볼 수 있습니다.</div>}
+          <WorkbookPicker open={wbOpen} itemIds={savedIds} defaultTitle={(result?.source?.track === 'basic' && result?.source?.skill) || result?.source?.title || ''} defaultPurpose={result?.source?.track === 'basic' ? 'basic' : 'exam'}
+            onClose={() => setWbOpen(false)} onDone={(wb) => { setWbOpen(false); setWbDone(wb); }} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button onClick={reset} style={btn(false)}>다른 자료 올리기</button>
+            <button onClick={() => setWbOpen(true)} style={btn(false)}>📚 문제집으로 엮기</button>
             {onGoItemBank && <button onClick={onGoItemBank} style={btn(true)}>문제 은행에서 보기</button>}
             {!onGoItemBank && <button onClick={onBack} style={btn(true)}>목록으로</button>}
           </div>

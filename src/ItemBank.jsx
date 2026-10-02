@@ -3,11 +3,15 @@
  *
  * 스마트 과제 등록(정답형)으로 저장한 문항을 유형·교과·학년·상태·자료로 찾아보고, 상세에서 정답을 고친다.
  * 문항을 골라 「과제 배치」(평가 문항 편집 → Ncode 시험지 → 채점)로 넘기는 것과 「파생 문항 만들기」는 다음 단계(준비 중).
+ * 문제집 탭: 문항을 순서대로 엮은 문제집(시험 대비·기초학력·수업 연습)을 만들고 순서를 바꾼다.
  * 저장소: lib/itemBank (프로토 IndexedDB — 상용은 서버 DB)
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ITEM_TYPES, ITEM_TYPE_KEYS, hasAnswer, listItems, listPassages, listSources, putItem, deleteItems } from './lib/itemBank';
+import { ITEM_TYPES, ITEM_TYPE_KEYS, TRACKS, WORKBOOK_PURPOSES, isReady, listItems, listPassages, listSources, putItem, deleteItems, listWorkbooks, putWorkbook, deleteWorkbook } from './lib/itemBank';
+import { BulkEditBar, WorkbookPicker } from './ItemBankParts';
 import ItemCard from './ItemCard';
+import { loadCatalog } from './lib/taskFromFile';
+import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
 
 const chipBtn = (on) => ({
@@ -20,7 +24,6 @@ const btn = (primary, disabled, danger) => ({
   border: danger ? '1px solid #FCA5A5' : primary ? '1px solid #2A75F3' : '1px solid #E2E8F0',
   background: primary ? '#2A75F3' : 'white', color: danger ? '#DC2626' : primary ? 'white' : '#475569',
 });
-const isReady = (it) => hasAnswer(it) && !(it.issues || []).some((i) => i.level === 'error');
 
 const ItemBank = ({ onGoRegister }) => {
   const [items, setItems] = useState(null);
@@ -29,6 +32,8 @@ const ItemBank = ({ onGoRegister }) => {
   const [loadError, setLoadError] = useState(null);
   const [type, setType] = useState('all');
   const [subject, setSubject] = useState('all');
+  const [unitF, setUnitF] = useState('all');
+  const [catalog, setCatalog] = useState(null);
   const [grade, setGrade] = useState('all');
   const [status, setStatus] = useState('all');
   const [sourceId, setSourceId] = useState('all');
@@ -38,13 +43,20 @@ const ItemBank = ({ onGoRegister }) => {
   const [draft, setDraft] = useState(null);     // 상세에서 고치는 중인 문항
   const [confirmDelete, setConfirmDelete] = useState(null); // 삭제할 id 배열
   const [toast, setToast] = useState('');
+  const [tab, setTab] = useState('items');        // 'items' | 'workbooks'
+  const [trackF, setTrackF] = useState('all');
+  const [workbooks, setWorkbooks] = useState([]);
+  const [wbOpen, setWbOpen] = useState(false);    // 문제집에 담기 창
+  const [openWbId, setOpenWbId] = useState(null); // 열어 본 문제집
+  const [confirmWbDelete, setConfirmWbDelete] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [it, ps, ss] = await Promise.all([listItems(), listPassages(), listSources()]);
-      setItems(it); setPassages(ps); setSources(ss); setLoadError(null);
+      const [it, ps, ss, wb] = await Promise.all([listItems(), listPassages(), listSources(), listWorkbooks()]);
+      setItems(it); setPassages(ps); setSources(ss); setWorkbooks(wb); setLoadError(null);
     } catch (err) { setLoadError(String(err?.message || err)); setItems([]); }
   }, []);
+  useEffect(() => { loadCatalog().then(setCatalog).catch(() => {}); }, []);
   useEffect(() => {
     load();
     const on = () => load();
@@ -56,13 +68,17 @@ const ItemBank = ({ onGoRegister }) => {
   const all = items || [];
   const passageById = useMemo(() => Object.fromEntries(passages.map((p) => [p.id, p])), [passages]);
   const subjects = useMemo(() => [...new Set(all.map((i) => i.curriculum?.subjectName).filter(Boolean))], [all]);
+  const unitName = (i) => (i.track === 'basic' ? `기초학력${i.skill ? ` · ${i.skill}` : ''}` : i.unit?.areaName || '단원 미지정');
+  const units = useMemo(() => [...new Set(all.filter((i) => subject === 'all' || i.curriculum?.subjectName === subject).map(unitName))], [all, subject]);
   const grades = useMemo(() => [...new Set(all.map((i) => [i.curriculum?.schoolLevelName, i.curriculum?.gradeLabel].filter(Boolean).join(' ')).filter(Boolean))], [all]);
   const base = all.filter((i) =>
     (subject === 'all' || i.curriculum?.subjectName === subject)
+    && (unitF === 'all' || unitName(i) === unitF)
+    && (trackF === 'all' || (i.track || 'curriculum') === trackF)
     && (grade === 'all' || [i.curriculum?.schoolLevelName, i.curriculum?.gradeLabel].filter(Boolean).join(' ') === grade)
     && (status === 'all' || (status === 'ready' ? isReady(i) : !isReady(i)))
     && (sourceId === 'all' || i.source?.sourceId === sourceId)
-    && (!q.trim() || `${i.stem} ${i.material} ${(i.choices || []).map((c) => c.text).join(' ')} ${(i.curriculum?.standards || []).map((s) => s.code).join(' ')}`.includes(q.trim())));
+    && (!q.trim() || `${i.stem} ${i.material} ${(i.choices || []).map((c) => c.text).join(' ')} ${unitName(i)} ${i.unit?.label || ''}`.includes(q.trim())));
   const typeCounts = ITEM_TYPE_KEYS.reduce((acc, k) => ({ ...acc, [k]: base.filter((i) => i.itemType === k).length }), {});
   const visible = base.filter((i) => type === 'all' || i.itemType === type);
   const chosenIds = Object.keys(selected).filter((id) => selected[id] && all.some((i) => i.id === id));
@@ -90,20 +106,30 @@ const ItemBank = ({ onGoRegister }) => {
     <div className="task-management-container" style={{ position: 'relative' }}>
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div className="page-title">문제 은행</div>
-        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 자료 {sources.length}건</span>
+        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>
         {onGoRegister && <button onClick={onGoRegister} style={{ ...btn(true), marginLeft: 'auto' }}>✨ 자료에서 문항 가져오기</button>}
       </header>
 
+      <div role="tablist" style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid #E2E8F0' }}>
+        {[['items', `🗂️ 문항 ${all.length}`], ['workbooks', `📚 문제집 ${workbooks.length}`]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            style={{ padding: '10px 16px', border: 'none', borderBottom: `3px solid ${tab === k ? '#2A75F3' : 'transparent'}`, background: 'transparent', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: tab === k ? '#1D4ED8' : '#64748B', cursor: 'pointer' }}>{l}</button>
+        ))}
+      </div>
+
       {loadError && <div style={{ marginBottom: 12 }}><IssueList issues={[{ level: 'error', field: '문제 은행', message: `저장소를 열 수 없습니다. ${loadError}` }]} /></div>}
 
+      {tab === 'items' && <>
       {/* 필터 */}
       <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 16px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <select value={subject} onChange={(e) => setSubject(e.target.value)} style={selectStyle}><option value="all">교과: 전체</option>{subjects.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+          <select value={trackF} onChange={(e) => setTrackF(e.target.value)} style={selectStyle}><option value="all">성격: 전체</option>{Object.entries(TRACKS).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}</select>
+          <select value={unitF} onChange={(e) => setUnitF(e.target.value)} style={selectStyle}><option value="all">단원: 전체</option>{units.map((u) => <option key={u} value={u}>{u}</option>)}</select>
           <select value={grade} onChange={(e) => setGrade(e.target.value)} style={selectStyle}><option value="all">학교급·학년: 전체</option>{grades.map((g) => <option key={g} value={g}>{g}</option>)}</select>
           <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle}><option value="all">상태: 전체</option><option value="ready">사용 가능</option><option value="review">확인 필요</option></select>
           <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} style={{ ...selectStyle, maxWidth: 260 }}><option value="all">자료: 전체</option>{sources.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}</select>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="발문·보기·성취기준 코드 검색" style={{ ...selectStyle, flex: 1, minWidth: 180 }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="발문·보기·단원 검색" style={{ ...selectStyle, flex: 1, minWidth: 180 }} />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button style={chipBtn(type === 'all')} onClick={() => setType('all')}>전체 {base.length}</button>
@@ -143,11 +169,94 @@ const ItemBank = ({ onGoRegister }) => {
       {/* 선택 바 — 다음 단계 입구 */}
       {chosenIds.length > 0 && (
         <div style={{ position: 'sticky', bottom: 0, background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', boxShadow: '0 -4px 16px rgba(15,23,42,0.08)' }}>
-          <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800 }}>{chosenIds.length}개 선택</span>
           <button onClick={() => setSelected({})} style={{ ...btn(false), padding: '6px 10px' }}>선택 해제</button>
+          <BulkEditBar items={all.filter((i) => chosenIds.includes(i.id))}
+            unitOptions={catalog ? unitOptionsFor(catalog, all.find((i) => chosenIds.includes(i.id))?.curriculum?.subjectId) : []}
+            onApply={async (list) => { for (const it of list) await putItem({ ...it, status: isReady(it) ? 'ready' : 'needs_review' }); setToast(`문항 ${list.length}개를 바꿨습니다.`); }} />
           <span style={{ flex: 1 }} />
           <button onClick={() => setConfirmDelete(chosenIds)} style={btn(false, false, true)}>🗑 삭제</button>
+          <button onClick={() => setWbOpen(true)} style={btn(false)}>📚 문제집에 담기</button>
           <button disabled title="다음 단계에서 만듭니다 — 고른 문항을 평가 문항으로 배치하고 Ncode 시험지로 출력해 채점" style={btn(true, true)}>📐 과제 배치하기 (준비 중)</button>
+        </div>
+      )}
+      </>}
+
+      {/* 문제집 탭 */}
+      {tab === 'workbooks' && (() => {
+        const itemById = Object.fromEntries(all.map((i) => [i.id, i]));
+        const wb = workbooks.find((w) => w.id === openWbId);
+        const save = async (next) => { await putWorkbook(next); };
+        const move = (idx, d) => { const ids = [...wb.itemIds]; const j = idx + d; if (j < 0 || j >= ids.length) return; [ids[idx], ids[j]] = [ids[j], ids[idx]]; save({ ...wb, itemIds: ids }); };
+        if (!wb) {
+          return workbooks.length === 0 ? (
+            <div className="task-empty-state">
+              <div className="empty-icon" aria-hidden="true">📚</div>
+              <p className="empty-title">아직 문제집이 없습니다.</p>
+              <p className="empty-sub">문항 탭에서 문항을 고르고 [📚 문제집에 담기]를 누르면 문제집이 만들어집니다.</p>
+              <button onClick={() => setTab('items')} style={btn(true)}>문항 고르러 가기</button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+              {workbooks.map((w) => {
+                const its = w.itemIds.map((id) => itemById[id]).filter(Boolean);
+                const review = its.filter((i) => !isReady(i)).length;
+                return (
+                  <button key={w.id} onClick={() => setOpenWbId(w.id)} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B' }}>{w.title}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>문항 {its.length}개{review ? ` · 확인 필요 ${review}개` : ''}{w.itemIds.length > its.length ? ` · 삭제된 문항 ${w.itemIds.length - its.length}개` : ''}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{[...new Set(its.map((i) => ITEM_TYPES[i.itemType]?.label))].join(' · ')}</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        }
+        const its = wb.itemIds.map((id) => itemById[id]).filter(Boolean);
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 문제집 목록</button>
+              <input value={wb.title} onChange={(e) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, title: e.target.value } : w)))} onBlur={() => save(wb)} maxLength={60}
+                style={{ flex: 1, minWidth: 180, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }} />
+              <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} style={selectStyle}>
+                {Object.entries(WORKBOOK_PURPOSES).map(([k, pp]) => <option key={k} value={k}>{pp.icon} {pp.label}</option>)}
+              </select>
+              <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
+              <button disabled title="다음 단계에서 만듭니다 — 이 문제집을 평가 문항으로 배치하고 Ncode 시험지로 출력해 채점" style={btn(true, true)}>📐 과제 배치하기 (준비 중)</button>
+            </div>
+            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', padding: '0 4px' }}>문항 {its.length}개 · 순서는 ↑↓로 바꿉니다. 문항을 빼도 문제 은행에서 지워지지는 않습니다.</div>
+            {its.map((it, idx) => (
+              <div key={it.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 10 }}>
+                  <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 900, color: '#2A75F3', textAlign: 'center' }}>{idx + 1}</span>
+                  <button onClick={() => move(idx, -1)} disabled={idx === 0} aria-label="위로" style={{ ...btn(false, idx === 0), padding: '2px 8px' }}>↑</button>
+                  <button onClick={() => move(idx, 1)} disabled={idx === its.length - 1} aria-label="아래로" style={{ ...btn(false, idx === its.length - 1), padding: '2px 8px' }}>↓</button>
+                  <button onClick={() => save({ ...wb, itemIds: wb.itemIds.filter((x) => x !== it.id) })} aria-label="문제집에서 빼기" title="문제집에서 빼기" style={{ ...btn(false), padding: '2px 8px' }}>✕</button>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}><ItemCard item={it} passage={passageById[it.passageId]} compact onOpen={() => open(it)} /></div>
+              </div>
+            ))}
+            {its.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 문항 탭에서 골라 담아 주세요.</div>}
+          </div>
+        );
+      })()}
+
+      <WorkbookPicker open={wbOpen} itemIds={chosenIds}
+        defaultPurpose={all.filter((i) => chosenIds.includes(i.id)).every((i) => i.track === 'basic') ? 'basic' : 'exam'}
+        onClose={() => setWbOpen(false)}
+        onDone={(w, created) => { setWbOpen(false); setSelected({}); setToast(created ? `「${w.title}」 문제집을 만들었습니다 (문항 ${w.itemIds.length}개).` : `「${w.title}」에 담았습니다 (문항 ${w.itemIds.length}개).`); }} />
+
+      {confirmWbDelete && (
+        <div onClick={() => setConfirmWbDelete(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '22px 24px', width: 420, maxWidth: '94vw' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>「{confirmWbDelete.title}」 문제집을 삭제할까요?</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.6 }}>문제집만 지우며 되돌릴 수 없습니다. 담긴 문항은 문제 은행에 그대로 남습니다.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button autoFocus onClick={() => setConfirmWbDelete(null)} style={btn(false)}>취소</button>
+              <button onClick={async () => { await deleteWorkbook(confirmWbDelete.id); setOpenWbId(null); setToast(`「${confirmWbDelete.title}」 문제집을 삭제했습니다.`); setConfirmWbDelete(null); }} style={{ ...btn(true), background: '#EF4444', borderColor: '#EF4444' }}>삭제</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -167,11 +276,16 @@ const ItemBank = ({ onGoRegister }) => {
                   <div style={{ fontWeight: 800, marginBottom: 4 }}>📖 공통 지문 {passageById[draft.passageId].range}</div>{passageById[draft.passageId].text}
                 </div>
               )}
-              <ItemCard item={draft} editable onChange={setDraft} />
+              <ItemCard item={draft} editable onChange={setDraft} unitOptions={catalog ? unitOptionsFor(catalog, draft.curriculum?.subjectId) : []} />
               {draft.explanation && <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap' }}><b>해설</b><br />{draft.explanation}</div>}
               <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.8 }}>
                 <div><b>교육과정</b> {[draft.curriculum?.schoolLevelName, draft.curriculum?.gradeLabel, draft.curriculum?.curriculumName, draft.curriculum?.subjectName].filter(Boolean).join(' · ') || '미확인'}</div>
-                {(draft.curriculum?.standards || []).map((s) => <div key={s.id}><b>{s.areaName}</b> {s.code} {s.text}</div>)}
+                <div><b>성격</b> {TRACKS[draft.track || 'curriculum'].label}{draft.track === 'basic' && draft.skill ? ` · ${draft.skill}` : ''}</div>
+                {draft.track !== 'basic' && <>
+                <div><b>단원</b> {draft.unit?.areaName || '미지정'}{draft.unit?.label && draft.unit.label !== draft.unit.areaName ? ` (자료 표기: ${draft.unit.label})` : ''}{draft.unit?.source === 'ai' ? ' · AI 추정' : draft.unit?.source === 'teacher' ? ' · 교사 확인' : ''}</div>
+                <div style={{ marginTop: 4 }}><b>단원 성취기준</b> {(draft.curriculum?.standards || []).length}개 — 문항마다 고르지 않고 단원에 따라 정해집니다</div>
+                {(draft.curriculum?.standards || []).map((s) => <div key={s.id} style={{ fontSize: 'var(--neo-font-size-xs)' }}>{s.code} {s.text}</div>)}
+                </>}
                 <div><b>계보</b> {draft.lineage?.parentId ? `파생 문항 (원본 ${draft.lineage.parentId})` : '원본 문항'}</div>
               </div>
               {(draft.issues || []).length > 0 && <IssueList issues={draft.issues} />}

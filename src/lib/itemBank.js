@@ -9,6 +9,7 @@
  *   source  — 업로드한 자료 1건 (파일명·쪽 수·교육과정 추정치)
  *   passage — 여러 문항이 함께 쓰는 공통 지문/자료 (예: [1~3] 다음 글을 읽고…)
  *   item    — 문항 1개. 파생 문항은 lineage.parentId로 원본을 가리킨다
+ *   workbook — 문제집. 문항을 순서대로 엮은 묶음 (시험 대비·기초학력 연습 등). 과제 배치의 입력이 된다
  */
 
 export const ITEM_SCHEMA_VERSION = 1;
@@ -16,6 +17,7 @@ export const ITEM_SCHEMA_VERSION = 1;
 // 문항 유형 — 교육평가 표준 분류(선택형 / 서답형)를 따른다
 export const ITEM_TYPES = {
   multiple_choice: { label: '선다형', group: 'select', icon: '①', desc: '보기 중 정답을 고름 (객관식)' },
+  binary_choice: { label: '양자택일형', group: 'select', icon: '◐', desc: '둘 중 맞는 것에 동그라미 (예: 무릎/무름)' },
   true_false: { label: '진위형', group: 'select', icon: '⭕', desc: '맞으면 O, 틀리면 X' },
   matching: { label: '연결형', group: 'select', icon: '🔗', desc: '왼쪽과 오른쪽 항목을 짝지음' },
   short_answer: { label: '단답형', group: 'supply', icon: '✏️', desc: '단어·숫자 등 짧게 답함' },
@@ -24,6 +26,13 @@ export const ITEM_TYPES = {
 };
 export const ITEM_TYPE_KEYS = Object.keys(ITEM_TYPES);
 export const TYPE_GROUPS = { select: '선택형', supply: '서답형' };
+
+// 문항 성격 — 교과 문항은 단원·성취기준으로, 기초학력 문항은 기초 기능(예: 한글 해득 › 복잡한 받침 읽기)으로 관리
+//   기초학력은 교과 단원의 성취기준에 딱 맞지 않을 수 있어 단원·성취기준을 요구하지 않는다 (채점은 정답 대조로 동일)
+export const TRACKS = {
+  curriculum: { label: '교과', desc: '단원·성취기준으로 관리' },
+  basic: { label: '기초학력', desc: '성취기준 없이 기초 기능으로 관리' },
+};
 
 // 정답 출처 — 자료의 정답표·해설에서 읽었는지, AI가 풀어서 추정했는지, 교사가 확인·수정했는지
 export const ANSWER_SOURCE = {
@@ -43,7 +52,8 @@ export const emptyAnswer = () => ({ choices: [], truth: null, texts: [], blanks:
 export const hasAnswer = (item) => {
   const a = item.answer || {};
   switch (item.itemType) {
-    case 'multiple_choice': return (a.choices || []).length > 0;
+    case 'multiple_choice':
+    case 'binary_choice': return (a.choices || []).length > 0;
     case 'true_false': return a.truth === true || a.truth === false;
     case 'matching': return (a.pairs || []).length > 0;
     case 'short_answer': return (a.texts || []).some((t) => String(t).trim());
@@ -58,6 +68,7 @@ export const answerText = (item) => {
   const a = item.answer || {};
   switch (item.itemType) {
     case 'multiple_choice': return (a.choices || []).map((n) => '①②③④⑤⑥⑦⑧⑨⑩'[n - 1] || n).join(', ');
+    case 'binary_choice': return (a.choices || []).map((n) => (item.choices || []).find((c) => c.no === n)?.text || n).join(', ');
     case 'true_false': return a.truth === true ? 'O' : a.truth === false ? 'X' : '';
     case 'matching': return (a.pairs || []).map(([l, r]) => `${l}-${r}`).join(', ') + ' (왼쪽-오른쪽 순번)';
     case 'short_answer': return (a.texts || []).filter(Boolean).join(' / ');
@@ -67,9 +78,46 @@ export const answerText = (item) => {
   }
 };
 
+/** 정답 관련 확인 항목을 다시 판정 — 정답이 있으면 지우고, 없으면 「꼭 입력」으로 */
+export const recheckAnswer = (item, missingMessage = '정답을 입력해야 채점할 수 있습니다.') => {
+  const rest = (item.issues || []).filter((i) => i.field !== '정답');
+  return { ...item, issues: hasAnswer(item) ? rest : [{ level: 'error', field: '정답', message: missingMessage }, ...rest] };
+};
+
+/**
+ * 유형 바꾸기 — **정답을 지우지 않는다.** 정답 객체는 유형별 칸을 모두 갖고 있어 다른 칸의 값이 그대로 남는다
+ * 바꿀 수 있는 정답은 옮겨 준다:
+ *   선다형 ↔ 양자택일형 : 고른 보기 번호 그대로
+ *   선다형·양자택일형 → 단답형 : 고른 보기의 글자를 허용 답으로 (예: 무릎/무름 → 「무릎」 쓰기)
+ *   단답형 → 선다형·양자택일형 : 허용 답과 같은 글자의 보기를 정답으로
+ * 옮길 수 없으면(예: 선다형 → 진위형) 그 유형 칸이 비어 「정답 없음」이 되고, 되돌리면 원래 정답이 살아난다
+ */
+export const changeItemType = (item, nextType) => {
+  if (item.itemType === nextType) return item;
+  const a = { ...emptyAnswer(), ...(item.answer || {}) };
+  const choiceTypes = ['multiple_choice', 'binary_choice'];
+  if (choiceTypes.includes(item.itemType) && nextType === 'short_answer' && !(a.texts || []).length) {
+    a.texts = (a.choices || []).map((n) => (item.choices || []).find((c) => c.no === n)?.text).filter(Boolean);
+  }
+  if (item.itemType === 'short_answer' && choiceTypes.includes(nextType) && !(a.choices || []).length) {
+    const norm = (t) => String(t || '').replace(/\s/g, '');
+    a.choices = (item.choices || []).filter((c) => (a.texts || []).some((t) => norm(t) === norm(c.text))).map((c) => c.no);
+  }
+  let next = { ...item, itemType: nextType, answer: a };
+  next.issues = (next.issues || []).filter((i) => i.field !== '유형' && i.field !== '보기');
+  if (nextType === 'binary_choice' && (item.choices || []).length !== 2) {
+    next.issues = [{ level: 'warn', field: '보기', message: `양자택일형은 보기가 2개여야 합니다 (지금 ${(item.choices || []).length}개).` }, ...next.issues];
+  }
+  next = recheckAnswer(next, '유형을 바꾸며 이 유형의 정답 칸이 비었습니다. 정답을 입력해 주세요. (이전 유형으로 되돌리면 원래 정답이 살아납니다)');
+  // 출처(answerSource)는 건드리지 않는다 — 「정답 없음」 표시는 화면이 hasAnswer로 판단하므로, 되돌리면 원래 출처가 다시 보인다
+  return next;
+};
+
+export const isReady = (it) => hasAnswer(it) && !(it.issues || []).some((i) => i.level === 'error');
+
 // ───────────────────── IndexedDB ─────────────────────
 const DB_NAME = 'aigle-item-bank';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // v2: workbooks(문제집) 추가
 let dbPromise = null;
 
 const openDb = () => {
@@ -84,6 +132,7 @@ const openDb = () => {
         const ps = db.createObjectStore('passages', { keyPath: 'id' });
         ps.createIndex('sourceId', 'sourceId');
       }
+      if (!db.objectStoreNames.contains('workbooks')) db.createObjectStore('workbooks', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('items')) {
         const is = db.createObjectStore('items', { keyPath: 'id' });
         is.createIndex('sourceId', 'source.sourceId');
@@ -154,3 +203,37 @@ export const countItems = async () => {
     return await reqDone(db.transaction('items').objectStore('items').count());
   } catch { return 0; }
 };
+
+// ───────────────────── 문제집 ─────────────────────
+// 문제집 성격 — 시험 대비(교과) / 기초학력 연습 / 수업 활동
+export const WORKBOOK_PURPOSES = {
+  exam: { label: '시험 대비', icon: '📝' },
+  basic: { label: '기초학력', icon: '🧩' },
+  practice: { label: '수업·연습', icon: '📚' },
+};
+
+export const listWorkbooks = async () => {
+  const db = await openDb();
+  const all = await reqDone(db.transaction('workbooks').objectStore('workbooks').getAll());
+  return all.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+};
+
+export const putWorkbook = async (wb) => {
+  const db = await openDb();
+  const tx = db.transaction('workbooks', 'readwrite');
+  const now = new Date().toISOString();
+  tx.objectStore('workbooks').put({ schemaVersion: ITEM_SCHEMA_VERSION, createdAt: now, ...wb, updatedAt: now });
+  await txDone(tx);
+  window.dispatchEvent(new CustomEvent('aigle:item-bank-changed'));
+};
+
+export const deleteWorkbook = async (id) => {
+  const db = await openDb();
+  const tx = db.transaction('workbooks', 'readwrite');
+  tx.objectStore('workbooks').delete(id);
+  await txDone(tx);
+  window.dispatchEvent(new CustomEvent('aigle:item-bank-changed'));
+};
+
+/** 문제집에 문항 추가 — 이미 있는 문항은 건너뛰고 끝에 붙인다 */
+export const addToWorkbook = (wb, itemIds) => ({ ...wb, itemIds: [...wb.itemIds, ...itemIds.filter((id) => !wb.itemIds.includes(id))] });
