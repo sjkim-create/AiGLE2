@@ -103,7 +103,7 @@ const ItemBank = ({ onGoRegister }) => {
   };
 
   return (
-    <div className="task-management-container" style={{ position: 'relative' }}>
+    <div className="task-management-container" style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div className="page-title">문제 은행</div>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>

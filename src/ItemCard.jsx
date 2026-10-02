@@ -23,7 +23,8 @@ export const TypeBadge = ({ type }) => {
   return <span style={chip(t.group === 'select' ? '#EFF6FF' : '#F5F3FF', t.group === 'select' ? '#1D4ED8' : '#6D28D9')}>{t.icon} {t.label}</span>;
 };
 
-const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions }) => {
+// dimUnchecked — 정답형 확인 단계처럼 「선택 안 함 = 저장에서 빠짐」일 때만 흐리게. 문제 은행 목록은 선택이 고르기일 뿐이라 흐리게 하지 않는다
+const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false }) => {
   const missing = !hasAnswer(item);
   const src = ANSWER_SOURCE[missing ? 'none' : item.answerSource] || ANSWER_SOURCE.none;
   const a = item.answer || {};
@@ -65,7 +66,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
       style={{
         background: 'white', borderRadius: 12, padding: '14px 16px', cursor: onOpen ? 'pointer' : 'default',
         border: `1px solid ${editable && missing ? '#FCA5A5' : checked === false ? '#E2E8F0' : '#CBD5E1'}`,
-        opacity: selectable && !checked ? 0.55 : 1, display: 'flex', gap: 12, alignItems: 'flex-start',
+        opacity: dimUnchecked && selectable && !checked ? 0.55 : 1, display: 'flex', gap: 12, alignItems: 'flex-start',
       }}
     >
       {selectable && (
@@ -74,7 +75,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-          <span style={{ fontWeight: 900, color: '#1E293B', fontSize: 'var(--neo-font-size-base)' }}>{item.number}.</span>
+          <span style={{ fontWeight: compact ? 600 : 800, color: '#0F172A', fontSize: 'var(--neo-font-size-base)' }}>{item.number}.</span>
           {editable ? (
             <select value={item.itemType} onClick={stop} onChange={(e) => onChange && onChange(changeItemType(item, e.target.value))}
               title="유형을 바꿔도 정답은 지워지지 않습니다"
@@ -104,7 +105,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
             📖 공통 지문{passage.range ? ` (${passage.range})` : ''} — {passage.text.slice(0, 120)}{passage.text.length > 120 ? '…' : ''}
           </div>
         )}
-        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', lineHeight: 1.6, whiteSpace: 'pre-wrap', ...(compact ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>
+        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#0F172A', fontWeight: 400, lineHeight: 1.6, whiteSpace: 'pre-wrap', ...(compact ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>
           {item.stem || '(발문 없음)'}
         </div>
         {item.material && !compact && (
@@ -203,7 +204,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
 
         {/* 정답 한 줄 — 보기에 표시되지 않는 유형, 또는 목록(compact) */}
         {(showAnswerLine || compact) && (
-          <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)', color: missing ? '#B91C1C' : '#047857', fontWeight: 700 }}>
+          <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)', color: missing ? '#B91C1C' : '#065F46', fontWeight: compact ? 400 : 700 }}>
             정답: {missing ? '없음' : answerText(item)}
           </div>
         )}

@@ -224,7 +224,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
           </div>
           {visible.map((it) => (
             <ItemCard key={it.id} item={it} passage={passageById[it.passageId]} selectable checked={!!selected[it.id]}
-              onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} editable onChange={updateItem} unitOptions={unitOptions} />
+              onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} editable onChange={updateItem} unitOptions={unitOptions} dimUnchecked />
           ))}
           {visible.length === 0 && <div style={{ ...card, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>조건에 맞는 문항이 없습니다.</div>}
 
