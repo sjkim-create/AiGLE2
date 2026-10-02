@@ -9,6 +9,7 @@
  *   - 자동 감지 영역은 autoDetected: true 플래그 + 🤖 배지로 표시. 편집 시 false 전환
  */
 import React, { useState, useRef, useEffect } from 'react';
+import UnsavedLeaveModal from './UnsavedLeaveModal';
 import * as pdfjsLib from 'pdfjs-dist';
 import {
   stdCode, GRADE_CUTOFFS, GRADE_NAMES,
@@ -52,7 +53,7 @@ const MOCK_GROUPS = [
 const CANVAS_W = 700;
 const CANVAS_H = 990; // A4 비율
 
-const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
+const TaskFileUploadWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange }) => {
   const [step, setStep] = useState(1);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [areas, setAreas] = useState([]);
@@ -1750,13 +1751,13 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     setAreas(sortAndRenumber(updated));
   };
 
-  // Step 진행 가능 여부
-  const canNext = () => {
-    if (step === 1) {
+  // Step 진행 가능 여부 — [v3.87] 단계 번호별 검사로 분리 (저장 조건이 1~5단계 전체를 본다)
+  const stepValid = (n) => {
+    if (n === 1) {
       // Step 1 통합: 과제명 + 파일 업로드
       return !!uploadedFile && !!basicInfo.title.trim();
     }
-    if (step === 2) {
+    if (n === 2) {
       // [v2.77] 묶음 단위 슬롯 카운트로 검증
       //   - 문항: 1개 이상, 3개 이하 (묶음 1개 = 1 슬롯)
       //   - 지문: 0개 또는 1개 (있다면 정확히 1개. 2개 이상이면 합치기 필요)
@@ -1764,17 +1765,17 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
       const pSlots = computeAreaGroups(areas.filter(a => a.type === 'passage')).length;
       return qSlots >= 1 && qSlots <= 3 && pSlots <= 1;
     }
-    if (step === 3) {
+    if (n === 3) {
       // 문항 입력: 모든 문항의 내용 입력 필수 (모범답안은 Step 4에서)
       return questions.length > 0 && questions.every(q => q.content.trim());
     }
-    if (step === 4) {
+    if (n === 4) {
       // [v2.7] 각 문항이 자체 evaluationAreas ≥ 1 + standard 매핑 + 모범답안(상·중·하)
       return questions.length > 0 && questions.every(q =>
         q.evaluationAreas.length > 0 &&
         !!q.standard && isModelAnswerFilled(q));
     }
-    if (step === 5) {
+    if (n === 5) {
       if (questions.length === 0) return false;
       // 채점기준 valid + 총 배점 입력 시 합 일치 필수
       return questions.every(q => {
@@ -1785,27 +1786,49 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
     }
     return false; // step 6 — 마지막, 저장 버튼으로 처리
   };
+  const canNext = () => stepValid(step);
 
-  // 파일 업로드 + 과제명만 있으면 저장 가능
-  const canSave = !!(uploadedFile && basicInfo.title.trim());
+  // [v3.89] 저장 정책 — 지금 단계까지(1~현재, 최대 5단계)의 필수 항목만 채우면 [💾 저장] 활성.
+  //   [다음 단계 →]·앞 단계 탭으로 넘어갈 때마다 필수 항목이 채워져 있으면 자동 저장(같은 과제 id로 덮어쓰기)
+  //   (v3.87 「1~5단계 모두 입력해야 저장」·자동 저장 폐기를 되돌림)
+  const SAVE_BLOCKED_MSG = '현재 단계의 필수 항목을 입력해야 저장할 수 있습니다.';
+  const canSave = Array.from({ length: Math.min(step, 5) }, (_, i) => i + 1).every(stepValid);
+  const taskIdRef = useRef(Date.now());            // 자동 저장·최종 저장이 같은 과제를 덮어쓰도록 고정 id
+  const snapshot = () => JSON.stringify({ basicInfo, areas, questions, file: uploadedFile?.name || null });
+  const savedSnapRef = useRef(null);               // 마지막 저장 시점 내용 — 이후 변경 여부(이탈 경고) 판정
+  const saveTask = () => {
+    if (onAdd) {
+      onAdd(buildFileUploadTask({
+        id: taskIdRef.current,
+        basicInfo, uploadedFile, areas, answerDetails, questions,
+        evalMode, groupList, isShared,
+      }));
+    }
+    savedSnapRef.current = snapshot();
+  };
+  const autoSave = () => { saveTask(); showToast && showToast('저장됨'); };
   // [v3.79] 총 배점 = 범주 배점 합계(표시 전용) — 불일치 검사·정합성 모달 폐기
   const performSave = () => {
     // [v3.46] 영속화 — 부모에게 task 객체 전달 (BASE_TASKS 호환 + source 메타 포함)
-    if (onAdd) {
-      const task = buildFileUploadTask({
-        basicInfo, uploadedFile, areas, answerDetails, questions,
-        evalMode, groupList, isShared,
-      });
-      onAdd(task);
-    }
+    saveTask();
     showToast && showToast(`과제 「${basicInfo.title || '제목 없음'}」가 등록되었습니다.`);
+    onLeaveGuardChange?.(null);
     onBack && onBack();
   };
   const handleSave = () => {
-    if (!canSave) { showToast && showToast('파일 업로드와 과제명을 입력해야 저장할 수 있습니다.'); return; }
+    if (!canSave) { showToast && showToast(SAVE_BLOCKED_MSG); return; }
     performSave();
   };
-  const handleExitNoSave = () => { if (window.confirm('저장하지 않고 나가시겠습니까? 작성 중인 내용은 사라집니다.')) onBack && onBack(); };
+  // [v3.88] 이탈 경고 — 저장하지 않은 입력이 있으면 [나가기]·메뉴 이동·뒤로가기 모두 경고 모달(UnsavedLeaveModal)
+  //   [v3.89] 자동 저장 이후 바뀐 것이 없으면 경고하지 않는다
+  const hasInput = !!(uploadedFile || basicInfo.title.trim());
+  const hasUnsaved = hasInput && snapshot() !== savedSnapRef.current;
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  useEffect(() => {
+    onLeaveGuardChange?.(hasUnsaved ? { canSave } : null);
+  }, [hasUnsaved, canSave]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onLeaveGuardChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const handleExitNoSave = () => { if (hasUnsaved) setLeaveOpen(true); else onBack && onBack(); };
   const handleDelete = () => { if (window.confirm('이 과제를 삭제하시겠습니까? 되돌릴 수 없습니다.')) { showToast && showToast('과제를 삭제했습니다.'); onBack && onBack(); } };
   const handleToggleShare = () => { setIsShared((s) => { const next = !s; showToast && showToast(next ? '과제를 공유했습니다.' : '과제 공유를 취소했습니다.'); return next; }); };
 
@@ -1888,12 +1911,13 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
           <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>📷 파일 업로드 등록</h1>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={handleExitNoSave} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>나가기</button>
+            <UnsavedLeaveModal open={leaveOpen} canSave={canSave} onStay={() => setLeaveOpen(false)} onLeave={() => { setLeaveOpen(false); onLeaveGuardChange?.(null); onBack && onBack(); }} />
             {/* [v2.2] 공유 버튼을 더보기에서 헤더로 외부 노출 — 1차 액션으로 승격 (TSK-13과 동일) */}
             <button onClick={handleToggleShare}
               title={isShared ? '과제 공유를 취소합니다.' : '과제를 공유합니다.'}
               style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid', borderColor: isShared ? '#2A75F3' : '#E2E8F0', background: isShared ? '#EFF6FF' : 'white', color: isShared ? '#1D4ED8' : '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>🔗 {isShared ? '공유취소' : '공유확인'}</button>
             <button onClick={handleSave} disabled={!canSave}
-              title={canSave ? '과제를 저장합니다.' : '파일 업로드와 과제명을 입력해야 저장할 수 있습니다.'}
+              title={canSave ? '과제를 저장합니다.' : SAVE_BLOCKED_MSG}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: canSave ? '#10B981' : '#CBD5E1', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: canSave ? 'pointer' : 'not-allowed' }}>💾 저장</button>
             <div style={{ position: 'relative' }}>
               <button onClick={() => setMoreOpen((o) => !o)} aria-haspopup="true" aria-expanded={moreOpen}
@@ -1924,7 +1948,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
               <button
                 onClick={() => {
                   if (!clickable) return;
-                  showToast && showToast('저장됨');
+                  if (s.n > step) autoSave(); // [v3.89] 앞 단계로 넘어갈 때만 자동 저장
                   setStep(s.n);
                 }}
                 style={{
@@ -3628,9 +3652,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
           <button
             onClick={() => {
               if (step > 1) {
-                // [v2.12] 단계 이동 시 자동 저장 — prototype 시뮬레이션 (토스트)
-                showToast && showToast('저장됨');
-                setStep(step - 1);
+                setStep(step - 1); // [v3.89] 뒤로는 저장 없이 이동
               }
             }}
             disabled={step === 1}
@@ -3645,8 +3667,8 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd }) => {
             <button
               onClick={() => {
                 if (!canNext()) return;
-                // [v2.12] 단계 이동 시 자동 저장 — prototype 시뮬레이션
-                showToast && showToast('저장됨');
+                // [v3.89] 다음 단계로 넘어갈 때 자동 저장 (필수 항목 충족 시에만 버튼 활성)
+                autoSave();
                 // Step 1 → 2: OCR 자동 감지 프로세스 (TSK-12 §3.3) 실행
                 if (step === 1) {
                   runOcrDetection();

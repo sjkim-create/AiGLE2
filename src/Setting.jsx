@@ -22,6 +22,7 @@ import SchoolDashboard from './SchoolDashboard';
 import EduOfficeDashboard from './EduOfficeDashboard';
 import TaskManagement, { BASE_TASKS } from './TaskManagement';
 import TaskRegistration from './TaskRegistration';
+import UnsavedLeaveModal from './UnsavedLeaveModal';
 import SharedAssignments from './SharedAssignments';
 import StudentManagement from './StudentManagement';
 import StudentRegistration from './StudentRegistration';
@@ -86,6 +87,11 @@ const ROUTE_BY_STATE = Object.entries(HASH_ROUTES)
     return acc;
   }, {});
 
+// [TSK-12·13 v3.89] 단계 이동 자동 저장이 같은 과제 id로 여러 번 저장하므로 목록은 id 기준 덮어쓰기(새 과제는 맨 위)
+const upsertTask = (list, task) => (list.some((t) => t.id === task.id)
+  ? list.map((t) => (t.id === task.id ? task : t))
+  : [task, ...list]);
+
 function Setting() {
   // 초기 상태: 해시가 있으면 해시 기준, 없으면 기본 대시보드
   const initialRoute = HASH_ROUTES[(typeof window !== 'undefined' && window.location.hash) || ''];
@@ -99,6 +105,19 @@ function Setting() {
   useEffect(() => {
     const handleHashChange = () => {
       const route = HASH_ROUTES[window.location.hash];
+      // [TSK-12·13 v3.88] 과제 등록 중 뒤로가기 — 주소를 되돌리고 이탈 경고, [나가기] 시 이동
+      if (route && leaveGuardRef.current) {
+        const target = window.location.hash;
+        window.history.replaceState(null, '', '#/task-registration');
+        pendingNavRef.current.push(() => {
+          window.history.replaceState(null, '', target);
+          skipNextHashWriteRef.current = true;
+          setActiveMenu(route.menu);
+          setActiveSubMenu(route.sub);
+        });
+        setLeaveModalOpen(true);
+        return;
+      }
       if (route) {
         skipNextHashWriteRef.current = true; // 상태→해시 라운드트립 방지
         setActiveMenu(route.menu);
@@ -470,9 +489,44 @@ function Setting() {
     (!printDoctorDownloaded ? 1 : 0) +
     (penIdleDelayPhase !== 'done' ? 1 : 0);
 
+  // [TSK-12·13 v3.88] 과제 등록 이탈 경고 — 등록 화면이 「저장 전 입력 있음」을 알리면(leaveGuard),
+  //   사이드바·상단바 메뉴 이동을 바로 실행하지 않고 경고 모달을 띄운다. [나가기]를 고르면 보류한 이동을 그대로 실행.
+  //   leaveGuard: null | { canSave }
+  const [leaveGuard, setLeaveGuard] = useState(null);
+  const leaveGuardRef = useRef(null);
+  leaveGuardRef.current = leaveGuard;
+  const pendingNavRef = useRef([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  // 한 번의 클릭이 여러 setter를 부를 수 있어(예: 로고 = 설정모드 해제 + 메뉴 변경) 같은 클릭의 이동을 모아 함께 실행
+  const guardNav = (fn, isNoop = () => false) => (...args) => {
+    if (!leaveGuardRef.current || isNoop(...args)) { fn(...args); return; }
+    pendingNavRef.current.push(() => fn(...args));
+    setLeaveModalOpen(true);
+  };
+  const guardedSetActiveMenu = guardNav(setActiveMenu, (v) => v === activeMenu);
+  const guardedSetActiveSubMenu = guardNav(setActiveSubMenu, (v) => v === activeSubMenu);
+  const guardedSetIsSettingsMode = guardNav(setIsSettingsMode, (v) => v === isSettingsMode);
+  const guardedSetActiveSettingsMenu = guardNav(setActiveSettingsMenu, (v) => v === activeSettingsMenu);
+  const leaveConfirmed = () => {
+    const actions = pendingNavRef.current;
+    pendingNavRef.current = [];
+    setLeaveGuard(null); leaveGuardRef.current = null;
+    setLeaveModalOpen(false);
+    actions.forEach((run) => run());
+  };
+  const leaveCancelled = () => { pendingNavRef.current = []; setLeaveModalOpen(false); };
+  // 새로고침·탭 닫기는 브라우저 기본 확인창
+  useEffect(() => {
+    if (!leaveGuard) return undefined;
+    const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ''; return ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [leaveGuard]);
+
   return (
     <div className="app-container">
       <TaskDeleteDialog task={taskToDelete} onCancel={() => setTaskToDelete(null)} onConfirm={handleDeleteTask} />
+      <UnsavedLeaveModal open={leaveModalOpen} canSave={!!leaveGuard?.canSave} onStay={leaveCancelled} onLeave={leaveConfirmed} />
       {/* [POP-41] 이용불편 접수 — 좌측 하단 버튼에서 연다.
           채점 화면 밖이라 과제·그룹을 알 수 없으므로 다이얼로그에서 **직접 고르게** 한다(taskOptions). */}
       <IncidentReportDialog open={isIncidentOpen} onClose={() => setIsIncidentOpen(false)}
@@ -481,13 +535,13 @@ function Setting() {
         context={{ source: '사이드바', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr' }} />
       <Sidebar
         activeMenu={activeMenu}
-        setActiveMenu={setActiveMenu}
+        setActiveMenu={guardedSetActiveMenu}
         activeSubMenu={activeSubMenu}
-        setActiveSubMenu={setActiveSubMenu}
+        setActiveSubMenu={guardedSetActiveSubMenu}
         isSettingsMode={isSettingsMode}
-        setIsSettingsMode={setIsSettingsMode}
+        setIsSettingsMode={guardedSetIsSettingsMode}
         activeSettingsMenu={activeSettingsMenu}
-        setActiveSettingsMenu={setActiveSettingsMenu}
+        setActiveSettingsMenu={guardedSetActiveSettingsMenu}
         isProfileDropdownOpen={isProfileDropdownOpen}
         setIsProfileDropdownOpen={setIsProfileDropdownOpen}
         setShowAnalysis={setShowAnalysis}
@@ -502,9 +556,9 @@ function Setting() {
         <AppTopBar
           settingsBadgeCount={settingsBadgeCount}
           showToast={showToast}
-          onNavigate={(menu) => { setIsSettingsMode(false); setActiveMenu(menu); }}
-          onGoSettings={(m) => { setIsSettingsMode(true); setActiveSettingsMenu(m); }}
-          onOpenPenReset={() => { setIsSettingsMode(true); setActiveSettingsMenu('환경설정'); setIsResetModalOpen(true); }}
+          onNavigate={guardNav((menu) => { setIsSettingsMode(false); setActiveMenu(menu); })}
+          onGoSettings={guardNav((m) => { setIsSettingsMode(true); setActiveSettingsMenu(m); })}
+          onOpenPenReset={guardNav(() => { setIsSettingsMode(true); setActiveSettingsMenu('환경설정'); setIsResetModalOpen(true); })}
         />
         {isSettingsMode ? (
           <div className="settings-container" style={{ padding: '2rem', height: '100%', overflowY: 'auto' }}>
@@ -677,10 +731,11 @@ function Setting() {
             <TaskDetail task={selectedTaskDetail} onBack={() => setSelectedTaskDetail(null)} onDelete={(task) => setTaskToDelete(task)} />
           ) : activeSubMenu === '과제 등록' ? (
             <TaskRegistration
-              onBack={() => setActiveSubMenu('과제 관리')}
+              onBack={() => { setLeaveGuard(null); setActiveSubMenu('과제 관리'); }}
               showToast={showToast}
               initialMode={taskRegistrationMode}
-              onAdd={(task) => setRegisteredTasks((prev) => [task, ...prev])}
+              onLeaveGuardChange={setLeaveGuard}
+              onAdd={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))}
             />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
@@ -693,7 +748,7 @@ function Setting() {
               onAdd={(mode) => { setTaskRegistrationMode(mode || 'select'); setActiveSubMenu('과제 등록'); }}
               extraTasks={[...registeredTasks, ...copiedTasks]}
               deletedTaskIds={deletedTaskIds}
-              onAddTask={(task) => { setRegisteredTasks((prev) => [task, ...prev]); }}
+              onAddTask={(task) => { setRegisteredTasks((prev) => upsertTask(prev, task)); }}
               onOpenDetail={(task) => setSelectedTaskDetail(task)}
               onRequestDelete={(task) => setTaskToDelete(task)}
             />

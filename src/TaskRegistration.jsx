@@ -6,7 +6,7 @@ import TaskFileGenerate from './TaskFileGenerate';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
 import NumberTagPreviewModal from './NumberTagPreviewModal';
 
-const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) => {
+const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange }) => {
   // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (파일로 과제 생성)
   // [v3.6] initialMode prop으로 TaskManagement 슬라이딩 패널에서 선택된 모드로 바로 진입 가능
   const [registrationMode, setRegistrationMode] = useState(initialMode);
@@ -386,7 +386,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) 
 
   // [v3.5] 파일 업로드 Wizard 모드 — 저장 시 onAdd로 부모(목록)에 task 전달
   if (registrationMode === 'upload') {
-    return <TaskFileUploadWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} />;
+    return <TaskFileUploadWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
   }
 
   // 파일로 과제 생성 — 업로드 → 로딩 → 바로 등록 (부족한 항목 안내)
@@ -396,7 +396,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd }) 
 
   // 직접 입력 2 — 탭 단계형 Wizard 모드
   if (registrationMode === 'direct2') {
-    return <TaskDirectInputWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} />;
+    return <TaskDirectInputWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
   }
 
   // 기존: 직접 입력 모드

@@ -15,6 +15,7 @@
  * 주의: 「AI 채점 기준 생성」은 현재 샘플(stub) 동작이며 실제 LLM 연동은 미구현이다.
  */
 import React, { useState, useEffect, useRef } from 'react';
+import UnsavedLeaveModal from './UnsavedLeaveModal';
 import {
   subjectsOf, gradesOf, competenciesOf, evalAreasOf,
   defaultGradeScale,
@@ -124,7 +125,7 @@ function InlineEditor({ value, onChange, placeholder, minHeight = 120 }) {
   );
 }
 
-const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
+const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange }) => {
   const [step, setStep] = useState(1);
   const [basicInfo, setBasicInfo] = useState({
     title: '',
@@ -697,34 +698,57 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
     return true;
   };
 
-  const next = () => { if (canProceed()) setStep((s) => Math.min(5, s + 1)); };
-  const prev = () => setStep((s) => Math.max(1, s - 1));
+  // [v3.89] 저장 정책 — 지금 단계까지(1~현재, 최대 4단계)의 필수 항목만 채우면 [💾 저장] 활성.
+  //   [다음 →]·앞 단계 탭으로 넘어갈 때마다 필수 항목이 채워져 있으면 자동 저장(같은 과제 id로 덮어쓰기)
+  //   (v3.87 「1~4단계 모두 입력해야 저장」·자동 저장 폐기를 되돌림)
+  const SAVE_BLOCKED_MSG = '현재 단계의 필수 항목을 입력해야 저장할 수 있습니다.';
+  const canSave = Array.from({ length: Math.min(step, 4) }, (_, i) => i + 1).every(stepValid);
+  const taskIdRef = useRef(Date.now());            // 자동 저장·최종 저장이 같은 과제를 덮어쓰도록 고정 id
+  const snapshot = () => JSON.stringify({ basicInfo, passage, questions });
+  const savedSnapRef = useRef(null);               // 마지막 저장 시점 내용 — 이후 변경 여부(이탈 경고) 판정
+  const saveTask = () => {
+    if (onAdd) {
+      onAdd(buildDirectInputTask({
+        id: taskIdRef.current,
+        basicInfo, passage, questions,
+        evalMode, groupList, isShared,
+      }));
+    }
+    savedSnapRef.current = snapshot();
+  };
+  const autoSave = () => { saveTask(); toast('저장됨'); };
 
-  // 기본 정보(과제명)만 입력되면 저장 가능
-  const canSave = !!basicInfo.title.trim();
+  const next = () => { if (canProceed()) { autoSave(); setStep((s) => Math.min(5, s + 1)); } };
+  const prev = () => setStep((s) => Math.max(1, s - 1));
 
   // [v3.79] 총 배점 = 범주 배점 합계(표시 전용) — 불일치 검사·정합성 모달 폐기
   const performSave = () => {
     // [v3.46] 영속화 — 부모에게 task 객체 전달
-    if (onAdd) {
-      const task = buildDirectInputTask({
-        basicInfo, passage, questions,
-        evalMode, groupList, isShared,
-      });
-      onAdd(task);
-    }
+    saveTask();
     const deployed = groupList.filter((g) => g.studentDeployed).length;
     const printedOnly = groupList.filter((g) => g.printed && !g.studentDeployed).length;
     const deployMsg = deployed || printedOnly ? ` · 학생배포 ${deployed}그룹/출력 ${printedOnly}그룹` : '';
     toast(`과제 「${basicInfo.title || '제목 없음'}」 저장 완료 (총 ${totalPoints}점${deployMsg})`);
+    onLeaveGuardChange?.(null);
     onBack && onBack();
   };
   const handleSave = () => {
-    if (!canSave) { toast('과제명을 입력해야 저장할 수 있습니다.'); return; }
+    if (!canSave) { toast(SAVE_BLOCKED_MSG); return; }
     performSave();
   };
+  // [v3.88] 이탈 경고 — 저장하지 않은 입력이 있으면 [나가기]·메뉴 이동·뒤로가기 모두 경고 모달(UnsavedLeaveModal)
+  //   메뉴 이동은 상위(Setting)가 가로채므로 「저장 안 된 입력 있음」 상태만 올려 보낸다
+  //   [v3.89] 자동 저장 이후 바뀐 것이 없으면 경고하지 않는다
+  const hasInput = !!(basicInfo.title.trim() || passage.trim() || questions.some((q) => q.content.trim()));
+  const hasUnsaved = hasInput && snapshot() !== savedSnapRef.current;
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  useEffect(() => {
+    onLeaveGuardChange?.(hasUnsaved ? { canSave } : null);
+  }, [hasUnsaved, canSave]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onLeaveGuardChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
   const handleExitNoSave = () => {
-    if (window.confirm('저장하지 않고 나가시겠습니까? 작성 중인 내용은 사라집니다.')) onBack && onBack();
+    if (hasUnsaved) setLeaveOpen(true);
+    else onBack && onBack();
   };
   const handleDelete = () => {
     if (window.confirm('이 과제를 삭제하시겠습니까? 되돌릴 수 없습니다.')) { toast('과제를 삭제했습니다.'); onBack && onBack(); }
@@ -795,12 +819,13 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
           <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>직접 입력 2 — 과제 등록</h1>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={handleExitNoSave} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>나가기</button>
+            <UnsavedLeaveModal open={leaveOpen} canSave={canSave} onStay={() => setLeaveOpen(false)} onLeave={() => { setLeaveOpen(false); onLeaveGuardChange?.(null); onBack && onBack(); }} />
             {/* [v2.2] 공유 버튼을 더보기에서 헤더로 외부 노출 — 1차 액션으로 승격 */}
             <button onClick={handleToggleShare}
               title={isShared ? '과제 공유를 취소합니다.' : '과제를 공유합니다.'}
               style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid', borderColor: isShared ? '#2A75F3' : '#E2E8F0', background: isShared ? '#EFF6FF' : 'white', color: isShared ? '#1D4ED8' : '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>🔗 {isShared ? '공유취소' : '공유확인'}</button>
             <button onClick={handleSave} disabled={!canSave}
-              title={canSave ? '과제를 저장합니다.' : '과제명을 입력해야 저장할 수 있습니다.'}
+              title={canSave ? '과제를 저장합니다.' : SAVE_BLOCKED_MSG}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: canSave ? '#10B981' : '#CBD5E1', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', cursor: canSave ? 'pointer' : 'not-allowed' }}>💾 저장</button>
             <div style={{ position: 'relative' }}>
               <button onClick={() => setMoreOpen((o) => !o)} aria-haspopup="true" aria-expanded={moreOpen}
@@ -829,8 +854,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
                   <button
                     onClick={() => {
                       if (!allowed || s.n === step) return;
-                      // [v2.14] 단계 탭 이동 시 토스트
-                      toast('저장됨');
+                      // [v3.89] 앞 단계로 넘어갈 때만 자동 저장 (뒤로는 저장 없이 이동)
+                      if (s.n > step) autoSave();
                       setStep(s.n);
                     }}
                     disabled={!allowed}
@@ -1656,7 +1681,6 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
           <button
             onClick={() => {
               if (step > 1) {
-                toast('저장됨');
                 prev();
               }
             }}
@@ -1667,7 +1691,6 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd }) => {
             <button
               onClick={() => {
                 if (!canProceed()) return;
-                toast('저장됨');
                 next();
               }}
               disabled={!canProceed()}
