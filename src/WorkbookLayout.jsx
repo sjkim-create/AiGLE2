@@ -14,7 +14,8 @@ export const DEFAULT_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', show
 export const PAPERS = { A4: { w: 210, h: 297, label: 'A4 (210×297)' }, B4: { w: 257, h: 364, label: 'B4 (257×364)' }, A3: { w: 297, h: 420, label: 'A3 (297×420)' } };
 const MM = 3.78;
 // 문항 간격 — 넓게는 「한 단에 문항 2개」: 단 높이를 둘로 나눠 문항 사이에 풀이 공간을 둔다
-const SPACING = { narrow: 10, normal: 20, wide: 20 };
+// 보통 = 舊 넓게(34px)보다 조금 더 여유 있게 40px (v1.17)
+const SPACING = { narrow: 10, normal: 40, wide: 20 };
 const WIDE_PER_COL = 2;
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
 
