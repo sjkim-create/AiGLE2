@@ -21,6 +21,7 @@ import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
 import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS } from './BatchGradingUnified'; // 일괄 채점 통합 시안 — 목록에서 버튼으로 분기
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
+import { listWorkbooks } from './lib/itemBank'; // [TSK-15 v1.42] 문제지를 인쇄한 문제집 → 미채점 과제
 
 // ─────────────────────────────────────────────
 // [SCR-06] 퇴고 — 등급 ↔ 점수 환산 및 추이 판정
@@ -146,11 +147,27 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
    *   OCR 데이터 섹션은 스캔 채점(SCR-05)이 정본이라 크래들 흐름에서는 중복이었다. */
 
   // ── 목 데이터 ──
-  const tasks = [
+  const baseTasks = [
     // resultMode = 과제 등록 Step 「채점 결과」에서 고른 값 — 'grade'(등급) | 'score'(점수). 데모: 국어 과제는 점수 모드
     { id: 1, type: '국어', title: '과제테스트', date: '2024.02.23', submissions: '0/10', description: '테스트', resultMode: 'score' },
     { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트', resultMode: 'grade' }
   ];
+  // [TSK-15 v1.42] 정답형 문제집 · 낱말 문제집 — 그룹 문제지를 인쇄하면 채점 관리 과제 목록에 「미채점」으로 들어온다
+  //   학생 = 인쇄한 그룹의 인원(프로토 샘플 이름), 정답 대조 채점은 다음 단계
+  const [wbTasks, setWbTasks] = useState([]);
+  useEffect(() => {
+    const load = () => listWorkbooks().then((ws) => setWbTasks(ws.filter((w) => (w.deploy?.groups || []).some((g) => g.printed)).map((w) => {
+      const groups = w.deploy.groups.filter((g) => g.printed);
+      const total = groups.reduce((s, g) => s + g.studentCount, 0);
+      const first = groups.map((g) => g.printedAt).filter(Boolean).sort()[0];
+      return { id: `wb:${w.id}`, isWorkbook: true, wb: w, groups, type: w.kind === 'word' ? '낱말' : (w.curriculum?.curriculumName || '정답형'), title: w.title,
+        date: first ? first.slice(0, 10).replace(/-/g, '.') : '-', submissions: `0/${total}`, description: '', resultMode: 'score' };
+    }))).catch(() => setWbTasks([]));
+    load();
+    window.addEventListener('aigle:item-bank-changed', load);
+    return () => window.removeEventListener('aigle:item-bank-changed', load);
+  }, []);
+  const tasks = [...wbTasks, ...baseTasks];
   // sheets = TSK-02 「답안지 출력 장수 설정」(문항별 기준 장수).
   // 스캔 채점(SCR-05)의 결손 판정 기준으로 사용된다 — 실제 연결 장수가 이 값보다 적으면 누락으로 안내
   const questions = [
@@ -198,7 +215,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const currentTask = tasks.find(t => t.id === selectedTask) || tasks[1];
+  const currentTask = tasks.find(t => t.id === selectedTask) || baseTasks[1];
   // [TSK v3.82] 결과 표기 — 과제가 「점수」면 등급 대신 n점 (총 배점 = 문항 배점 합)
   const resultMode = currentTask.resultMode || 'grade';
   const totalPoints = questions.reduce((sum, q) => sum + (Number(q.score) || 0), 0);
@@ -775,7 +792,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     onClick={() => setSelectedTask(task.id)}
                   >
                     <span className="tag">[{task.type}]</span>
-                    <span className="title">{task.title}</span>
+                    <span className="title">{task.isWorkbook ? (task.wb.kind === 'word' ? '🔤 ' : '📚 ') : ''}{task.title}</span>
+                    {task.isWorkbook && <span style={{ display: 'inline-block', marginLeft: 4, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#B45309', background: '#FEF3C7', borderRadius: 6, padding: '0 6px' }}>정답형 · 미채점</span>}
                     <div className="meta">
                       <span>{task.date}</span>
                       <span style={{ color: 'var(--primary)', fontWeight: 800 }}>제출 {task.submissions}</span>
@@ -786,7 +804,33 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
             </aside>
 
             {/* 상세 채점 관리 영역 */}
-            <section className="detail-view">
+            {currentTask.isWorkbook && (
+              <section className="detail-view" aria-label="문제집 미채점">
+                <div className="task-info-banner" style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '1rem' }}>
+                  <div className="info-left">
+                    <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800 }}>[{currentTask.type}] {currentTask.title}</h2>
+                    <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#8A94A1' }}>문제지 인쇄일: {currentTask.date} ∙ {currentTask.groups.length}개 그룹 ∙ {currentTask.groups.reduce((s, g) => s + g.studentCount, 0)}명 ∙ {currentTask.wb.kind === 'word' ? '낱말 문제집' : '정답형 문제집'}</div>
+                  </div>
+                </div>
+                <div style={{ margin: '14px 0', padding: '12px 14px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, fontSize: 'var(--neo-font-size-sm)', color: '#92400E' }}>
+                  문제지를 인쇄한 그룹이 「미채점」으로 등록되었습니다. 정답형 채점(스캔 답안 · 정답 대조)은 다음 단계에서 만듭니다.
+                </div>
+                {currentTask.groups.map((g) => (
+                  <div key={g.id} style={{ marginBottom: 14 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 6 }}>{g.label} <span style={{ color: '#94A3B8', fontWeight: 600 }}>{g.studentCount}명</span> {g.studentDeployed && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', background: '#DBEAFE', borderRadius: 8, padding: '1px 6px' }}>학생 배포</span>}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
+                      {Array.from({ length: g.studentCount }).map((_, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)' }}>
+                          <span>{g.label} {i + 1}번</span>
+                          <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#B45309' }}>미채점</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
+            <section className="detail-view" style={currentTask.isWorkbook ? { display: 'none' } : undefined}>
               <div className="task-info-banner" style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '1.5rem' }}>
                 <div className="info-left">
                   <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800 }}>[{currentTask.type}] {currentTask.title}</h2>

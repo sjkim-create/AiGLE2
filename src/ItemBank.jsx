@@ -38,6 +38,18 @@ const btn = (primary, disabled, danger) => ({
 // 서·논술 과제의 문항은 들어오지 않는다. 문항은 정답형 직접 등록·스마트 등록(TSK-15)으로 쌓인다 (QBK-01 v1.7 — 자료에서 문항 가져오기 삭제)
 // [TSK-15 v1.5] 왼쪽 메뉴 「정답형 과제」 = 이 목록. registerItems가 있으면 [+ 새 과제 등록] → 정답형 직접 등록 · 스마트 등록
 // initialTab · onTabChange — 왼쪽 메뉴 「정답형 과제 › 문항 / 문제집」과 탭을 맞춘다 (TSK-15 v1.10)
+// [TSK-15 v1.42] 학생 배포 중인 문제집은 수정 잠금 — 그룹 배포·출력 단계만 쓸 수 있다
+const LockWrap = ({ locked, onGoDeploy, children }) => (locked ? (
+  <>
+    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '10px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#991B1B', fontWeight: 700, flexWrap: 'wrap' }}>
+      <span>🔒</span>
+      <span>학생 배포 중인 문제집은 수정할 수 없습니다. 수정하려면 「그룹 배포·출력」에서 학생 배포를 취소하세요.</span>
+      <button type="button" onClick={onGoDeploy} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontWeight: 700, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer', fontFamily: 'inherit' }}>그룹 배포·출력으로</button>
+    </div>
+    <div inert={true} aria-disabled="true" style={{ pointerEvents: 'none', opacity: 0.6, userSelect: 'none' }}>{children}</div>
+  </>
+) : children);
+
 const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, initialTab = 'items', onTabChange }) => {
   const [wbEditIdx, setWbEditIdx] = useState(null); // 문제집 상세에서 문항 편집 중
   const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 문제집 배치 (v1.18 — 순서 배치는 문제집 배치의 편집 모드로)
@@ -345,6 +357,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
               {wbEditing && (
                 <>
                   {!wide && <StepChips steps={['기본 정보', '낱말 입력', '문제집 배치', '그룹 배포·출력']} step={wbStep} onStep={setWbStep} />}
+                  <LockWrap locked={(wb.deploy?.groups || []).some((g) => g.studentDeployed) && wbStep < 4} onGoDeploy={() => setWbStep(4)}>
+                  <>
                   {wbStep === 1 && (
                     <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES} onPurpose={(p) => save({ ...wb, purpose: p })}
                       title={wb.title} onTitle={(t) => setW({ title: t })} onTitleBlur={() => save(wb)}
@@ -379,6 +393,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                         onToggleBlank={(id) => save({ ...wb, words: words.map((w, i) => (w.id === id ? { ...w, blank: blankOf(w, wb.mode, i) === 'word' ? 'meaning' : 'word' } : w)) })} />
                     </>
                   )}
+                  </>
+                  </LockWrap>
                   {wbStep === 4 && (
                     <WorkbookDeploy wb={wb} onSave={save} paper={wb.layout?.paper || 'A4'} onNotice={setToast}
                       sheet={<WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize />} />
@@ -444,6 +460,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
             {wbEditing && (
               <>
                 {!wide && <StepChips steps={['기본 정보', '문제집 배치', '그룹 배포·출력']} step={wbStep} onStep={setWbStep} />}
+                <LockWrap locked={(wb.deploy?.groups || []).some((g) => g.studentDeployed) && wbStep < 3} onGoDeploy={() => setWbStep(3)}>
+                <>
                 {wbStep === 1 && (
                   <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES}
                     onPurpose={(p) => save({ ...wb, purpose: p })}
@@ -464,6 +482,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                     {its.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 「문항」 메뉴에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
                   </>
                 )}
+                </>
+                </LockWrap>
                 {wbStep === 3 && (
                   <WorkbookDeploy wb={wb} onSave={save} paper={wb.layout?.paper || 'A4'} onNotice={setToast}
                     sheet={<WorkbookSheet {...sheetProps} editMode={false} actualSize />} />

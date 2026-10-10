@@ -51,6 +51,7 @@ const printHtml = (html) => {
 const WorkbookDeploy = ({ wb, onSave, sheet, paper = 'A4', onNotice }) => {
   const dep = { blockCopyPaste: false, groups: DEFAULT_GROUPS, ...(wb.deploy || {}) };
   const [printGroup, setPrintGroup] = React.useState(dep.groups[0]?.id ?? null);
+  const [cancelTarget, setCancelTarget] = React.useState(null); // 학생 배포 취소 확인
   const sheetRef = React.useRef(null);
   const saveDep = (patch) => onSave({ ...wb, deploy: { ...dep, ...patch } });
   const setGroup = (id, patch) => saveDep({ groups: dep.groups.map((g) => (g.id === id ? { ...g, ...patch } : g)) });
@@ -60,7 +61,7 @@ const WorkbookDeploy = ({ wb, onSave, sheet, paper = 'A4', onNotice }) => {
     if (!root || !root.querySelector('[data-page]')) { onNotice?.('인쇄할 문제지가 없습니다. 문제집 배치를 확인해 주세요.'); return; }
     printHtml(buildPrintHtml(root, paper, wb.title));
     const g = dep.groups.find((x) => x.id === Number(printGroup));
-    if (g) { setGroup(g.id, { printed: true }); onNotice?.(`「${g.label}」 문제지를 인쇄했습니다 — 학생 배포를 할 수 있습니다.`); }
+    if (g) { setGroup(g.id, { printed: true, printedAt: g.printedAt || new Date().toISOString() }); onNotice?.(`「${g.label}」 문제지를 인쇄했습니다 — 채점 관리 미채점에 등록되었고 학생 배포를 할 수 있습니다.`); }
   };
 
   const toggle = (on) => ({ position: 'relative', width: 44, height: 24, borderRadius: 12, background: on ? '#EF4444' : '#CBD5E1', transition: 'background 0.2s ease', flexShrink: 0, cursor: 'pointer' });
@@ -154,13 +155,17 @@ const WorkbookDeploy = ({ wb, onSave, sheet, paper = 'A4', onNotice }) => {
               <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 10 }}>
                 <span style={{ fontWeight: 700, color: '#1E293B', fontSize: 'var(--neo-font-size-base)' }}>{g.label}</span>
                 <span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>{g.studentCount}명</span>
-                {g.printed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>🖨 문제지 출력 완료</span>}
+                {g.printed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>🖨 문제지 출력 완료 · 미채점 등록</span>}
                 {!g.printed && <span style={badge('#F1F5F9', '#64748B')}>출력 전</span>}
                 {g.studentDeployed && <span style={badge('#DBEAFE', '#1D4ED8')}>🚀 학생 배포</span>}
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                   <button type="button" aria-disabled={disabled}
                     title={g.studentDeployed ? '학생이 문제집을 볼 수 없는 상태가 됩니다.' : g.printed ? '학생에게 문제집이 보입니다.' : '문제지를 인쇄한 뒤 배포할 수 있습니다.'}
-                    onClick={() => { if (disabled) return; setGroup(g.id, { studentDeployed: !g.studentDeployed }); onNotice?.(g.studentDeployed ? `「${g.label}」 학생 배포를 취소했습니다.` : `「${g.label}」에 학생 배포했습니다.`); }}
+                    onClick={() => {
+                      if (disabled) return;
+                      if (g.studentDeployed) { setCancelTarget(g); return; } // 취소는 확인창 — 채점 정보 삭제 안내
+                      setGroup(g.id, { studentDeployed: true }); onNotice?.(`「${g.label}」에 학생 배포했습니다 — 배포 중에는 문제집을 수정할 수 없습니다.`);
+                    }}
                     style={studentBtn(g.studentDeployed, disabled)}>{g.studentDeployed ? '↩ 학생 배포 취소' : '🚀 학생 배포'}</button>
                 </div>
               </div>
@@ -168,6 +173,27 @@ const WorkbookDeploy = ({ wb, onSave, sheet, paper = 'A4', onNotice }) => {
           })}
         </div>
       </div>
+
+      {/* 학생 배포 취소 확인 — 이미 배포한 학생들의 채점 정보가 모두 지워진다 */}
+      {cancelTarget && (
+        <div onClick={() => setCancelTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div role="alertdialog" aria-modal="true" aria-label="학생 배포 취소" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: 460, maxWidth: '94vw', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '18px 22px 6px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '1.6rem' }}>⚠️</span>
+              <h2 style={{ margin: 0, fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }}>「{cancelTarget.label}」 학생 배포를 취소할까요?</h2>
+            </div>
+            <div style={{ padding: '6px 22px 16px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 8px' }}>학생 배포를 취소하면 <b style={{ color: '#DC2626' }}>이 그룹에 배포한 학생들의 답안과 채점 정보가 모두 삭제</b>되며 되돌릴 수 없습니다.</p>
+              <p style={{ margin: 0, color: '#64748B' }}>학생은 문제집을 볼 수 없게 되고, 문제집을 다시 수정할 수 있습니다. 수정한 뒤에는 문제지를 다시 인쇄해 주세요.</p>
+            </div>
+            <div style={{ padding: '12px 22px 18px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" autoFocus onClick={() => setCancelTarget(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>닫기</button>
+              <button type="button" onClick={() => { setGroup(cancelTarget.id, { studentDeployed: false, gradingReset: new Date().toISOString() }); onNotice?.(`「${cancelTarget.label}」 학생 배포를 취소했습니다 — 학생 답안·채점 정보를 삭제했습니다.`); setCancelTarget(null); }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#EF4444', color: 'white', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>배포 취소 · 채점 정보 삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
