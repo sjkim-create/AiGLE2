@@ -14,7 +14,7 @@ import { loadCatalog } from './lib/taskFromFile';
 import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
-import { BasicInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
+import { WorkbookInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
 
 const Crumb = ({ path }) => (
@@ -322,7 +322,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         const entries = its.map((item) => ({ item, points: wb.points?.[item.id] ?? item.points ?? 1 }));
         const curriculum = wb.curriculum || topCurriculum(its);
         const setLocal = (patch) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, ...patch } : w)));
-        const curShort = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '');
+        // 제목 옆 — 학교급 · 학년 · 교과 (기초학력 문제집은 학년 대신 「기초학력」)
+        const curShort = (wb.purpose === 'basic' ? ['기초학력', curriculum.schoolLevelName, curriculum.curriculumName] : [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName]).filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '');
         const curText = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정');
         const sheetProps = {
           title: wb.title, curriculum, entries, passages: passageById, layout: wb.layout, actualSize: wbActual,
@@ -372,15 +373,10 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
               <>
                 <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />
                 {wbStep === 1 && (
-                  <BasicInfoCard titleLabel="문제집 이름" title={wb.title} onTitle={(t) => setLocal({ title: t })} onTitleBlur={() => save(wb)}
-                    curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumBlur={() => save(wb)} entries={entries}
-                    extra={(
-                      <div><span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 4, display: 'block' }}>성격</span>
-                        <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} aria-label="문제집 성격"
-                          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>
-                          {Object.entries(WORKBOOK_PURPOSES).map(([k, pp]) => <option key={k} value={k}>{pp.icon} {pp.label}</option>)}
-                        </select></div>
-                    )} />
+                  <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES}
+                    onPurpose={(p) => save({ ...wb, purpose: p, ...(p === 'basic' ? { curriculum: { ...curriculum, gradeLabel: '' } } : {}) })}
+                    title={wb.title} onTitle={(t) => setLocal({ title: t })} onTitleBlur={() => save(wb)}
+                    curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumSave={(c) => save({ ...wb, curriculum: c })} />
                 )}
                 {wbStep === 2 && (
                   <>

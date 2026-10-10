@@ -112,3 +112,48 @@ export const ArrangeRows = ({ entries, onChange, passages = {}, onEdit, onItemCh
     </div>
   ));
 };
+
+// [TSK-15 v1.23] 문제집 기본 정보 — 위에서부터 성격 / 문제집 이름 / 학교급 · 학년 / 교과 · 과목
+//   학년은 학교급에 맞는 목록 + 「공통」. 성격이 기초학력이면 학년 없이(「학년 구분 없음」) 구분한다
+export const GRADE_OPTIONS = {
+  초등학교: ['공통', '1-2학년', '3-4학년', '5-6학년'],
+  중학교: ['공통', '1-3학년', '1학년', '2학년', '3학년'],
+  고등학교: ['공통', '1학년', '2학년', '3학년'],
+};
+export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle, onTitleBlur, curriculum, onCurriculum, onCurriculumSave }) => {
+  const basic = purpose === 'basic';
+  const set = (patch, saveNow) => { const next = { ...curriculum, ...patch }; onCurriculum(next); if (saveNow) onCurriculumSave?.(next); };
+  const grades = [...new Set([...(GRADE_OPTIONS[curriculum.schoolLevelName] || ['공통']), curriculum.gradeLabel].filter(Boolean))];
+  const row = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(160px, 1fr))', gap: 10 };
+  return (
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 640 }}>
+      <div style={{ maxWidth: 300 }}><span style={label}>성격</span>
+        <select value={purpose} onChange={(e) => onPurpose(e.target.value)} aria-label="문제집 성격" style={input}>
+          {Object.entries(purposes).map(([k, p]) => <option key={k} value={k}>{p.icon} {p.label}</option>)}
+        </select></div>
+      <div><span style={label}>문제집 이름 *</span>
+        <input value={title} onChange={(e) => onTitle(e.target.value)} onBlur={onTitleBlur} maxLength={100} placeholder="예: 1학기 중간고사 과학" aria-label="문제집 이름"
+          style={{ ...input, borderColor: title.trim() ? '#CBD5E1' : '#FCA5A5' }} /></div>
+      <div style={row}>
+        <div><span style={label}>학교급</span>
+          <select value={curriculum.schoolLevelName || ''} onChange={(e) => set({ schoolLevelName: e.target.value, gradeLabel: basic ? '' : ((GRADE_OPTIONS[e.target.value] || []).includes(curriculum.gradeLabel) ? curriculum.gradeLabel : '') }, true)} aria-label="학교급" style={input}>
+            <option value="">선택</option>
+            {[...new Set([...SCHOOL_LEVELS, curriculum.schoolLevelName].filter(Boolean))].map((x) => <option key={x}>{x}</option>)}
+          </select></div>
+        <div><span style={label}>학년</span>
+          {basic ? (
+            <div aria-label="학년" style={{ ...input, background: '#F1F5F9', color: '#64748B' }}>학년 구분 없음 (기초학력)</div>
+          ) : (
+            <select value={curriculum.gradeLabel || ''} onChange={(e) => set({ gradeLabel: e.target.value }, true)} aria-label="학년" style={input}>
+              <option value="">선택</option>
+              {grades.map((g) => <option key={g}>{g}</option>)}
+            </select>
+          )}</div>
+      </div>
+      <div style={row}>
+        <div><span style={label}>교과</span><input value={curriculum.curriculumName || ''} onChange={(e) => set({ curriculumName: e.target.value })} onBlur={() => onCurriculumSave?.(curriculum)} placeholder="예: 국어" aria-label="교과" style={input} /></div>
+        <div><span style={label}>과목</span><input value={curriculum.subjectName || ''} onChange={(e) => set({ subjectName: e.target.value })} onBlur={() => onCurriculumSave?.(curriculum)} placeholder="예: 국어" aria-label="과목" style={input} /></div>
+      </div>
+    </div>
+  );
+};
