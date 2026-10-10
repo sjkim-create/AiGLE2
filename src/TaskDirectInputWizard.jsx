@@ -825,10 +825,12 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
 
   return (
     <div style={{ height: '100%', background: '#F4F7FB', display: 'flex', flexDirection: 'column' }}>
-      {/* 헤더 + Step indicator (고정) */}
+      {/* 헤더 (고정) — [v3.92] 단계는 왼쪽 열 메뉴로 */}
       <div style={{ flexShrink: 0, background: 'white', borderBottom: '1px solid #E2E8F0' }}>
-        <header style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{initialData ? '✏️ 서·논술형 과제 수정' : '✍️ 서·논술형 직접 등록'}</h1>
+        <header style={{ padding: '0.75rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button onClick={handleExitNoSave} aria-label="나가기" title="나가기"
+            style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#F1F5F9', color: '#1E293B', fontSize: 18, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{initialData ? '과제 수정' : '서·논술형 직접 등록'}</h1>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={handleExitNoSave} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>나가기</button>
             <CropDialog open={!!cropTarget} pages={pageImages} initial={cropTarget?.initial} title={cropTarget?.index === -1 ? '자료에서 그림 자르기' : '그림 범위 조정'}
@@ -871,45 +873,45 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
             </div>
           </div>
         </header>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '0 1.5rem 14px', gap: 4, overflowX: 'auto' }}>
-          {STEPS.map((s, i) => (
-            <React.Fragment key={s.n}>
-              {(() => {
-                const allowed = canGoToStep(s.n);
-                return (
-                  <button
-                    onClick={() => {
-                      if (!allowed || s.n === step) return;
-                      // [v3.89] 앞 단계로 넘어갈 때만 자동 저장 (뒤로는 저장 없이 이동)
-                      if (s.n > step) autoSave();
-                      setStep(s.n);
-                    }}
-                    disabled={!allowed}
-                    title={allowed ? `${s.n}. ${s.label}로 이동` : '현재 단계를 완료해야 이동할 수 있습니다.'}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 999,
-                      border: `1px solid ${step === s.n ? '#2A75F3' : s.n < step ? '#10B981' : '#E2E8F0'}`,
-                      background: step === s.n ? '#EFF6FF' : s.n < step ? '#D1FAE5' : 'white',
-                      color: step === s.n ? '#1D4ED8' : s.n < step ? '#047857' : '#94A3B8',
-                      fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, whiteSpace: 'nowrap',
-                      cursor: allowed ? 'pointer' : 'not-allowed',
-                      opacity: allowed ? 1 : 0.55,
-                    }}
-                  >
-                    <span>{s.icon}</span> {s.n}. {s.label}{s.n < step ? ' ✓' : ''}
-                  </button>
-                );
-              })()}
-              {i < STEPS.length - 1 && <span style={{ color: '#CBD5E1', flexShrink: 0 }}>—</span>}
-            </React.Fragment>
-          ))}
-        </div>
         {/* [v3.77] 舊 [v3.45] 합 불일치 상단 영구 배너([↻ 모두 균등 재분배]) 폐기 — 총 배점 입력란 오류 표시로 일원화 */}
       </div>
 
-      {/* 본문 (스크롤 영역) */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px' }}>
-       <div style={{ maxWidth: 920, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+      {/* [v3.92] 본문 — 왼쪽 단계 열 메뉴 · 오른쪽 내용 패널 (상용 디자인) */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 16, padding: '16px 20px 16px 16px' }}>
+      <nav aria-label="등록 단계" style={{ flex: '0 0 230px', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+        {STEPS.map((s) => {
+          const allowed = canGoToStep(s.n);
+          const done = s.n < step; const now = s.n === step;
+          return (
+            <button key={s.n} type="button" aria-current={now ? 'step' : undefined}
+              onClick={() => {
+                if (!allowed || now) return;
+                // [v3.89] 앞 단계로 넘어갈 때만 자동 저장 (뒤로는 저장 없이 이동)
+                if (s.n > step) autoSave();
+                setStep(s.n);
+              }}
+              disabled={!allowed}
+              title={allowed ? `${s.n}. ${s.label}로 이동` : '현재 단계를 완료해야 이동할 수 있습니다.'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '18px 16px', borderRadius: 10, textAlign: 'left', fontFamily: 'inherit',
+                border: now ? '1.5px solid #2A75F3' : '1.5px solid transparent', background: now ? 'white' : '#E9EDF2',
+                boxShadow: now ? '0 2px 8px rgba(42,117,243,0.12)' : 'none',
+                color: now ? '#1D4ED8' : done ? '#475569' : '#94A3B8', fontSize: 'var(--neo-font-size-base)', fontWeight: now ? 800 : 600,
+                cursor: allowed && !now ? 'pointer' : now ? 'default' : 'not-allowed',
+              }}>
+              <span aria-hidden="true" style={{
+                width: 28, height: 28, borderRadius: '50%', flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 'var(--neo-font-size-sm)', fontWeight: 800,
+                background: done || now ? '#2A75F3' : '#CBD5E1', color: 'white',
+              }}>{done ? '✓' : s.n}</span>
+              {s.label}
+            </button>
+          );
+        })}
+      </nav>
+      <section style={{ flex: '1 1 0', minWidth: 0, background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 28px' }}>
+       <div style={{ maxWidth: 1080, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
 
         {/* [v3.75] 과제 수정 잠금 안내 — 학생 배포 중이면 Step 1~4는 읽기 전용 */}
         {editLocked && step < 5 && (
@@ -1730,44 +1732,35 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
        </div>
       </div>
 
-      {/* 하단 네비게이션 (고정 · 가운데 정렬) */}
-      <div style={{ flexShrink: 0, background: 'white', borderTop: '1px solid #E2E8F0', padding: '12px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      {/* [v3.92] 아래 버튼 — 내용 패널 안: 왼쪽 [← 이전 단계] · 오른쪽 [다음 단계 →] (마지막 단계는 [목록으로]) */}
+      <div style={{ flexShrink: 0, borderTop: '1px solid #E2E8F0', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          onClick={() => { if (step > 1) prev(); }}
+          disabled={step === 1}
+          style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #CBD5E1', background: 'white', color: step === 1 ? '#CBD5E1' : '#334155', fontWeight: 700, cursor: step === 1 ? 'not-allowed' : 'pointer', fontSize: 'var(--neo-font-size-sm)', minWidth: 150 }}
+        >← 이전 단계</button>
         {!canProceed() && step < 5 && (
-          <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
+          <span style={{ flex: 1, textAlign: 'right', fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
             {step === 1 ? '과제명을 입력하세요.'
               : step === 2 ? '모든 문항의 내용을 입력하세요.'
               : step === 3 ? '각 문항마다 핵심평가영역(1개 이상) · 성취기준(1개) · 모범답안(상·중·하)을 입력하세요. (핵심역량은 Step 1에서 선택)'
-              : step === 4 ? (() => {
-                  return '채점 기준의 이름·배점을 입력하고, 각 단계 점수를 채워 위→아래로 낮아지게 하세요.';
-                })()
+              : step === 4 ? '채점 기준의 이름·배점을 입력하고, 각 단계 점수를 채워 위→아래로 낮아지게 하세요.'
               : ''}
           </span>
         )}
-        {/* [v2.13] [✕ 취소] 폐기 → 헤더 [나가기]로 일원화.
-            [← 이전] · [다음 →] 가운데 정렬. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
+        <span style={{ marginLeft: 'auto' }} />
+        {step < 5 ? (
           <button
-            onClick={() => {
-              if (step > 1) {
-                prev();
-              }
-            }}
-            disabled={step === 1}
-            style={{ padding: '10px 22px', borderRadius: 10, border: '1px solid #E2E8F0', background: 'white', color: step === 1 ? '#CBD5E1' : '#475569', fontWeight: 700, cursor: step === 1 ? 'not-allowed' : 'pointer', fontSize: 'var(--neo-font-size-sm)', opacity: step === 1 ? 0.5 : 1 }}
-          >← 이전</button>
-          {step < 5 && (
-            <button
-              onClick={() => {
-                if (!canProceed()) return;
-                next();
-              }}
-              disabled={!canProceed()}
-              style={{ padding: '10px 22px', borderRadius: 10, border: 'none', background: canProceed() ? '#2A75F3' : '#CBD5E1', color: 'white', fontWeight: 800, cursor: canProceed() ? 'pointer' : 'not-allowed', fontSize: 'var(--neo-font-size-sm)' }}
-            >
-              다음 →
-            </button>
-          )}
-        </div>
+            onClick={() => { if (!canProceed()) return; next(); }}
+            disabled={!canProceed()}
+            style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: canProceed() ? '#2A75F3' : '#CBD5E1', color: 'white', fontWeight: 800, cursor: canProceed() ? 'pointer' : 'not-allowed', fontSize: 'var(--neo-font-size-sm)', minWidth: 150 }}
+          >다음 단계 →</button>
+        ) : (
+          <button onClick={handleExitNoSave}
+            style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#94A3B8', color: 'white', fontWeight: 800, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', minWidth: 150 }}>목록으로</button>
+        )}
+      </div>
+      </section>
       </div>
 
       {/* 문항 삭제 확인 모달 — 내용이 입력된 문항을 삭제할 때 */}
