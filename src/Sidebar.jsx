@@ -139,7 +139,7 @@ const Sidebar = ({
                         {activeMenu === '과제 관리' && (
                             <div className="nav-sub-menu">
                                 <div
-                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || (onRegisterScreen && !historyActive && !FORM_LISTS.some((f) => f.sub === listOrigin)) ? 'active' : ''}`}
+                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || (onRegisterScreen && !historyActive && !FORM_LISTS.some((f) => f.sub === listOrigin) && !isAnswerSub(listOrigin)) ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('과제 관리')}
                                 >
                                     ⊙ 과제 관리 <span className="n-badge">N</span> <span className="badge">{taskCount ?? 0}</span>
@@ -148,14 +148,16 @@ const Sidebar = ({
                                 {FORM_LISTS.map((f) => {
                                     const isAnswer = f.form === 'answer';
                                     const fromHere = onRegisterScreen && !historyActive && (isAnswer ? isAnswerSub(listOrigin) : listOrigin === f.sub);
+                                    // 정답형 과제를 고르면 하위 메뉴(문항 · 문제집)가 열리고, 다른 메뉴를 고르면 닫힌다 (등록 중에는 열린 채로)
+                                    const answerOpen = isAnswer && (isAnswerSub(activeSubMenu) || fromHere);
                                     return (
                                         <React.Fragment key={f.sub}>
                                             <div className={`nav-sub-item ${(!isAnswer && activeSubMenu === f.sub) || fromHere ? 'active' : ''}`}
                                                 onClick={() => setActiveSubMenu(f.sub)}>
-                                                ⊙ {f.sub} {!isAnswer && <span className="badge">{formCounts?.essay ?? 0}</span>}
+                                                ⊙ {f.sub} {!isAnswer && <span className="badge">{formCounts?.essay ?? 0}</span>}{isAnswer && <span className="arrow" aria-hidden="true" style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)' }}>{answerOpen ? '▾' : '▸'}</span>}
                                             </div>
                                             {/* [TSK-15 v1.10] 정답형 과제 › 문항 · 문제집 */}
-                                            {isAnswer && ANSWER_SUBS.map((a) => (
+                                            {answerOpen && ANSWER_SUBS.map((a) => (
                                                 <div key={a.sub} className={`nav-sub-item ${activeSubMenu === a.sub ? 'active' : ''}`}
                                                     onClick={() => setActiveSubMenu(a.sub)} style={{ paddingLeft: 40 }}>
                                                     {a.icon} {a.label}
