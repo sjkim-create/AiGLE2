@@ -30,7 +30,7 @@ const KINDS = {
   },
 };
 
-// onGoItemBank(view) — 'import'면 문제 은행의 「자료에서 문항 가져오기」로, 아니면 문제 은행 목록으로
+// onGoItemBank() — 정답형 과제(문제 은행 목록)로
 // onStartAnswer — 정답형을 고르면 정답형 과제 만들기(TSK-15) 스마트로 바로 (자료 → 문항 → 배치 → 저장, 과제 관리 안)
 const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, onEditTask, initialKind = null }) => {
   const [kind, setKind] = useState(initialKind); // null | 'essay' | 'answer'
@@ -94,7 +94,6 @@ const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, onE
               </ol>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                 {onGoItemBank && <button onClick={() => onGoItemBank('list')} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>문제 은행으로 이동</button>}
-                {onGoItemBank && <button onClick={() => onGoItemBank('import')} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #2A75F3', background: '#2A75F3', color: 'white', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>📥 자료에서 문항 가져오기</button>}
               </div>
             </div>
           )}

@@ -766,7 +766,7 @@ function Setting() {
             />
           ) : activeSubMenu === '문제 은행' || activeSubMenu === '정답형 과제' ? (
             /* [TSK-15 v1.5] 정답형 과제 = 문제 은행 목록 · 등록은 정답형 직접 등록 / 스마트 등록 */
-            <ItemBank key={itemBankEntry.n} initialView={itemBankEntry.view} title="정답형 과제" registerItems={REGISTER_GROUPS[1].items}
+            <ItemBank key={itemBankEntry.n} title="정답형 과제" registerItems={REGISTER_GROUPS[1].items}
               onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin('정답형 과제'); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
