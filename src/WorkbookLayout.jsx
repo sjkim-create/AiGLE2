@@ -2,14 +2,18 @@
  * WorkbookLayout — 문제집 배치 (TSK-15 v1.14 · QBK-01)
  *
  * 순서 배치를 마친 문제집을 종이(A4) 지면으로 배치해 미리 본다.
- *   · 설정: 단(1단 · 2단) · 문항 간격(좁게 · 보통 · 넓게) · 배점 표시 · 이름 칸 — 바꾸면 문제집에 바로 저장
+ *   · 설정: 시험지 크기(A4 · B4 · A3) · 단(1단 · 2단) · 문항 간격(좁게 · 보통 · 넓게) · 배점 표시 · 이름 칸 — 바꾸면 문제집에 바로 저장
  *   · 공통 지문은 그 지문을 쓰는 첫 문항 앞에 한 번 「[1~3] 다음 글을 읽고 물음에 답하시오.」로
  *   · 유형별 답 쓰는 자리: 선다형 ①~⑤ · 양자택일형 ( A / B ) · 진위형 ( O / X ) · 연결형 · 단답형 답 칸 · 완성형 빈칸 · 서술형 줄 칸
  * 실제 쪽 나누기 · Ncode 입힌 출력 · 과제로 저장(배포·채점)은 다음 단계에서 한다.
  */
 import React from 'react';
 
-export const DEFAULT_LAYOUT = { columns: 2, spacing: 'normal', showPoints: true, nameBox: true };
+export const DEFAULT_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', showPoints: true, nameBox: true };
+// 시험지 크기 (세로, mm) — 미리 보기는 1mm ≈ 3.78px, 화면 폭에 맞게 줄여 보인다
+export const PAPERS = { A4: { w: 210, h: 297, label: 'A4 (210×297)' }, B4: { w: 257, h: 364, label: 'B4 (257×364)' }, A3: { w: 297, h: 420, label: 'A3 (297×420)' } };
+const MM = 3.78;
+const PREVIEW_MAX = 794; // 미리 보기 최대 폭(px)
 const SPACING = { narrow: 10, normal: 20, wide: 34 };
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
 
@@ -75,12 +79,13 @@ const passageRanges = (entries) => {
 
 export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layout }) => {
   const L = { ...DEFAULT_LAYOUT, ...(layout || {}) };
+  const paper = PAPERS[L.paper] || PAPERS.A4;
   const ranges = passageRanges(entries);
   const total = entries.reduce((s, e) => s + (Number(e.points) || 0), 0);
   const curText = [curriculum?.schoolLevelName, curriculum?.gradeLabel, curriculum?.curriculumName, curriculum?.subjectName].filter(Boolean).join(' · ');
   return (
     <div style={{ background: '#E2E8F0', padding: 16, borderRadius: 12, overflowX: 'auto' }}>
-      <div aria-label="문제집 지면 미리 보기" style={{ width: 794, minHeight: 1123, margin: '0 auto', background: 'white', boxShadow: '0 2px 12px rgba(15,23,42,0.15)', padding: '48px 44px', boxSizing: 'border-box', fontFamily: '"Noto Serif KR", "Batang", serif', fontSize: 13, lineHeight: 1.6, color: '#0F172A' }}>
+      <div aria-label="문제집 지면 미리 보기" data-paper={L.paper} style={{ width: Math.round(paper.w * MM), minHeight: Math.round(paper.h * MM), zoom: Math.min(1, PREVIEW_MAX / (paper.w * MM)), margin: '0 auto', background: 'white', boxShadow: '0 2px 12px rgba(15,23,42,0.15)', padding: '48px 44px', boxSizing: 'border-box', fontFamily: '"Noto Serif KR", "Batang", serif', fontSize: 13, lineHeight: 1.6, color: '#0F172A' }}>
         <div style={{ borderBottom: '2px solid #0F172A', paddingBottom: 8, marginBottom: 14, display: 'flex', alignItems: 'flex-end', gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 20, fontWeight: 900 }}>{title || '제목 없음'}</div>
@@ -131,7 +136,13 @@ export const LayoutOptions = ({ layout, onChange }) => {
   const set = (k, v) => onChange({ ...L, [k]: v });
   return (
     <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-      <span style={optLabel}>단</span>
+      <label style={{ ...optLabel, display: 'flex', alignItems: 'center', gap: 6 }}>시험지 크기
+        <select value={L.paper} onChange={(e) => set('paper', e.target.value)} aria-label="시험지 크기"
+          style={{ padding: '5px 8px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700 }}>
+          {Object.entries(PAPERS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
+        </select>
+      </label>
+      <span style={{ ...optLabel, marginLeft: 6 }}>단</span>
       {[1, 2].map((n) => <button key={n} type="button" onClick={() => set('columns', n)} style={chip(L.columns === n)} aria-pressed={L.columns === n}>{n}단</button>)}
       <span style={{ ...optLabel, marginLeft: 6 }}>문항 간격</span>
       {[['narrow', '좁게'], ['normal', '보통'], ['wide', '넓게']].map(([k, l]) => <button key={k} type="button" onClick={() => set('spacing', k)} style={chip(L.spacing === k)} aria-pressed={L.spacing === k}>{l}</button>)}
