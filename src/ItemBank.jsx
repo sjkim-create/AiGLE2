@@ -322,6 +322,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         const entries = its.map((item) => ({ item, points: wb.points?.[item.id] ?? item.points ?? 1 }));
         const curriculum = wb.curriculum || topCurriculum(its);
         const setLocal = (patch) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, ...patch } : w)));
+        const curShort = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '');
         const curText = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정');
         const sheetProps = {
           title: wb.title, curriculum, entries, passages: passageById, layout: wb.layout, actualSize: wbActual,
@@ -340,7 +341,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 문제집 목록</button>
-              <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
+              <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{curShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
               {wbEditing ? (
                 <>
                   <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} aria-label="문제집 성격" style={selectStyle}>
@@ -379,19 +380,14 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                 )}
                 {wbStep === 2 && (
                   <>
-                    <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <ArrangeSummary entries={entries}>{actualToggle}</ArrangeSummary>
-                      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-                        {curText} · ⠿를 누른 채 끌어 원하는 문항 위에 놓으면 그 문항의 번호 자리로 갑니다(파란 표시에 갈 번호). 공통 지문 문항은 묶음으로 움직이고, 묶음 안 순서는 ↑↓로 바꿉니다. 바꾼 내용은 문제집에 바로 저장됩니다. 문항을 더 넣으려면 「문항」 메뉴에서 골라 [📚 문제집에 담기].
+                    {/* v1.21 — 설명 카드 삭제. 뺀 직후에만 되돌리기 줄 */}
+                    {wbRemoved && wbRemoved.wbId === wb.id && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', background: '#FEF2F2', borderRadius: 8, padding: '6px 10px' }}>
+                        🗑 {wbRemoved.no}번 문항을 문제집에서 뺐습니다. (문제 은행에는 남아 있습니다)
+                        <button onClick={() => { save({ ...wb, itemIds: wbRemoved.itemIds, points: wbRemoved.points }); setWbRemoved(null); }} style={{ ...btn(false), padding: '4px 10px', marginLeft: 'auto' }}>↶ 되돌리기</button>
                       </div>
-                      {wbRemoved && wbRemoved.wbId === wb.id && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', background: '#FEF2F2', borderRadius: 8, padding: '6px 10px' }}>
-                          🗑 {wbRemoved.no}번 문항을 문제집에서 뺐습니다. (문제 은행에는 남아 있습니다)
-                          <button onClick={() => { save({ ...wb, itemIds: wbRemoved.itemIds, points: wbRemoved.points }); setWbRemoved(null); }} style={{ ...btn(false), padding: '4px 10px', marginLeft: 'auto' }}>↶ 되돌리기</button>
-                        </div>
-                      )}
-                    </div>
-                    <LayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })} />
+                    )}
+                    <LayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualToggle}</LayoutOptions>
                     <WorkbookSheet {...sheetProps} editMode />
                     {its.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 「문항」 메뉴에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
                   </>

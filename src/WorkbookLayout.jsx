@@ -305,7 +305,8 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
   );
 };
 
-export const LayoutOptions = ({ layout, onChange }) => {
+// children — 오른쪽 끝에 붙는 보기 설정(100%로 보기 등)
+export const LayoutOptions = ({ layout, onChange, children }) => {
   const L = { ...DEFAULT_LAYOUT, ...(layout || {}) };
   const set = (k, v) => onChange({ ...L, [k]: v });
   return (
@@ -322,7 +323,7 @@ export const LayoutOptions = ({ layout, onChange }) => {
       {[['narrow', '좁게'], ['normal', '보통'], ['wide', '한 단 2문항'], ['wide1', '한 단 1문항']].map(([k, l]) => <button key={k} type="button" onClick={() => set('spacing', k)} style={chip(L.spacing === k)} aria-pressed={L.spacing === k}>{l}</button>)}
       <label style={{ ...optLabel, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 6 }}><input type="checkbox" checked={L.showPoints} onChange={(e) => set('showPoints', e.target.checked)} /> 배점 표시</label>
       <label style={{ ...optLabel, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={L.nameBox} onChange={(e) => set('nameBox', e.target.checked)} /> 이름 칸</label>
-      <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>바꾸면 문제집에 바로 저장 · Ncode 출력·과제로 저장은 다음 단계</span>
+      {children && <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</span>}
     </div>
   );
 };
