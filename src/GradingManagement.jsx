@@ -156,6 +156,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // [TSK-15 v1.42] 정답형 문제집 · 낱말 문제집 — 그룹 문제지를 인쇄하면 채점 관리 과제 목록에 「미채점」으로 들어온다
   //   학생 = 인쇄한 그룹의 인원(프로토 샘플 이름), 정답 대조 채점은 다음 단계
   const [wbTasks, setWbTasks] = useState([]);
+  const [wbDetailPage, setWbDetailPage] = useState(false);
   useEffect(() => {
     const load = () => listWorkbooks().then((ws) => setWbTasks(ws.filter((w) => (w.deploy?.groups || []).some((g) => g.printed)).map((w) => {
       const groups = w.deploy.groups.filter((g) => g.printed);
@@ -781,7 +782,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
           <div className="content-body">
             {/* 과제 선택 사이드바 */}
-            <aside className="sub-sidebar">
+            {/* [TSK-15 v1.47] 정답형 채점 상세 페이지에서는 과제 선택 열을 숨겨 답안지를 넓게 */}
+            <aside className="sub-sidebar" style={wbDetailPage && currentTask.isWorkbook ? { display: 'none' } : undefined}>
               <div className="sub-sidebar-header">
                 <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, marginBottom: '0.75rem', color: '#1E2225' }}>과제 선택</div>
                 <div className="search-box">
@@ -810,7 +812,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
             {/* 상세 채점 관리 영역 */}
             {/* [TSK-15 v1.43] 정답형 문제집 · 낱말 문제집 — 서·논술과 같은 흐름 · 목록, 채점기는 자동 채점(정답 대조) */}
-            {currentTask.isWorkbook && <AnswerGradingPanel key={currentTask.id} task={currentTask} />}
+            {currentTask.isWorkbook && <AnswerGradingPanel key={currentTask.id} task={currentTask} onPageChange={setWbDetailPage} />}
             <section className="detail-view" style={currentTask.isWorkbook ? { display: 'none' } : undefined}>
               <div className="task-info-banner" style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '1.5rem' }}>
                 <div className="info-left">

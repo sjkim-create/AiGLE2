@@ -22,7 +22,7 @@ const pill = ([bg, color]) => ({ background: bg, color, fontSize: 'var(--neo-fon
 const submitLabel = (t) => (t === 'pen' ? '🖊 펜' : t === 'ocr' || t === 'file' ? '📄 파일' : t === 'keyboard' ? '⌨ 키보드' : '-');
 const btn = (primary, off) => ({ padding: '8px 14px', borderRadius: 8, fontFamily: 'inherit', fontWeight: 800, cursor: off ? 'not-allowed' : 'pointer', border: primary ? 'none' : '1px solid #CBD5E1', background: primary ? (off ? '#CBD5E1' : '#E8590C') : 'white', color: primary ? 'white' : '#334155', opacity: !primary && off ? 0.45 : 1 });
 
-const AnswerGradingPanel = ({ task }) => {
+const AnswerGradingPanel = ({ task, onPageChange }) => {
   const wbId = task.wb.id;
   const isWord = task.wb.kind === 'word';
   const [items, setItems] = React.useState(null);
@@ -35,6 +35,8 @@ const AnswerGradingPanel = ({ task }) => {
   const [review, setReview] = React.useState(null); // 학생 id
   const [toast, setToast] = React.useState('');
   const sheetBoxRef = React.useRef(null);
+  React.useEffect(() => { onPageChange?.(!!review); }, [review]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => () => onPageChange?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
 
   React.useEffect(() => {
@@ -69,7 +71,6 @@ const AnswerGradingPanel = ({ task }) => {
   const toggle = (id) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
   const resultOf = (s) => (s.auto ? scoreOf(questions, s.auto, s.overrides) : null);
   const autoOnly = (s) => (s.auto ? scoreOf(questions, s.auto, {}) : null);
-  const totalPts = questions.reduce((a, q) => a + q.points, 0);
   const sendable = selVisible.filter((id) => students.find((s) => s.id === id)?.status === '결과 발송 전');
 
   // 미채점 → 채점 확인: 답안 받기(모의) + 자동 채점
@@ -107,13 +108,11 @@ const AnswerGradingPanel = ({ task }) => {
   const curIdx = cur ? visible.findIndex((s) => s.id === cur.id) : -1;
 
   return (
-    <section className="detail-view" aria-label="정답형 채점">
+    <section className="detail-view" aria-label="정답형 채점" style={cur ? { padding: '1rem 1.25rem', overflow: 'hidden' } : undefined}>
+      {!cur && (<>
       <div className="task-info-banner" style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '1rem' }}>
         <div className="info-left">
           <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800 }}>[{task.type}] {task.title}</h2>
-          <div className="stats-summary" style={{ fontSize: 'var(--neo-font-size-sm)', color: '#8A94A1' }}>
-            문제지 인쇄일: {task.date} ∙ {task.groups.length}개 그룹 ∙ {students.length}명 ∙ {isWord ? '낱말 문제집' : '정답형 문제집'} ∙ {questions.length}문항 · {totalPts}점 ∙ 채점: 자동 채점(정답 대조)
-          </div>
         </div>
       </div>
 
@@ -192,7 +191,9 @@ const AnswerGradingPanel = ({ task }) => {
         </div>
       )}
 
-      {/* 상세 — 학생이 답을 쓴 문제지 그대로. 문항을 누르면 O ↔ X */}
+      </>)}
+
+      {/* 상세 페이지(v1.47 — 모달 아님) — 학생이 답을 쓴 문제지 그대로. 문항을 누르면 O ↔ X */}
       {cur && (() => {
         const r = resultOf(cur); const a = autoOnly(cur);
         const marks = Object.fromEntries(questions.map((q) => [q.key, q.key in (cur.overrides || {}) ? cur.overrides[q.key] : cur.auto?.[q.key]]));
@@ -210,10 +211,10 @@ const AnswerGradingPanel = ({ task }) => {
             style={{ minWidth: 30, padding: '2px 6px', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${tone[1]}`, background: tone[0], color: tone[1] }}>{q.no}</button>
         );
         return (
-          <div onClick={() => setReview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-            <div role="dialog" aria-modal="true" aria-label="정답형 채점 상세" onClick={(e) => e.stopPropagation()}
-              style={{ background: 'white', borderRadius: 14, width: 'min(1200px, 97vw)', height: '94vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div aria-label="정답형 채점 상세"
+              style={{ flex: 1, minHeight: 0, background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ padding: '12px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setReview(null)} style={{ ...btn(false), padding: '6px 12px' }}>← 학생 목록</button>
                 <b style={{ fontSize: 'var(--neo-font-size-lg)' }}>{cur.name}</b>
                 <span style={{ color: '#64748B' }}>{cur.grade} · {submitLabel(cur.submitType)}</span>
                 <span style={{ marginLeft: 'auto', color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}>{task.title}</span>
@@ -254,14 +255,13 @@ const AnswerGradingPanel = ({ task }) => {
                 <button type="button" disabled={curIdx <= 0} onClick={() => go(-1)} style={btn(false, curIdx <= 0)}>← 이전 학생</button>
                 <button type="button" disabled={curIdx < 0 || curIdx >= visible.length - 1} onClick={() => go(1)} style={btn(false, curIdx < 0 || curIdx >= visible.length - 1)}>다음 학생 →</button>
                 <span style={{ flex: 1 }} />
-                <button type="button" onClick={() => setReview(null)} style={btn(false)}>닫기</button>
+                <button type="button" onClick={() => setReview(null)} style={btn(false)}>목록으로</button>
                 {cur.status === '채점 확인' && (
                   <button type="button" disabled={r.pending > 0} onClick={() => { completeReview([cur.id]); setReview(null); }}
                     title={r.pending > 0 ? '확인 필요 문항의 O/X를 먼저 정해 주세요.' : ''} style={btn(true, r.pending > 0)}>✓ 검토 완료</button>
                 )}
               </div>
             </div>
-          </div>
         );
       })()}
       {toast && <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 2100 }}>{toast}</div>}
