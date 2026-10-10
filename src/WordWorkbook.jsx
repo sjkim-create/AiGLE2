@@ -255,14 +255,10 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
   }, []);
   const zoom = actualSize ? 1 : (boxW ? Math.min(1, boxW / pageW) : 1);
   const curText = [curriculum?.schoolLevelName, curriculum?.gradeLabel, curriculum?.curriculumName, curriculum?.subjectName].filter(Boolean).join(' · ');
-  // 낱말 시험 — 빈칸 쪽이 답, 다른 쪽이 보임 / 받아쓰기 — 낱말이 답, 보이는 것 없음
   const idxOf = (w) => words.indexOf(w);
-  const answerOf = (w) => (mode === 'dictation' ? w.word : blankOf(w, rawMode, idxOf(w)) === 'word' ? w.word : w.meaning);
   // 정답 보기(교사용) — 줄여 보여도 읽히게 굵고 진하게
   const answerStyle = { color: '#DC2626', fontSize: 15, fontWeight: 800, fontFamily: 'Pretendard, sans-serif', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
-  const shownOf = (w) => (mode === 'dictation' ? '' : blankOf(w, rawMode, idxOf(w)) === 'word' ? w.meaning : w.word);
   const blankCount = mode === 'vocab' ? list.reduce((a, w) => { a[blankOf(w, rawMode, idxOf(w))] += 1; return a; }, { word: 0, meaning: 0 }) : null;
-  const hasShown = mode !== 'dictation';
   return (
     <div ref={boxRef} style={{ background: '#E2E8F0', padding: 16, borderRadius: 12, overflow: actualSize ? 'auto' : 'hidden' }}>
       <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569', fontWeight: 700, textAlign: 'center', marginBottom: 10 }}>
@@ -292,21 +288,32 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
             <div style={{ display: 'flex', gap: COL_GAP }}>
               {Array.from({ length: L.columns }).map((_, ci) => (
                 <div key={ci} style={{ width: colW, flex: '0 0 auto', ...(L.style === 'table' && (pg.cols[ci] || []).length ? { border: '1px solid #334155', borderBottom: 'none', alignSelf: 'flex-start' } : {}) }}>
-                  {(pg.cols[ci] || []).map(({ w, no }) => (L.style === 'table' ? (
-                    // 표 — 번호 | 보여 줄 것 | 답 칸
-                    <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box', ...rowEditStyle(w) }}>
-                      <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{no}</b>
-                      {hasShown && <span style={{ flex: '0 1 50%', display: 'flex', alignItems: 'center', padding: '0 6px', borderRight: '1px solid #334155', overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: shownOf(w).length > 6 ? 12 : 13 }}>{shownOf(w)}</span>}
-                      <span style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 6px', minWidth: 40, ...answerStyle }}>{L.answerKey ? answerOf(w) : ''}</span>
-                    </div>
-                  ) : (
-                    // 밑줄 — 번호 · 보여 줄 것 · 답 줄
-                    <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 4, boxSizing: 'border-box', ...rowEditStyle(w) }}>
-                      <b style={{ minWidth: 26 }}>{no}.</b>
-                      {hasShown && <span style={{ flex: '0 1 50%', overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: shownOf(w).length > 6 ? 12 : 13 }}>{shownOf(w)}</span>}
-                      <span style={{ flex: 1, borderBottom: '1px solid #334155', minWidth: 40, paddingLeft: 4, ...answerStyle }}>{L.answerKey ? answerOf(w) : ' '}</span>
-                    </div>
-                  )))}
+                  {(pg.cols[ci] || []).map(({ w, no }) => {
+                    // [v1.33] 낱말 시험은 칸 자리를 고정 — 왼쪽 영어 · 오른쪽 한글. 빈칸 쪽만 비우고(정답 보기면 빨간 정답) 자리는 바뀌지 않는다
+                    //   받아쓰기는 번호 · 답 칸
+                    const cells = mode === 'vocab'
+                      ? [{ k: 'word', text: w.word }, { k: 'meaning', text: w.meaning }].map((c) => ({ ...c, blank: blankOf(w, rawMode, idxOf(w)) === c.k }))
+                      : [{ k: 'word', text: w.word, blank: true }];
+                    const cellText = (c) => (c.blank ? (L.answerKey ? c.text : '') : c.text);
+                    const textStyle = (c) => (c.blank ? answerStyle : { overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: (c.text || '').length > 6 ? 12 : 13 });
+                    return L.style === 'table' ? (
+                      // 표 — 번호 | 영어 | 한글
+                      <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box', ...rowEditStyle(w) }}>
+                        <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{no}</b>
+                        {cells.map((c, ci2) => (
+                          <span key={c.k} data-cell={c.k} data-blank={c.blank ? 'y' : 'n'} style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 6px', ...(ci2 < cells.length - 1 ? { borderRight: '1px solid #334155' } : {}), ...textStyle(c) }}>{cellText(c)}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      // 밑줄 — 번호 · 영어 · 한글 (빈칸 쪽은 밑줄)
+                      <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 4, boxSizing: 'border-box', ...rowEditStyle(w) }}>
+                        <b style={{ minWidth: 26 }}>{no}.</b>
+                        {cells.map((c) => (
+                          <span key={c.k} data-cell={c.k} data-blank={c.blank ? 'y' : 'n'} style={{ flex: '1 1 0', minWidth: 0, paddingLeft: 2, ...(c.blank ? { borderBottom: '1px solid #334155', minHeight: 18 } : {}), ...textStyle(c) }}>{cellText(c) || ' '}</span>
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
