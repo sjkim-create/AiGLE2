@@ -186,7 +186,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <Crumb path={['과제 관리']} />
-          <div className="page-title">{registerItems ? '✅ ' : ''}{title}</div>
+          <div className="page-title">{registerItems ? '✅ ' : ''}{title}{onTabChange ? (tab === 'workbooks' ? ' › 📚 문제집' : ' › 🗂️ 문항') : ''}</div>
         </div>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>
         {registerItems && (
@@ -211,12 +211,13 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
         정답형 문항·문제집 목록입니다. <b>서·논술형 과제의 문항은 포함되지 않으며</b> 서·논술형 과제에서 관리합니다.
       </div>
 
-      <div role="tablist" style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid #E2E8F0' }}>
+      {/* [TSK-15 v1.11] 왼쪽 메뉴(정답형 과제 › 문항 · 문제집)가 탭을 대신하면 화면 안 탭은 두지 않는다 */}
+      {!onTabChange && <div role="tablist" style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid #E2E8F0' }}>
         {[['items', `🗂️ 문항 ${all.length}`], ['workbooks', `📚 문제집 ${workbooks.length}`]].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             style={{ padding: '10px 16px', border: 'none', borderBottom: `3px solid ${tab === k ? '#2A75F3' : 'transparent'}`, background: 'transparent', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: tab === k ? '#1D4ED8' : '#64748B', cursor: 'pointer' }}>{l}</button>
         ))}
-      </div>
+      </div>}
 
       {loadError && <div style={{ marginBottom: 12 }}><IssueList issues={[{ level: 'error', field: '문제 은행', message: `저장소를 열 수 없습니다. ${loadError}` }]} /></div>}
 
