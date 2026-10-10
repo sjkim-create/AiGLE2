@@ -296,7 +296,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         // [TSK-15 v1.26] 낱말 문제집 — 영어 단어 시험 · 받아쓰기. 교사가 직접 낱말을 입력한다
         const createWordWb = async () => {
           const id = newId('wb');
-          await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'vocab', layout: { ...DEFAULT_WORD_LAYOUT } });
+          await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'vocab', curriculum: { curriculumName: '영어', subjectName: '영어' }, layout: { ...DEFAULT_WORD_LAYOUT } });
           setOpenWbId(id); setWbStep(1); setWbEditing(true); setWbRemoved(null); setWbNewId(id);
           try { localStorage.setItem('aigle:lastWb:words', id); } catch { /* 무시 */ }
         };
@@ -351,7 +351,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                       <div><span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 6, display: 'block' }}>출제 방식</span>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="radiogroup" aria-label="출제 방식">
                           {Object.entries(WORD_MODES).map(([k, m]) => (
-                            <button key={k} type="button" role="radio" aria-checked={normMode(wb.mode) === k} onClick={() => save({ ...wb, mode: k })}
+                            <button key={k} type="button" role="radio" aria-checked={normMode(wb.mode) === k} onClick={() => save({ ...wb, mode: k, ...(k === 'vocab' ? { curriculum: { ...wcur, curriculumName: '영어', subjectName: '영어' } } : {}) })} // [v1.36] 낱말 시험 → 교과·과목 기본값 영어
                               style={{ padding: '8px 12px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${normMode(wb.mode) === k ? '#2A75F3' : '#E2E8F0'}`, background: normMode(wb.mode) === k ? '#EFF6FF' : 'white', color: normMode(wb.mode) === k ? '#1D4ED8' : '#475569' }}>
                               {m.icon} {m.label}
                             </button>
