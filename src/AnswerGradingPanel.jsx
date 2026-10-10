@@ -95,6 +95,14 @@ const AnswerGradingPanel = ({ task }) => {
   const autoCell = (s) => { const a = autoOnly(s); return a ? <span>{a.correct}/{a.count} · <b>{a.score}점</b>{a.pending ? <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }}>확인 필요 {a.pending}</span> : null}</span> : '-'; };
   const teacherCell = (s) => { const r = resultOf(s); return s.teacherEdited && r ? <span>{r.correct}/{r.count} · <b>{r.score}점</b></span> : '-'; };
 
+  // 카드 · 줄을 누르면 상세 (상세보기 버튼 없음). 답안을 받기 전이면 안내만
+  const openProps = (s) => ({
+    onClick: () => (s.answers ? setReview(s.id) : setToast(`${s.name} — 답안을 받은 뒤 볼 수 있습니다.`)),
+    role: 'button', tabIndex: 0, 'aria-label': `${s.name} 상세`,
+    onKeyDown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); if (s.answers) setReview(s.id); } },
+    title: s.answers ? '누르면 답안 상세' : '답안을 받은 뒤 볼 수 있습니다.',
+    style: { cursor: s.answers ? 'pointer' : 'default' },
+  });
   const cur = review ? students.find((s) => s.id === review) : null;
   const curIdx = cur ? visible.findIndex((s) => s.id === cur.id) : -1;
 
@@ -139,8 +147,8 @@ const AnswerGradingPanel = ({ task }) => {
       {view === 'card' && visible.length > 0 && (
         <div className="student-grid" style={{ flexShrink: 0 }}>
           {visible.map((s) => (
-            <div key={s.id} className="student-card">
-              <input type="checkbox" className="card-checkbox" checked={sel.includes(s.id)} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} />
+            <div key={s.id} className="student-card" {...openProps(s)}>
+              <input type="checkbox" className="card-checkbox" checked={sel.includes(s.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} />
               <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
                 {s.submitType && <div style={pill(['#F1F5F9', '#475569'])}>{submitLabel(s.submitType)}</div>}
               </div>
@@ -150,7 +158,6 @@ const AnswerGradingPanel = ({ task }) => {
                 <div className="grading-row"><span className="label">자동채점 :</span><span className="value">{autoCell(s)}</span></div>
                 <div className="grading-row"><span className="label">교사채점 :</span><span className="value">{s.teacherEdited && <span className="badge-dot badge-orange" />}{teacherCell(s)}</span></div>
               </div>
-              <button className="btn-card-detail" disabled={!s.answers} onClick={() => setReview(s.id)} title={s.answers ? undefined : '답안을 받은 뒤 볼 수 있습니다.'} style={s.answers ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}>상세보기</button>
             </div>
           ))}
         </div>
@@ -167,19 +174,17 @@ const AnswerGradingPanel = ({ task }) => {
                 <th>제출 방식</th>
                 <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>
                 <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>
-                <th style={{ width: 100 }}>상세보기</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((s) => (
-                <tr key={s.id}>
-                  <td><input type="checkbox" checked={sel.includes(s.id)} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} /></td>
+                <tr key={s.id} {...openProps(s)}>
+                  <td><input type="checkbox" checked={sel.includes(s.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} /></td>
                   <td style={{ fontWeight: 700 }}>{s.name}</td>
                   <td>{s.grade}</td>
                   <td>{submitLabel(s.submitType)}</td>
                   <td>{autoCell(s)}</td>
                   <td>{teacherCell(s)}</td>
-                  <td>{s.answers ? <span role="button" style={{ cursor: 'pointer', color: '#2A75F3', fontWeight: 700 }} onClick={() => setReview(s.id)}>상세보기 &gt;</span> : <span style={{ color: '#CBD5E1' }}>상세보기 &gt;</span>}</td>
                 </tr>
               ))}
             </tbody>
