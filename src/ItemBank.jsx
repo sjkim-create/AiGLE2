@@ -344,9 +344,6 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
               <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{curShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
               {wbEditing ? (
                 <>
-                  <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} aria-label="문제집 성격" style={selectStyle}>
-                    {Object.entries(WORKBOOK_PURPOSES).map(([k, pp]) => <option key={k} value={k}>{pp.icon} {pp.label}</option>)}
-                  </select>
                   <button onClick={() => { setWbEditing(false); setWbRemoved(null); }} style={btn(true)}>✅ 수정 끝내기</button>
                 </>
               ) : (
@@ -376,7 +373,14 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                 <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />
                 {wbStep === 1 && (
                   <BasicInfoCard titleLabel="문제집 이름" title={wb.title} onTitle={(t) => setLocal({ title: t })} onTitleBlur={() => save(wb)}
-                    curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumBlur={() => save(wb)} entries={entries} />
+                    curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumBlur={() => save(wb)} entries={entries}
+                    extra={(
+                      <div><span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 4, display: 'block' }}>성격</span>
+                        <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} aria-label="문제집 성격"
+                          style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>
+                          {Object.entries(WORKBOOK_PURPOSES).map(([k, pp]) => <option key={k} value={k}>{pp.icon} {pp.label}</option>)}
+                        </select></div>
+                    )} />
                 )}
                 {wbStep === 2 && (
                   <>

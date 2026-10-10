@@ -63,15 +63,17 @@ export const StepChips = ({ steps, step, onStep }) => (
 );
 
 // titleLabel · onTitleBlur — 문제집 상세에서는 「문제집 이름」으로 쓴다
-export const BasicInfoCard = ({ title, onTitle, onTitleBlur, titleLabel = '과제명', curriculum, onCurriculum, onCurriculumBlur, entries, children }) => {
+// extra — 이름 다음 칸에 넣는 입력(문제집 성격 등)
+export const BasicInfoCard = ({ title, onTitle, onTitleBlur, titleLabel = '과제명', curriculum, onCurriculum, onCurriculumBlur, entries, children, extra = null }) => {
   const allBasic = entries.length > 0 && entries.every((e) => e.item.track === 'basic');
   const setC = (k, v) => { onCurriculum({ ...curriculum, [k]: v }); };
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 2fr) repeat(4, minmax(110px, 1fr))', gap: 10, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `minmax(220px, 2fr) repeat(${extra ? 5 : 4}, minmax(110px, 1fr))`, gap: 10, alignItems: 'end' }}>
         <div><span style={label}>{titleLabel} *</span>
           <input value={title} onChange={(e) => onTitle(e.target.value)} onBlur={onTitleBlur} maxLength={100} placeholder="예: 1학기 중간고사 과학" aria-label={titleLabel}
             style={{ ...input, borderColor: title.trim() ? '#CBD5E1' : '#FCA5A5' }} /></div>
+        {extra}
         <div><span style={label}>학교급</span>
           <select value={curriculum.schoolLevelName || ''} onChange={(e) => setC('schoolLevelName', e.target.value)} onBlur={onCurriculumBlur} aria-label="학교급" style={input}>
             <option value="">{allBasic ? '기초학력' : '선택'}</option>
