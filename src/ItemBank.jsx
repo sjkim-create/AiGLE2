@@ -41,6 +41,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
   const [wbEditIdx, setWbEditIdx] = useState(null); // 문제집 상세에서 문항 편집 중
   const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 문제집 배치 (v1.18 — 순서 배치는 문제집 배치의 편집 모드로)
   const [wbEditing, setWbEditing] = useState(false); // 문제집 수정 모드 (열면 보기 — 출력 모양)
+  const [wbNewId, setWbNewId] = useState(null);     // 방금 만든 문제집 — 버튼 「만들기 완료」 (기존 문제집은 「수정 완료」)
   const [wbActual, setWbActual] = useState(false);  // 100%로 보기
   const [wbRemoved, setWbRemoved] = useState(null); // 방금 뺀 문항 — 되돌리기
   const [regOpen, setRegOpen] = useState(false);
@@ -296,7 +297,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         const createWordWb = async () => {
           const id = newId('wb');
           await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'vocab', layout: { ...DEFAULT_WORD_LAYOUT } });
-          setOpenWbId(id); setWbStep(1); setWbEditing(true); setWbRemoved(null);
+          setOpenWbId(id); setWbStep(1); setWbEditing(true); setWbRemoved(null); setWbNewId(id);
           try { localStorage.setItem('aigle:lastWb:words', id); } catch { /* 무시 */ }
         };
         // 이 메뉴의 문제집만 — 📚 문제집 = 문항 문제집, 🔤 낱말 문제집 = 낱말 문제집
@@ -322,9 +323,9 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {!wide && <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 목록</button>}
-                <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>🔤 {wb.title || '이름 없는 낱말 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{wShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
+                <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>🔤 {wb.title || '이름 없는 낱말 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{wShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>{wbNewId === wb.id ? '새로 만드는 중' : '수정 중'}</span>}</span>
                 {wbEditing ? (
-                  <button onClick={() => { save(wb); setWbEditing(false); }} style={btn(true)}>✅ 수정 끝내기</button>
+                  <button onClick={() => { save(wb); setWbEditing(false); setWbNewId(null); }} style={btn(true)}>{wbNewId === wb.id ? '✅ 만들기 완료' : '✅ 수정 완료'}</button>
                 ) : (
                   <>
                     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORD_MODES[normMode(wb.mode)].icon} {WORD_MODES[normMode(wb.mode)].label}</span>
@@ -404,10 +405,10 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {!wide && <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 목록</button>}
-              <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{curShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
+              <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{curShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>{wbNewId === wb.id ? '새로 만드는 중' : '수정 중'}</span>}</span>
               {wbEditing ? (
                 <>
-                  <button onClick={() => { setWbEditing(false); setWbRemoved(null); }} style={btn(true)}>✅ 수정 끝내기</button>
+                  <button onClick={() => { setWbEditing(false); setWbRemoved(null); setWbNewId(null); }} style={btn(true)}>{wbNewId === wb.id ? '✅ 만들기 완료' : '✅ 수정 완료'}</button>
                 </>
               ) : (
                 <>
