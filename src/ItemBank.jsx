@@ -14,7 +14,7 @@ import { loadCatalog } from './lib/taskFromFile';
 import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
-import { BasicInfoCard, ArrangeRows, topCurriculum } from './AnswerArrange';
+import { BasicInfoCard, ArrangeRows, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { buildAnswerTask } from './lib/taskSchema';
 
 const Crumb = ({ path }) => (
@@ -39,6 +39,7 @@ const btn = (primary, disabled, danger) => ({
 const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, onSaveTask }) => {
   const [wbTask, setWbTask] = useState({ id: null, title: '', curriculum: null }); // 문제집 상세의 과제 기본 정보
   const [wbEditIdx, setWbEditIdx] = useState(null); // 문제집 상세에서 문항 편집 중
+  const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 순서 배치
   const [regOpen, setRegOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [passages, setPassages] = useState([]);
@@ -300,7 +301,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
                 const its = w.itemIds.map((id) => itemById[id]).filter(Boolean);
                 const review = its.filter((i) => !isReady(i)).length;
                 return (
-                  <button key={w.id} onClick={() => setOpenWbId(w.id)} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <button key={w.id} onClick={() => { setOpenWbId(w.id); setWbStep(1); }} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
                     <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B' }}>{w.title}</span>
                     <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>문항 {its.length}개{review ? ` · 확인 필요 ${review}개` : ''}{w.itemIds.length > its.length ? ` · 삭제된 문항 ${w.itemIds.length - its.length}개` : ''}</span>
@@ -335,13 +336,31 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
               </select>
               <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
             </div>
-            <BasicInfoCard title={taskInfo.title} onTitle={(t) => setTaskInfo({ title: t })} curriculum={curriculum} onCurriculum={(c) => setTaskInfo({ curriculum: c })} entries={entries}>
-              {onSaveTask && <button onClick={saveTask} disabled={!taskInfo.title.trim() || !entries.length} title="이 순서·배점으로 정답형 과제(시험지)를 저장합니다" style={btn(true, !taskInfo.title.trim() || !entries.length)}>💾 과제로 저장</button>}
-            </BasicInfoCard>
-            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', padding: '0 4px' }}>순서(↑↓) · 빼기(✕) · 배점 · 문항 편집은 이 문제집에 바로 저장됩니다. 문항을 고치면 문제 은행 원본이 바뀌고, 이미 저장한 과제는 그대로입니다. 문항을 더 넣으려면 문항 탭에서 골라 [📚 문제집에 담기].</div>
-            <ArrangeRows entries={entries} onChange={onRows} passages={passageById} removeLabel="문제집에서 빼기" onEdit={(i) => setWbEditIdx(i)}
-              onItemChange={(i, x) => { putItem({ ...x, number: its[i].number, status: isReady(x) ? 'ready' : 'needs_review' }); }} />
-            {its.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 문항 탭에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
+            {/* [TSK-15 v1.9] 단계 화면 — ① 기본 정보 ② 순서 배치(저장). 단계 칩으로 자유롭게 오간다 */}
+            <StepChips steps={['기본 정보', '순서 배치']} step={wbStep} onStep={setWbStep} />
+            {wbStep === 1 && (
+              <BasicInfoCard title={taskInfo.title} onTitle={(t) => setTaskInfo({ title: t })} curriculum={curriculum} onCurriculum={(c) => setTaskInfo({ curriculum: c })} entries={entries}>
+                <button onClick={() => setWbStep(2)} style={btn(true)}>다음: 순서 배치 →</button>
+              </BasicInfoCard>
+            )}
+            {wbStep === 2 && (
+              <>
+                <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <ArrangeSummary entries={entries}>
+                    <button onClick={() => setWbStep(1)} style={btn(false)}>← 기본 정보</button>
+                    {onSaveTask && <button onClick={saveTask} disabled={!taskInfo.title.trim() || !entries.length}
+                      title={!taskInfo.title.trim() ? '기본 정보에서 과제명을 입력해 주세요.' : '이 순서·배점으로 정답형 과제(시험지)를 저장합니다'} style={btn(true, !taskInfo.title.trim() || !entries.length)}>💾 과제로 저장</button>}
+                  </ArrangeSummary>
+                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
+                    과제명 「{taskInfo.title.trim() || '— 기본 정보에서 입력'}」 · {[curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정')}
+                  </div>
+                </div>
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', padding: '0 4px' }}>순서(↑↓) · 빼기(✕) · 배점 · 문항 편집은 이 문제집에 바로 저장됩니다. 문항을 고치면 문제 은행 원본이 바뀌고, 이미 저장한 과제는 그대로입니다. 문항을 더 넣으려면 문항 탭에서 골라 [📚 문제집에 담기].</div>
+                <ArrangeRows entries={entries} onChange={onRows} passages={passageById} removeLabel="문제집에서 빼기" onEdit={(i) => setWbEditIdx(i)}
+                  onItemChange={(i, x) => { putItem({ ...x, number: its[i].number, status: isReady(x) ? 'ready' : 'needs_review' }); }} />
+                {its.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 문항 탭에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
+              </>
+            )}
             {wbEditIdx != null && its[wbEditIdx] && (
               <ItemEditDialog open item={its[wbEditIdx]} pages={sources.find((x) => x.id === its[wbEditIdx].source?.sourceId)?.pageImages}
                 scopeNote="문제 은행 원본이 바뀝니다 · 이미 저장한 과제는 그대로" onClose={() => setWbEditIdx(null)}

@@ -33,9 +33,36 @@ export const topCurriculum = (items) => {
   return { schoolLevelName, gradeLabel, curriculumName, subjectName };
 };
 
-export const BasicInfoCard = ({ title, onTitle, curriculum, onCurriculum, entries, children }) => {
+// 문항 수 · 총점 · 유형 · 정답 없는 문항 경고 + 오른쪽 버튼(children)
+export const ArrangeSummary = ({ entries, children }) => {
   const total = entries.reduce((s, e) => s + (Number(e.points) || 0), 0);
   const noAnswer = entries.filter((e) => !hasAnswer(e.item)).length;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800 }}>✅ 정답형 · 문항 {entries.length}개 · 총 {total}점</span>
+      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{[...new Set(entries.map((e) => ITEM_TYPES[e.item.itemType]?.label))].filter(Boolean).join(' · ')}</span>
+      {noAnswer > 0 && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>정답 없는 문항 {noAnswer}개 — 저장은 되지만 채점 전에 정답이 필요합니다</span>}
+      <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{children}</span>
+    </div>
+  );
+};
+
+// 단계 표시 — 누르면 그 단계로 (단계 강제 없음)
+export const StepChips = ({ steps, step, onStep }) => (
+  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="tablist" aria-label="단계">
+    {steps.map((l, i) => {
+      const n = i + 1; const st = n < step ? 'done' : n === step ? 'now' : 'todo';
+      return (
+        <button key={l} type="button" role="tab" aria-selected={n === step} onClick={() => onStep(n)}
+          style={{ padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', cursor: 'pointer', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, background: st === 'now' ? '#EFF6FF' : st === 'done' ? '#ECFDF5' : '#F8FAFC', color: st === 'now' ? '#1D4ED8' : st === 'done' ? '#047857' : '#94A3B8', border: `1px solid ${st === 'now' ? '#93C5FD' : st === 'done' ? '#A7F3D0' : '#E2E8F0'}` }}>
+          {st === 'done' ? `✓ ${l}` : `${n}. ${l}`}
+        </button>
+      );
+    })}
+  </div>
+);
+
+export const BasicInfoCard = ({ title, onTitle, curriculum, onCurriculum, entries, children }) => {
   const allBasic = entries.length > 0 && entries.every((e) => e.item.track === 'basic');
   const setC = (k, v) => onCurriculum({ ...curriculum, [k]: v });
   return (
@@ -53,12 +80,7 @@ export const BasicInfoCard = ({ title, onTitle, curriculum, onCurriculum, entrie
         <div><span style={label}>교과</span><input value={curriculum.curriculumName || ''} onChange={(e) => setC('curriculumName', e.target.value)} placeholder="예: 과학" aria-label="교과" style={input} /></div>
         <div><span style={label}>과목</span><input value={curriculum.subjectName || ''} onChange={(e) => setC('subjectName', e.target.value)} placeholder="예: 과학" aria-label="과목" style={input} /></div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800 }}>✅ 정답형 · 문항 {entries.length}개 · 총 {total}점</span>
-        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{[...new Set(entries.map((e) => ITEM_TYPES[e.item.itemType]?.label))].filter(Boolean).join(' · ')}</span>
-        {noAnswer > 0 && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>정답 없는 문항 {noAnswer}개 — 저장은 되지만 채점 전에 정답이 필요합니다</span>}
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{children}</span>
-      </div>
+      <ArrangeSummary entries={entries}>{children}</ArrangeSummary>
     </div>
   );
 };
