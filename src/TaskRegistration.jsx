@@ -374,7 +374,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
                 <span style={{ fontSize: '3rem' }}>✨</span>
                 <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>스마트 과제 등록</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
-                  평가 자료(PDF/이미지)를 올리면 AI가 읽어 과제로 만듭니다. 서·논술형은 바로 과제로, 정답형은 문항을 유형별로 분류해 문제 은행에 담습니다.
+                  평가 자료(PDF/이미지)를 올리면 AI가 읽어 서·논술 과제를 바로 만듭니다. 정답형 과제는 문제 은행의 문항으로 만듭니다.
                 </span>
               </button>
             </div>

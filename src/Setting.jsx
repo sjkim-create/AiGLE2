@@ -499,6 +499,10 @@ function Setting() {
   //   사이드바·상단바 메뉴 이동을 바로 실행하지 않고 경고 모달을 띄운다. [나가기]를 고르면 보류한 이동을 그대로 실행.
   //   leaveGuard: null | { canSave }
   const [leaveGuard, setLeaveGuard] = useState(null);
+  // [QBK-01 v1.3] 문제 은행 진입 화면 — 스마트 과제 등록(정답형)에서 「자료에서 문항 가져오기」로 바로 들어올 때 'import'
+  const [itemBankEntry, setItemBankEntry] = useState({ view: 'list', n: 0 });
+  // 문제 은행을 벗어나면 다음 진입은 목록부터 (가져오기 화면이 다시 열리지 않게)
+  useEffect(() => { if (activeSubMenu !== '문제 은행') setItemBankEntry((e) => (e.view === 'list' ? e : { view: 'list', n: e.n })); }, [activeSubMenu]);
   const leaveGuardRef = useRef(null);
   leaveGuardRef.current = leaveGuard;
   const pendingNavRef = useRef([]);
@@ -742,10 +746,10 @@ function Setting() {
               initialMode={taskRegistrationMode}
               onLeaveGuardChange={setLeaveGuard}
               onAdd={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))}
-              onGoItemBank={() => setActiveSubMenu('문제 은행')}
+              onGoItemBank={(view) => { setItemBankEntry({ view: view || 'list', n: Date.now() }); setActiveSubMenu('문제 은행'); }}
             />
           ) : activeSubMenu === '문제 은행' ? (
-            <ItemBank onGoRegister={() => { setTaskRegistrationMode('generate-answer'); setActiveSubMenu('과제 등록'); }} />
+            <ItemBank key={itemBankEntry.n} initialView={itemBankEntry.view} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
               onNavigateToTaskManagement={() => setActiveSubMenu('과제 관리')}

@@ -124,7 +124,7 @@ const Sidebar = ({
                         {activeMenu === '과제 관리' && (
                             <div className="nav-sub-menu">
                                 <div
-                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' ? 'active' : ''}`}
+                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || activeSubMenu === '과제 등록' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('과제 관리')}
                                 >
                                     ⊙ 과제 관리 <span className="n-badge">N</span> <span className="badge">{taskCount ?? 0}</span>

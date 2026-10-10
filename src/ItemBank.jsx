@@ -13,6 +13,12 @@ import ItemCard from './ItemCard';
 import { loadCatalog } from './lib/taskFromFile';
 import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
+import ItemExtractWizard from './ItemExtractWizard';
+
+const Crumb = ({ path }) => (
+  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
+);
+
 
 const chipBtn = (on) => ({
   padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer',
@@ -25,7 +31,9 @@ const btn = (primary, disabled, danger) => ({
   background: primary ? '#2A75F3' : 'white', color: danger ? '#DC2626' : primary ? 'white' : '#475569',
 });
 
-const ItemBank = ({ onGoRegister }) => {
+// [QBK-01 v1.3] 정답형 문항 가져오기는 문제 은행 안에서 한다 (view: list | import). 서·논술 과제의 문항은 들어오지 않는다
+const ItemBank = ({ initialView = 'list' }) => {
+  const [view, setView] = useState(initialView);
   const [items, setItems] = useState(null);
   const [passages, setPassages] = useState([]);
   const [sources, setSources] = useState([]);
@@ -162,11 +170,31 @@ const ItemBank = ({ onGoRegister }) => {
 
   return (
     <div ref={rootRef} className="task-management-container" style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
+      {view === 'import' ? (
+        <>
+          <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => setView('list')} style={{ ...btn(false), padding: '8px 14px' }}>← 문제 은행</button>
+            <div>
+              <Crumb path={['과제 관리', '문제 은행']} />
+              <div className="page-title">📥 자료에서 문항 가져오기</div>
+            </div>
+          </header>
+          <div style={{ maxWidth: 960 }}>
+            <ItemExtractWizard onBack={() => setView('list')} onGoItemBank={() => { setView('list'); setTab('items'); }} />
+          </div>
+        </>
+      ) : <>
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div className="page-title">문제 은행</div>
+        <div>
+          <Crumb path={['과제 관리']} />
+          <div className="page-title">문제 은행</div>
+        </div>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>
-        {onGoRegister && <button onClick={onGoRegister} style={{ ...btn(true), marginLeft: 'auto' }}>✨ 자료에서 문항 가져오기</button>}
+        <button onClick={() => setView('import')} style={{ ...btn(true), marginLeft: 'auto' }}>📥 자료에서 문항 가져오기</button>
       </header>
+      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', margin: '-4px 0 10px' }}>
+        정답형 문항 저장소입니다. <b>서·논술 과제의 문항은 포함되지 않으며</b> 과제 관리에서 관리합니다.
+      </div>
 
       <div role="tablist" style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid #E2E8F0' }}>
         {[['items', `🗂️ 문항 ${all.length}`], ['workbooks', `📚 문제집 ${workbooks.length}`]].map(([k, l]) => (
@@ -205,8 +233,8 @@ const ItemBank = ({ onGoRegister }) => {
         <div className="task-empty-state">
           <div className="empty-icon" aria-hidden="true">🗂️</div>
           <p className="empty-title">아직 저장된 문항이 없습니다.</p>
-          <p className="empty-sub">새 과제 등록 › 스마트 과제 등록 › 정답형으로 평가 자료를 올리면 문항이 유형별로 쌓입니다.</p>
-          {onGoRegister && <button onClick={onGoRegister} style={btn(true)}>✨ 자료에서 문항 가져오기</button>}
+          <p className="empty-sub">[📥 자료에서 문항 가져오기]로 시험지·교재 PDF를 올리면 문항이 유형별로 쌓입니다.</p>
+          <button onClick={() => setView('import')} style={btn(true)}>📥 자료에서 문항 가져오기</button>
         </div>
       ) : (
         <>
@@ -368,6 +396,7 @@ const ItemBank = ({ onGoRegister }) => {
         </div>
       )}
 
+      </>}
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '12px 20px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 1100 }}>{toast}</div>}
     </div>
   );
