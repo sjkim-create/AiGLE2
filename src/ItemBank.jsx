@@ -15,7 +15,7 @@ import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
 import { BasicInfoCard, ArrangeRows, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
-import { buildAnswerTask } from './lib/taskSchema';
+import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
 
 const Crumb = ({ path }) => (
   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
@@ -35,12 +35,10 @@ const btn = (primary, disabled, danger) => ({
 
 // 서·논술 과제의 문항은 들어오지 않는다. 문항은 정답형 직접 등록·스마트 등록(TSK-15)으로 쌓인다 (QBK-01 v1.7 — 자료에서 문항 가져오기 삭제)
 // [TSK-15 v1.5] 왼쪽 메뉴 「정답형 과제」 = 이 목록. registerItems가 있으면 [+ 새 과제 등록] → 정답형 직접 등록 · 스마트 등록
-// onSaveTask(task) — 문제집 상세(배치 화면)에서 [💾 과제로 저장] (TSK-15 v1.8)
 // initialTab · onTabChange — 왼쪽 메뉴 「정답형 과제 › 문항 / 문제집」과 탭을 맞춘다 (TSK-15 v1.10)
-const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, onSaveTask, initialTab = 'items', onTabChange }) => {
-  const [wbTask, setWbTask] = useState({ id: null, title: '', curriculum: null }); // 문제집 상세의 과제 기본 정보
+const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, initialTab = 'items', onTabChange }) => {
   const [wbEditIdx, setWbEditIdx] = useState(null); // 문제집 상세에서 문항 편집 중
-  const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 순서 배치
+  const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 순서 배치 · 3 문제집 배치
   const [regOpen, setRegOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [passages, setPassages] = useState([]);
@@ -316,49 +314,47 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
           );
         }
         const its = wb.itemIds.map((id) => itemById[id]).filter(Boolean);
-        // [TSK-15 v1.8] 문제집 상세 = 배치 화면 — 순서·빼기·문항 편집·배점은 문제집에 저장, 과제명·교육과정을 정해 [💾 과제로 저장]
+        // [TSK-15 v1.14] 문제집 상세 — ① 기본 정보(이름·교육과정) ② 순서 배치 ③ 문제집 배치(지면). 모두 문제집에 바로 저장
+        //   과제로 저장(배포·채점)은 다음 단계에서 한다
         const entries = its.map((item) => ({ item, points: wb.points?.[item.id] ?? item.points ?? 1 }));
-        const taskInfo = wbTask.id === wb.id ? wbTask : { id: wb.id, title: wb.title, curriculum: null };
-        const setTaskInfo = (patch) => setWbTask({ ...taskInfo, ...patch });
-        const curriculum = taskInfo.curriculum || topCurriculum(its);
+        const curriculum = wb.curriculum || topCurriculum(its);
+        const setLocal = (patch) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, ...patch } : w)));
         const onRows = (next) => save({ ...wb, itemIds: [...next.map((e) => e.item.id), ...wb.itemIds.filter((id) => !itemById[id])], points: Object.fromEntries(next.map((e) => [e.item.id, e.points])) });
-        const saveTask = () => {
-          const ps = [...new Set(its.map((i) => i.passageId).filter(Boolean))].map((id) => passageById[id]).filter(Boolean);
-          onSaveTask?.(buildAnswerTask({ title: taskInfo.title.trim(), entries: entries.map((e) => ({ ...e, fromBank: true })), passages: ps, curriculum, origin: 'workbook' }));
-          setToast(`「${taskInfo.title.trim()}」 과제를 저장했습니다 — 과제 관리 목록 맨 위 「작성중」`);
-        };
+        const curText = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정');
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 문제집 목록</button>
-              <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>문제집</span>
-              <input value={wb.title} onChange={(e) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, title: e.target.value } : w)))} onBlur={() => save(wb)} maxLength={60} aria-label="문제집 이름"
-                style={{ flex: 1, minWidth: 180, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-base)', fontWeight: 800 }} />
-              <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} style={selectStyle}>
+              <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}</span>
+              <select value={wb.purpose} onChange={(e) => save({ ...wb, purpose: e.target.value })} aria-label="문제집 성격" style={selectStyle}>
                 {Object.entries(WORKBOOK_PURPOSES).map(([k, pp]) => <option key={k} value={k}>{pp.icon} {pp.label}</option>)}
               </select>
               <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
             </div>
-            {/* [TSK-15 v1.9] 단계 화면 — ① 기본 정보 ② 순서 배치(저장). 단계 이동은 위 단계 칩으로만 (v1.13 — 본문의 [다음]·[← 기본 정보] 중복 삭제) */}
-            <StepChips steps={['기본 정보', '순서 배치']} step={wbStep} onStep={setWbStep} />
+            {/* 단계 이동은 단계 칩으로만 (강제 없음) */}
+            <StepChips steps={['기본 정보', '순서 배치', '문제집 배치']} step={wbStep} onStep={setWbStep} />
             {wbStep === 1 && (
-              <BasicInfoCard title={taskInfo.title} onTitle={(t) => setTaskInfo({ title: t })} curriculum={curriculum} onCurriculum={(c) => setTaskInfo({ curriculum: c })} entries={entries} />
+              <BasicInfoCard titleLabel="문제집 이름" title={wb.title} onTitle={(t) => setLocal({ title: t })} onTitleBlur={() => save(wb)}
+                curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumBlur={() => save(wb)} entries={entries} />
             )}
             {wbStep === 2 && (
               <>
                 <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <ArrangeSummary entries={entries}>
-                    {onSaveTask && <button onClick={saveTask} disabled={!taskInfo.title.trim() || !entries.length}
-                      title={!taskInfo.title.trim() ? '기본 정보에서 과제명을 입력해 주세요.' : '이 순서·배점으로 정답형 과제(시험지)를 저장합니다'} style={btn(true, !taskInfo.title.trim() || !entries.length)}>💾 과제로 저장</button>}
-                  </ArrangeSummary>
+                  <ArrangeSummary entries={entries} />
                   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-                    과제명 「{taskInfo.title.trim() || '— 기본 정보에서 입력'}」 · {[curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정')}
+                    {curText}
                   </div>
                 </div>
                 <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', padding: '0 4px' }}>순서(↑↓) · 빼기(✕) · 배점 · 문항 편집은 이 문제집에 바로 저장됩니다. 문항을 고치면 문제 은행 원본이 바뀌고, 이미 저장한 과제는 그대로입니다. 문항을 더 넣으려면 문항 탭에서 골라 [📚 문제집에 담기].</div>
                 <ArrangeRows entries={entries} onChange={onRows} passages={passageById} removeLabel="문제집에서 빼기" onEdit={(i) => setWbEditIdx(i)}
                   onItemChange={(i, x) => { putItem({ ...x, number: its[i].number, status: isReady(x) ? 'ready' : 'needs_review' }); }} />
                 {its.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 문항 탭에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
+              </>
+            )}
+            {wbStep === 3 && (
+              <>
+                <LayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })} />
+                <WorkbookSheet title={wb.title} curriculum={curriculum} entries={entries} passages={passageById} layout={wb.layout} />
               </>
             )}
             {wbEditIdx != null && its[wbEditIdx] && (

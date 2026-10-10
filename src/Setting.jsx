@@ -769,8 +769,7 @@ function Setting() {
           ) : activeSubMenu === '문제 은행' || isAnswerSub(activeSubMenu) ? (
             /* [TSK-15 v1.5] 정답형 과제 = 문제 은행 목록 · 등록은 정답형 직접 등록 / 스마트 등록 */
             <ItemBank key={`${itemBankEntry.n}-${activeSubMenu}`} title="정답형 과제" initialTab={answerTabOf(activeSubMenu)} onTabChange={(t) => setActiveSubMenu(answerSubOf(t))} registerItems={REGISTER_GROUPS[1].items}
-              onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin(isAnswerSub(activeSubMenu) ? activeSubMenu : '정답형 과제'); setActiveSubMenu('과제 등록'); }}
-              onSaveTask={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))} />
+              onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin(isAnswerSub(activeSubMenu) ? activeSubMenu : '정답형 과제'); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
               onNavigateToTaskManagement={() => setActiveSubMenu('과제 관리')}

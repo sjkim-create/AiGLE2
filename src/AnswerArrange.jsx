@@ -62,23 +62,24 @@ export const StepChips = ({ steps, step, onStep }) => (
   </div>
 );
 
-export const BasicInfoCard = ({ title, onTitle, curriculum, onCurriculum, entries, children }) => {
+// titleLabel · onTitleBlur — 문제집 상세에서는 「문제집 이름」으로 쓴다
+export const BasicInfoCard = ({ title, onTitle, onTitleBlur, titleLabel = '과제명', curriculum, onCurriculum, onCurriculumBlur, entries, children }) => {
   const allBasic = entries.length > 0 && entries.every((e) => e.item.track === 'basic');
-  const setC = (k, v) => onCurriculum({ ...curriculum, [k]: v });
+  const setC = (k, v) => { onCurriculum({ ...curriculum, [k]: v }); };
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 2fr) repeat(4, minmax(110px, 1fr))', gap: 10, alignItems: 'end' }}>
-        <div><span style={label}>과제명 *</span>
-          <input value={title} onChange={(e) => onTitle(e.target.value)} maxLength={100} placeholder="예: 1학기 중간고사 과학" aria-label="과제명"
+        <div><span style={label}>{titleLabel} *</span>
+          <input value={title} onChange={(e) => onTitle(e.target.value)} onBlur={onTitleBlur} maxLength={100} placeholder="예: 1학기 중간고사 과학" aria-label={titleLabel}
             style={{ ...input, borderColor: title.trim() ? '#CBD5E1' : '#FCA5A5' }} /></div>
         <div><span style={label}>학교급</span>
-          <select value={curriculum.schoolLevelName || ''} onChange={(e) => setC('schoolLevelName', e.target.value)} aria-label="학교급" style={input}>
+          <select value={curriculum.schoolLevelName || ''} onChange={(e) => setC('schoolLevelName', e.target.value)} onBlur={onCurriculumBlur} aria-label="학교급" style={input}>
             <option value="">{allBasic ? '기초학력' : '선택'}</option>
             {[...new Set([...SCHOOL_LEVELS, curriculum.schoolLevelName].filter(Boolean))].map((x) => <option key={x}>{x}</option>)}
           </select></div>
-        <div><span style={label}>학년</span><input value={curriculum.gradeLabel || ''} onChange={(e) => setC('gradeLabel', e.target.value)} placeholder="예: 1-3학년" aria-label="학년" style={input} /></div>
-        <div><span style={label}>교과</span><input value={curriculum.curriculumName || ''} onChange={(e) => setC('curriculumName', e.target.value)} placeholder="예: 과학" aria-label="교과" style={input} /></div>
-        <div><span style={label}>과목</span><input value={curriculum.subjectName || ''} onChange={(e) => setC('subjectName', e.target.value)} placeholder="예: 과학" aria-label="과목" style={input} /></div>
+        <div><span style={label}>학년</span><input value={curriculum.gradeLabel || ''} onChange={(e) => setC('gradeLabel', e.target.value)} placeholder="예: 1-3학년" aria-label="학년" onBlur={onCurriculumBlur} style={input} /></div>
+        <div><span style={label}>교과</span><input value={curriculum.curriculumName || ''} onChange={(e) => setC('curriculumName', e.target.value)} placeholder="예: 과학" aria-label="교과" onBlur={onCurriculumBlur} style={input} /></div>
+        <div><span style={label}>과목</span><input value={curriculum.subjectName || ''} onChange={(e) => setC('subjectName', e.target.value)} placeholder="예: 과학" aria-label="과목" onBlur={onCurriculumBlur} style={input} /></div>
       </div>
       <ArrangeSummary entries={entries}>{children}</ArrangeSummary>
     </div>
