@@ -36,7 +36,8 @@ const btn = (primary, disabled, danger) => ({
 // 서·논술 과제의 문항은 들어오지 않는다. 문항은 정답형 직접 등록·스마트 등록(TSK-15)으로 쌓인다 (QBK-01 v1.7 — 자료에서 문항 가져오기 삭제)
 // [TSK-15 v1.5] 왼쪽 메뉴 「정답형 과제」 = 이 목록. registerItems가 있으면 [+ 새 과제 등록] → 정답형 직접 등록 · 스마트 등록
 // onSaveTask(task) — 문제집 상세(배치 화면)에서 [💾 과제로 저장] (TSK-15 v1.8)
-const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, onSaveTask }) => {
+// initialTab · onTabChange — 왼쪽 메뉴 「정답형 과제 › 문항 / 문제집」과 탭을 맞춘다 (TSK-15 v1.10)
+const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, onSaveTask, initialTab = 'items', onTabChange }) => {
   const [wbTask, setWbTask] = useState({ id: null, title: '', curriculum: null }); // 문제집 상세의 과제 기본 정보
   const [wbEditIdx, setWbEditIdx] = useState(null); // 문제집 상세에서 문항 편집 중
   const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 순서 배치
@@ -58,7 +59,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
   const [draft, setDraft] = useState(null);     // 상세에서 고치는 중인 문항
   const [confirmDelete, setConfirmDelete] = useState(null); // 삭제할 id 배열
   const [toast, setToast] = useState('');
-  const [tab, setTab] = useState('items');        // 'items' | 'workbooks'
+  const [tab, setTabState] = useState(initialTab); // 'items' | 'workbooks'
+  const setTab = (k) => { setTabState(k); onTabChange?.(k); };
   const [trackF, setTrackF] = useState('all');
   const [workbooks, setWorkbooks] = useState([]);
   const [wbOpen, setWbOpen] = useState(false);    // 문제집에 담기 창

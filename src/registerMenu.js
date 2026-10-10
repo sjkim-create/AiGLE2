@@ -38,3 +38,12 @@ export const SIDEBAR_REGISTER_HISTORY = [
   { mode: 'generate-pick', icon: '✨', label: '스마트 과제 등록 (형태 선택)' },
   { mode: 'answer-bank', icon: '🗂️', label: '문제 은행에서 고르기' },
 ];
+
+// [TSK-15 v1.10] 정답형 과제 하위 메뉴 — 문항 / 문제집 (같은 화면의 탭)
+export const ANSWER_SUBS = [
+  { sub: '정답형 과제', tab: 'items', icon: '🗂️', label: '문항' },
+  { sub: '정답형 문제집', tab: 'workbooks', icon: '📚', label: '문제집' },
+];
+export const isAnswerSub = (sub) => ANSWER_SUBS.some((a) => a.sub === sub);
+export const answerTabOf = (sub) => ANSWER_SUBS.find((a) => a.sub === sub)?.tab || 'items';
+export const answerSubOf = (tab) => ANSWER_SUBS.find((a) => a.tab === tab)?.sub || '정답형 과제';

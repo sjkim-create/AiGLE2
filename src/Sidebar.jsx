@@ -5,7 +5,7 @@
  * 사용자 프로필 드롭다운, 환경설정 모드 전환 기능을 포함합니다.
  */
 import React, { useState } from 'react';
-import { FORM_LISTS, SIDEBAR_REGISTER_HISTORY } from './registerMenu';
+import { FORM_LISTS, SIDEBAR_REGISTER_HISTORY, ANSWER_SUBS, isAnswerSub } from './registerMenu';
 
 const Sidebar = ({
     activeMenu,
@@ -145,13 +145,25 @@ const Sidebar = ({
                                     ⊙ 과제 관리 <span className="n-badge">N</span> <span className="badge">{taskCount ?? 0}</span>
                                 </div>
                                 {/* [TSK-15 v1.4] 형태별 과제 목록 — 등록은 목록의 [+ 새 과제 등록]에서 직접 등록 / 스마트 등록 */}
-                                {FORM_LISTS.map((f) => (
-                                    <div key={f.sub}
-                                        className={`nav-sub-item ${activeSubMenu === f.sub || (onRegisterScreen && !historyActive && listOrigin === f.sub) ? 'active' : ''}`}
-                                        onClick={() => setActiveSubMenu(f.sub)}>
-                                        ⊙ {f.sub} {f.form === 'essay' && <span className="badge">{formCounts?.essay ?? 0}</span>}
-                                    </div>
-                                ))}
+                                {FORM_LISTS.map((f) => {
+                                    const isAnswer = f.form === 'answer';
+                                    const fromHere = onRegisterScreen && !historyActive && (isAnswer ? isAnswerSub(listOrigin) : listOrigin === f.sub);
+                                    return (
+                                        <React.Fragment key={f.sub}>
+                                            <div className={`nav-sub-item ${(!isAnswer && activeSubMenu === f.sub) || fromHere ? 'active' : ''}`}
+                                                onClick={() => setActiveSubMenu(f.sub)}>
+                                                ⊙ {f.sub} {!isAnswer && <span className="badge">{formCounts?.essay ?? 0}</span>}
+                                            </div>
+                                            {/* [TSK-15 v1.10] 정답형 과제 › 문항 · 문제집 */}
+                                            {isAnswer && ANSWER_SUBS.map((a) => (
+                                                <div key={a.sub} className={`nav-sub-item ${activeSubMenu === a.sub ? 'active' : ''}`}
+                                                    onClick={() => setActiveSubMenu(a.sub)} style={{ paddingLeft: 40 }}>
+                                                    {a.icon} {a.label}
+                                                </div>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '공유된 과제' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('공유된 과제')}

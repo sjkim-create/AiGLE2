@@ -52,7 +52,7 @@ import TaskDetail from './TaskDetail';
 import TaskDeleteDialog from './TaskDeleteDialog';
 import MyInfo from './MyInfo';
 import StudentMyTasks from './StudentMyTasks'; // [TSK-06·09·10] 학생 모드 › 내 과제
-import { REGISTER_GROUPS } from './registerMenu';
+import { REGISTER_GROUPS, isAnswerSub, answerTabOf, answerSubOf } from './registerMenu';
 
 // ─────────────────────────────────────────────
 // 해시 기반 딥링크 라우트 맵
@@ -83,6 +83,7 @@ const HASH_ROUTES = {
   // [TSK-15 v1.4] 형태별 과제 목록
   '#/task-essay':           { menu: '과제 관리', sub: '서·논술형 과제' },
   '#/task-answer':          { menu: '과제 관리', sub: '정답형 과제' },
+  '#/task-answer-workbooks': { menu: '과제 관리', sub: '정답형 문제집' },
   '#/shared-assignments':   { menu: '과제 관리', sub: '공유된 과제' },
   // [QBK-01] 문제 은행 — 스마트 과제 등록(정답형)으로 저장한 문항
   // [BRD-16] 게시판
@@ -510,7 +511,7 @@ function Setting() {
   // [QBK-01 v1.3] 문제 은행 진입 화면 — 스마트 과제 등록(정답형)에서 「자료에서 문항 가져오기」로 바로 들어올 때 'import'
   const [itemBankEntry, setItemBankEntry] = useState({ view: 'list', n: 0 });
   // 문제 은행을 벗어나면 다음 진입은 목록부터 (가져오기 화면이 다시 열리지 않게)
-  useEffect(() => { if (activeSubMenu !== '정답형 과제') setItemBankEntry((e) => (e.view === 'list' ? e : { view: 'list', n: e.n })); }, [activeSubMenu]);
+  useEffect(() => { if (!isAnswerSub(activeSubMenu)) setItemBankEntry((e) => (e.view === 'list' ? e : { view: 'list', n: e.n })); }, [activeSubMenu]);
   const leaveGuardRef = useRef(null);
   leaveGuardRef.current = leaveGuard;
   const pendingNavRef = useRef([]);
@@ -752,7 +753,7 @@ function Setting() {
           /* [v4.7] 과제 관리 메뉴 — 과제 관리 / 과제 등록 / 과제 상세 / 공유된 과제 */
           selectedTaskDetail ? (
             <TaskDetail task={selectedTaskDetail} onBack={() => setSelectedTaskDetail(null)} onDelete={(task) => setTaskToDelete(task)}
-              onEdit={(task) => { setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setSelectedTaskDetail(null); setListOrigin(['서·논술형 과제', '정답형 과제'].includes(activeSubMenu) ? activeSubMenu : '과제 관리'); setActiveSubMenu('과제 등록'); }} />
+              onEdit={(task) => { setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setSelectedTaskDetail(null); setListOrigin(['서·논술형 과제', '정답형 과제', '정답형 문제집'].includes(activeSubMenu) ? activeSubMenu : '과제 관리'); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '과제 등록' ? (
             <TaskRegistration
               key={editTask?.n || `reg-${regNonce}`}
@@ -765,10 +766,10 @@ function Setting() {
               onAdd={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))}
               onGoItemBank={(view) => { setItemBankEntry({ view: view || 'list', n: Date.now() }); setActiveSubMenu('정답형 과제'); }}
             />
-          ) : activeSubMenu === '문제 은행' || activeSubMenu === '정답형 과제' ? (
+          ) : activeSubMenu === '문제 은행' || isAnswerSub(activeSubMenu) ? (
             /* [TSK-15 v1.5] 정답형 과제 = 문제 은행 목록 · 등록은 정답형 직접 등록 / 스마트 등록 */
-            <ItemBank key={itemBankEntry.n} title="정답형 과제" registerItems={REGISTER_GROUPS[1].items}
-              onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin('정답형 과제'); setActiveSubMenu('과제 등록'); }}
+            <ItemBank key={`${itemBankEntry.n}-${activeSubMenu}`} title="정답형 과제" initialTab={answerTabOf(activeSubMenu)} onTabChange={(t) => setActiveSubMenu(answerSubOf(t))} registerItems={REGISTER_GROUPS[1].items}
+              onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin(isAnswerSub(activeSubMenu) ? activeSubMenu : '정답형 과제'); setActiveSubMenu('과제 등록'); }}
               onSaveTask={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
