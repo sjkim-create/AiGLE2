@@ -17,11 +17,9 @@ import { nextMark } from './GradeMarks';
 
 const TABS = ['미채점', '채점 확인', '결과 발송'];
 const inTab = (s, tab) => (tab === '미채점' ? s.status === '미채점' : tab === '채점 확인' ? s.status === '채점 확인' : s.status === '결과 발송 전' || s.status === '결과 발송 완료');
-const STATUS_STYLE = {
-  미채점: ['#FEE2E2', '#B91C1C'], '채점 확인': ['#FEF3C7', '#B45309'], '결과 발송 전': ['#DBEAFE', '#1D4ED8'], '결과 발송 완료': ['#D1FAE5', '#047857'],
-};
 const pill = ([bg, color]) => ({ background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' });
-const submitLabel = (t) => (t === 'pen' ? '🖊 펜' : t === 'ocr' ? '📷 스캔' : '-');
+// 제출 방식 — 펜(크래들) · 파일(스캔 파일) · 키보드(학생 배포 후 온라인 입력)
+const submitLabel = (t) => (t === 'pen' ? '🖊 펜' : t === 'ocr' || t === 'file' ? '📄 파일' : t === 'keyboard' ? '⌨ 키보드' : '-');
 const btn = (primary, off) => ({ padding: '8px 14px', borderRadius: 8, fontFamily: 'inherit', fontWeight: 800, cursor: off ? 'not-allowed' : 'pointer', border: primary ? 'none' : '1px solid #CBD5E1', background: primary ? (off ? '#CBD5E1' : '#E8590C') : 'white', color: primary ? 'white' : '#334155', opacity: !primary && off ? 0.45 : 1 });
 
 const AnswerGradingPanel = ({ task }) => {
@@ -144,7 +142,6 @@ const AnswerGradingPanel = ({ task }) => {
             <div key={s.id} className="student-card">
               <input type="checkbox" className="card-checkbox" checked={sel.includes(s.id)} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} />
               <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
-                <div style={pill(STATUS_STYLE[s.status] || STATUS_STYLE.미채점)}>{s.status}</div>
                 {s.submitType && <div style={pill(['#F1F5F9', '#475569'])}>{submitLabel(s.submitType)}</div>}
               </div>
               <div className="student-name">{s.name}</div>
@@ -170,7 +167,6 @@ const AnswerGradingPanel = ({ task }) => {
                 <th>제출 방식</th>
                 <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>
                 <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>
-                <th>상태</th>
                 <th style={{ width: 100 }}>상세보기</th>
               </tr>
             </thead>
@@ -183,7 +179,6 @@ const AnswerGradingPanel = ({ task }) => {
                   <td>{submitLabel(s.submitType)}</td>
                   <td>{autoCell(s)}</td>
                   <td>{teacherCell(s)}</td>
-                  <td><span style={pill(STATUS_STYLE[s.status] || STATUS_STYLE.미채점)}>{s.status}</span></td>
                   <td>{s.answers ? <span role="button" style={{ cursor: 'pointer', color: '#2A75F3', fontWeight: 700 }} onClick={() => setReview(s.id)}>상세보기 &gt;</span> : <span style={{ color: '#CBD5E1' }}>상세보기 &gt;</span>}</td>
                 </tr>
               ))}
@@ -216,7 +211,6 @@ const AnswerGradingPanel = ({ task }) => {
               <div style={{ padding: '12px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 'var(--neo-font-size-lg)' }}>{cur.name}</b>
                 <span style={{ color: '#64748B' }}>{cur.grade} · {submitLabel(cur.submitType)}</span>
-                <span style={pill(STATUS_STYLE[cur.status])}>{cur.status}</span>
                 <span style={{ marginLeft: 'auto', color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}>{task.title}</span>
               </div>
               <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
