@@ -173,7 +173,7 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
               style={{ width: 44, padding: '1px 4px', border: '1px solid #CBD5E1', borderRadius: 6, fontSize: 11, textAlign: 'center' }} />
             <span style={{ fontSize: 11, color: '#475569' }}>점</span>
             <span style={{ flex: 1 }} />
-            <button type="button" onClick={() => onEdit?.(i)} aria-label={`${i + 1}번 수정`} style={tb}>✏️ 수정</button>
+            <button type="button" onClick={() => onEdit?.(i)} aria-label={`${i + 1}번 문항 수정`} style={tb}>✏️ 문항 수정</button>
             <button type="button" onClick={() => onRemove?.(it.id)} aria-label={`${i + 1}번 빼기`} style={{ ...tb, color: '#B91C1C', borderColor: '#FCA5A5' }}>🗑 빼기</button>
           </div>
         )}
