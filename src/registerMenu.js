@@ -16,8 +16,11 @@ export const REGISTER_GROUPS = [
     ] },
 ];
 
-// [TSK-15 v1.3] 왼쪽 메뉴 「과제 관리」 아래 — 새 등록 메뉴 4개
-export const SIDEBAR_REGISTER = REGISTER_GROUPS.flatMap((g) => g.items.map((m) => ({ ...m, color: g.color })));
+// [TSK-15 v1.4] 왼쪽 메뉴 「과제 관리」 아래 형태별 과제 목록 — 등록은 각 목록의 [+ 새 과제 등록]에서 직접/스마트로 분기
+export const FORM_LISTS = [
+  { sub: '서·논술형 과제', form: 'essay', icon: '📝', group: REGISTER_GROUPS[0] },
+  { sub: '정답형 과제', form: 'answer', icon: '✅', group: REGISTER_GROUPS[1] },
+];
 
 // 이전 메뉴 (history) — 정리 전 등록 메뉴를 그대로 남긴다. 같은 화면으로 연결
 export const SIDEBAR_REGISTER_HISTORY = [

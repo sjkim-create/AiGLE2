@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import TaskRegistration from './TaskRegistration';
-import { REGISTER_GROUPS } from './registerMenu'; // 새 과제 등록 메뉴 (형태 × 방식)
+import { REGISTER_GROUPS, FORM_LISTS } from './registerMenu'; // 새 과제 등록 메뉴 (형태 × 방식)
 
 // 사이드바 카운트 뱃지가 동일한 소스를 참조하도록 모듈 스코프로 노출
 export const BASE_TASKS = [
@@ -55,10 +55,14 @@ export const BASE_TASKS = [
 // onOpenDetail: 상세보기 분기 라우팅 (source에 따라 detail 컴포넌트 선택)
 // [TSK-15] 새 과제 등록 — 과제 형태별 입구
 
-const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [] }) => {
+// form — 'essay' | 'answer' : 왼쪽 메뉴 「서·논술형 과제」·「정답형 과제」 목록 (TSK-15 v1.4). 없으면 전체(기존 과제 관리)
+const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [], form = null }) => {
+    const formList = FORM_LISTS.find((f) => f.form === form) || null;
+    const groups = formList ? [{ ...formList.group, more: undefined }] : REGISTER_GROUPS;
     const [viewMode, setViewMode] = useState('card'); // 'card' | 'list'
     const [statusFilter, setStatusFilter] = useState('전체'); // '전체' | '작성중' | '배포됨'
-    const [formFilter, setFormFilter] = useState('전체'); // [TSK-15] '전체' | 'essay' | 'answer'
+    const [formFilterSel, setFormFilter] = useState('전체'); // [TSK-15] '전체' | 'essay' | 'answer'
+    const formFilter = form || formFilterSel;
     // [v3.5] 과제 등록 화면 진입 — 「+ 새 과제 등록」 버튼 클릭 시
     const [showRegistration, setShowRegistration] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
@@ -168,7 +172,7 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
     return (
         <div className="task-management-container">
             <header className="content-header">
-                <div className="page-title">과제 관리</div>
+                <div className="page-title">{formList ? `${formList.icon} ${formList.sub}` : '과제 관리'}</div>
             </header>
             
             <div className="task-filter-wrapper">
@@ -178,11 +182,11 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                         <select className="filter-select"><option>학년</option></select>
                         <select className="filter-select"><option>교과</option></select>
                         <select className="filter-select" style={{ flex: 1.5 }}><option>핵심 역량</option></select>
-                        <select className="filter-select" value={formFilter} onChange={(e) => setFormFilter(e.target.value)} aria-label="과제 형태">
+                        {!formList && <select className="filter-select" value={formFilter} onChange={(e) => setFormFilter(e.target.value)} aria-label="과제 형태">
                             <option value="전체">과제 형태: 전체</option>
                             <option value="essay">📝 서·논술형</option>
                             <option value="answer">✅ 정답형</option>
-                        </select>
+                        </select>}
                         <select
                             className="filter-select"
                             value={statusFilter}
@@ -274,7 +278,7 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                             </div>
                             <div style={{ padding: '8px' }}>
                                 {/* [TSK-15] 과제 형태별로 묶는다 — 서·논술형 과제 / 정답형 과제 (객관식·기타) */}
-                                {REGISTER_GROUPS.map((g) => (
+                                {groups.map((g) => (
                                     <div key={g.title} style={{ marginBottom: 4 }}>
                                         <div style={{ padding: '8px 10px 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 900, color: g.color }}>{g.title} <span style={{ color: '#94A3B8', fontWeight: 600 }}>{g.sub}</span></div>
                                         {g.items.map((m) => (
@@ -316,11 +320,11 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
             {filteredTasks.length === 0 ? (
                 <div className="task-empty-state">
                     <div className="empty-icon" aria-hidden="true">🔍</div>
-                    <p className="empty-title">검색 조건에 맞는 과제가 없습니다.</p>
-                    <p className="empty-sub">필터를 조정하거나 초기화해 주세요.</p>
-                    <button className="btn-filter-reset" onClick={() => setStatusFilter('전체')}>
+                    <p className="empty-title">{formList && statusFilter === '전체' ? `아직 ${formList.sub}가 없습니다.` : '검색 조건에 맞는 과제가 없습니다.'}</p>
+                    <p className="empty-sub">{formList && statusFilter === '전체' ? '오른쪽 위 [+ 새 과제 등록]에서 직접 등록 또는 스마트 등록으로 만들어 주세요.' : '필터를 조정하거나 초기화해 주세요.'}</p>
+                    {!(formList && statusFilter === '전체') && <button className="btn-filter-reset" onClick={() => setStatusFilter('전체')}>
                         ↺ 필터 초기화
-                    </button>
+                    </button>}
                 </div>
             ) : viewMode === 'card' ? (
                 <div className="task-cards-grid">

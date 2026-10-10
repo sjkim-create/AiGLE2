@@ -5,7 +5,7 @@
  * 사용자 프로필 드롭다운, 환경설정 모드 전환 기능을 포함합니다.
  */
 import React, { useState } from 'react';
-import { SIDEBAR_REGISTER, SIDEBAR_REGISTER_HISTORY } from './registerMenu';
+import { FORM_LISTS, SIDEBAR_REGISTER_HISTORY } from './registerMenu';
 
 const Sidebar = ({
     activeMenu,
@@ -25,14 +25,19 @@ const Sidebar = ({
     onOpenIncident,          // [BRD-16 v2.8] 좌측 하단 [🚨 이용불편 접수] — 어느 화면에서나 같은 모달을 연다
     onRegister,              // [TSK-15 v1.3] 새 과제 등록 메뉴 — (mode) => 해당 등록 화면
     registrationMode = null, // 지금 열린 등록 화면 (메뉴 강조용)
+    listOrigin = '과제 관리', // 등록 화면을 연 목록 (서·논술형 과제 / 정답형 과제 / 과제 관리)
+    formCounts,              // { essay, answer } 형태별 과제 수
 }) => {
   const [historyOpen, setHistoryOpen] = useState(false); // 이전 메뉴 (history) 펼침
   const onRegisterScreen = activeSubMenu === '과제 등록';
   // 같은 화면을 여는 메뉴가 둘(새 메뉴 · 이전 메뉴)일 수 있어, 마지막으로 누른 메뉴만 강조한다
   const [clicked, setClicked] = useState(null); // { key, mode }
-  const activeKey = clicked && clicked.mode === registrationMode ? clicked.key : `new:${registrationMode}`;
+  const activeKey = clicked && clicked.mode === registrationMode ? clicked.key : `list:${registrationMode}`;
   const regActive = (key) => onRegisterScreen && activeKey === key;
+  const historyActive = onRegisterScreen && activeKey.startsWith('hist:');
   const openReg = (key, mode) => { setClicked({ key, mode }); onRegister(mode); };
+  // 목록에서 등록하면 이전 메뉴 강조를 지운다
+  React.useEffect(() => { if (!onRegisterScreen) setClicked(null); }, [onRegisterScreen]);
   const handleMenuChange = (menu) => {
     setActiveMenu(menu);
     if (setShowAnalysis) setShowAnalysis(false);
@@ -134,23 +139,19 @@ const Sidebar = ({
                         {activeMenu === '과제 관리' && (
                             <div className="nav-sub-menu">
                                 <div
-                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || (onRegisterScreen && ![...SIDEBAR_REGISTER, ...SIDEBAR_REGISTER_HISTORY].some((m) => m.mode === registrationMode)) ? 'active' : ''}`}
+                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || (onRegisterScreen && !historyActive && !FORM_LISTS.some((f) => f.sub === listOrigin)) ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('과제 관리')}
                                 >
                                     ⊙ 과제 관리 <span className="n-badge">N</span> <span className="badge">{taskCount ?? 0}</span>
                                 </div>
-                                {/* [TSK-15 v1.3] 새 과제 등록 — 과제 형태 × 등록 방식 */}
-                                {onRegister && (
-                                    <>
-                                        <div style={{ padding: '6px 12px 2px 28px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8' }}>새 과제 등록</div>
-                                        {SIDEBAR_REGISTER.map((m) => (
-                                            <div key={m.mode} className={`nav-sub-item ${regActive(`new:${m.mode}`) ? 'active' : ''}`} onClick={() => openReg(`new:${m.mode}`, m.mode)}
-                                                title={m.desc} style={{ paddingLeft: 36 }}>
-                                                {m.icon} {m.label}
-                                            </div>
-                                        ))}
-                                    </>
-                                )}
+                                {/* [TSK-15 v1.4] 형태별 과제 목록 — 등록은 목록의 [+ 새 과제 등록]에서 직접 등록 / 스마트 등록 */}
+                                {FORM_LISTS.map((f) => (
+                                    <div key={f.sub}
+                                        className={`nav-sub-item ${activeSubMenu === f.sub || (onRegisterScreen && !historyActive && listOrigin === f.sub) ? 'active' : ''}`}
+                                        onClick={() => setActiveSubMenu(f.sub)}>
+                                        ⊙ {f.sub} <span className="badge">{formCounts?.[f.form] ?? 0}</span>
+                                    </div>
+                                ))}
                                 {/* [QBK-01] 문제 은행 — 정답형 문항 저장소 (스마트 과제 등록 › 정답형) */}
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '문제 은행' ? 'active' : ''}`}
