@@ -16,7 +16,7 @@ import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
 import { WorkbookInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
-import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordOrderTools, WordLayoutOptions, WordSheet, wordIssues, normMode, blankOf } from './WordWorkbook';
+import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordOrderTools, WordLayoutOptions, WordSheet, WordStandardsPicker, wordIssues, normMode, blankOf } from './WordWorkbook';
 
 const Crumb = ({ path }) => (
   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
@@ -362,9 +362,15 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                           {normMode(wb.mode) === 'dictation' && '시험지에는 번호와 빈칸만 나옵니다. 교사가 낱말을 불러 주면 학생이 듣고 씁니다 (국어 · 영어 받아쓰기).'}
                         </div>
                       </div>
+                      {/* [v1.36] 낱말 시험 — 핵심평가영역 · 성취기준 (AI 낱말 만들기 근거) */}
+                      {normMode(wb.mode) === 'vocab' && (
+                        <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 12 }}>
+                          <WordStandardsPicker curriculum={wcur} value={wb.standards} onChange={(v) => save({ ...wb, standards: v })} />
+                        </div>
+                      )}
                     </WorkbookInfoCard>
                   )}
-                  {wbStep === 2 && <WordEditor key={wb.id} words={words} mode={wb.mode} onNotice={setToast} onSave={(next) => save({ ...wb, words: next })} />}
+                  {wbStep === 2 && <WordEditor key={wb.id} words={words} mode={wb.mode} onNotice={setToast} onSave={(next) => save({ ...wb, words: next })} ai={{ cur: wcur, codes: wb.standards?.codes || [] }} />}
                   {wbStep === 3 && (
                     <>
                       <WordLayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualW}</WordLayoutOptions>

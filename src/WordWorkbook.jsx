@@ -11,6 +11,8 @@ import React from 'react';
 import { newId } from './lib/itemBank';
 import { PAPERS } from './WorkbookLayout';
 import { readXlsxRows, makeXlsxBlob, downloadBlob } from './lib/xlsxLite';
+import { loadCatalog, isFileGenerateAvailable } from './lib/taskFromFile';
+import { catalogStandardsFor, generateWords, WORD_KINDS } from './lib/wordAI';
 
 // [v1.28] 출제 방식 — 낱말 시험(입력은 늘 영어 → 한글, 빈칸은 낱말마다 영어/한글) / 받아쓰기
 //   舊 meaning(영→한) · spelling(한→영)은 낱말 시험으로 읽는다 (spelling이었으면 빈칸 기본값이 영어)
@@ -62,7 +64,8 @@ export const wordIssues = (words, mode) => {
 //   저장 — 편집기가 낱말 목록을 직접 들고 있다(밖에서 다시 불러온 값이 입력 중인 글자를 덮지 않게, v1.32).
 //   줄 추가·빼기·붙여넣기·엑셀은 바로 onSave, 글자 입력은 0.5초 쉬면 · 칸을 벗어나면 · 화면을 떠나면 onSave
 //   엑셀 — [⬇️ 양식 내려받기] A열 영어 낱말 · B열 한글 뜻 / [📤 엑셀 올리기] 2행부터 읽어 끝에 덧붙인다
-export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotice }) => {
+// ai — { cur, codes } : 기본 정보에서 고른 성취기준으로 [✨ AI로 낱말 만들기] (낱말 시험만)
+export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotice, ai = null }) => {
   const [words, setWords] = React.useState(initialWords || []);
   const latest = React.useRef(words); latest.current = words;
   const saveRef = React.useRef(onSave); saveRef.current = onSave;
@@ -114,6 +117,7 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
           <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="엑셀 파일 선택" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
         </span>
       </div>
+      {!dict && ai && <WordAIPanel ai={ai} existing={words} onAdd={(added) => { onChange([...kept(), ...added], true); onNotice?.(`AI가 만든 낱말 ${added.length}개를 추가했습니다. 뜻과 수준을 확인해 주세요.`); }} />}
       <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
         엑셀: A열 {dict ? '불러 줄 낱말·문장' : '영어 낱말'} · B열 {dict ? '메모' : '한글 뜻'}, 1행은 머리글 — 2행부터 읽어 목록 끝에 덧붙입니다. 순서와 빈칸은 「문제집 배치」에서 정합니다.
       </div>
@@ -122,7 +126,7 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
       </div>
       {words.map((w, i) => (
         <div key={w.id} style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center' }}>
-          <span style={{ fontWeight: 900, color: '#2A75F3' }}>{i + 1}</span>
+          <span style={{ fontWeight: 900, color: '#2A75F3', display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>{i + 1}{w.ai && <span title={`AI가 만든 낱말${w.standard ? ` · 근거 ${w.standard}` : ''} — 확인해 주세요`} style={{ fontSize: 9, fontWeight: 800, color: '#7C3AED' }}>AI</span>}</span>
           <input value={w.word} onChange={(e) => set(i, { word: e.target.value })} aria-label={`${i + 1}번 낱말`} placeholder={dict ? '예: 무릎을 꿇다' : '예: apple'}
             style={{ ...input, border: `1px solid ${w.word.trim() ? '#CBD5E1' : '#FCA5A5'}` }} />
           <input value={w.meaning} onChange={(e) => set(i, { meaning: e.target.value })} aria-label={`${i + 1}번 뜻`} placeholder={dict ? '' : '예: 사과'}
@@ -322,6 +326,143 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
           </div>
         ))}
       </div>
+    </div>
+  );
+};
+
+// ① 기본 정보 — 핵심평가영역 · 성취기준 (교육과정 DB). AI 낱말 만들기의 근거
+//   value: { areas: [영역 이름], codes: [성취기준 코드] }
+export const WordStandardsPicker = ({ curriculum, value, onChange }) => {
+  const [cat, setCat] = React.useState(null);
+  React.useEffect(() => { loadCatalog().then(setCat).catch(() => {}); }, []);
+  const { areas, standards } = catalogStandardsFor(cat, curriculum || {});
+  const v = { areas: value?.areas || [], codes: value?.codes || [] };
+  const toggleArea = (a) => {
+    const nextAreas = v.areas.includes(a) ? v.areas.filter((x) => x !== a) : [...v.areas, a];
+    // 영역을 빼면 그 영역의 성취기준도 뺀다
+    onChange({ areas: nextAreas, codes: v.codes.filter((c) => nextAreas.includes(standards.find((s) => s.code === c)?.areaName)) });
+  };
+  const shown = standards.filter((s) => v.areas.includes(s.areaName));
+  const box = (on) => ({ width: 18, height: 18, borderRadius: 4, flex: '0 0 auto', border: `1.5px solid ${on ? '#2A75F3' : '#CBD5E1'}`, background: on ? '#2A75F3' : 'white', color: 'white', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' });
+  if (!curriculum?.schoolLevelName || !curriculum?.curriculumName) {
+    return <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>학교급 · 학년 · 교과를 고르면 핵심평가영역과 성취기준이 나옵니다.</div>;
+  }
+  if (cat && !areas.length) return <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>이 학교급·학년·교과에 등록된 성취기준이 없습니다.</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div>
+        <span style={{ ...optLabel, display: 'block', marginBottom: 6 }}>핵심평가영역 <span style={{ color: '#94A3B8', fontWeight: 600 }}>(AI 낱말 만들기 근거 · 다중)</span></span>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {areas.map((a) => (
+            <label key={a} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600 }}>
+              <input type="checkbox" checked={v.areas.includes(a)} onChange={() => toggleArea(a)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
+              <span aria-hidden="true" style={box(v.areas.includes(a))}>{v.areas.includes(a) ? '✓' : ''}</span>{a}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div>
+        <span style={{ ...optLabel, display: 'block', marginBottom: 6 }}>성취기준 <span style={{ color: '#94A3B8', fontWeight: 600 }}>(다중 · {v.codes.length}개 선택)</span></span>
+        {!v.areas.length ? <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>핵심평가영역을 먼저 골라 주세요.</div> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+            {shown.map((s) => {
+              const on = v.codes.includes(s.code);
+              return (
+                <label key={s.code} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${on ? '#93C5FD' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.5 }}>
+                  <input type="checkbox" checked={on} onChange={() => onChange({ ...v, codes: on ? v.codes.filter((c) => c !== s.code) : [...v.codes, s.code] })} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
+                  <span aria-hidden="true" style={{ ...box(on), marginTop: 2 }}>{on ? '✓' : ''}</span>
+                  <span><b style={{ color: '#047857' }}>[{s.areaName}]</b> {s.code} {s.text}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ② 낱말 입력 — [✨ AI로 낱말 만들기]: 개수 · 종류 → 미리 보기에서 골라 추가
+const WordAIPanel = ({ ai, existing, onAdd }) => {
+  const [open, setOpen] = React.useState(false);
+  const [count, setCount] = React.useState(20);
+  const [kind, setKind] = React.useState('word');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const [result, setResult] = React.useState(null); // [{ word, meaning, type, standard, dup, on }]
+  const [cat, setCat] = React.useState(null);
+  React.useEffect(() => { loadCatalog().then(setCat).catch(() => {}); }, []);
+  const stds = catalogStandardsFor(cat, ai.cur).standards.filter((s) => (ai.codes || []).includes(s.code));
+  const have = new Set(existing.map((w) => w.word.trim().toLowerCase()).filter(Boolean));
+  const keyOk = isFileGenerateAvailable();
+  const run = async () => {
+    setBusy(true); setErr(null); setResult(null);
+    try {
+      const list = await generateWords({ cur: ai.cur, standards: stds, count, kind, existing: [...have] });
+      setResult(list.map((w) => ({ ...w, dup: have.has(w.word.toLowerCase()), on: !have.has(w.word.toLowerCase()) })));
+    } catch (e) {
+      setErr({ message: e?.message || 'AI로 만들 수 없습니다.', hint: e?.hint || '' });
+    } finally { setBusy(false); }
+  };
+  const chosen = (result || []).filter((w) => w.on && !w.dup);
+  const panel = { border: '1px solid #DDD6FE', background: '#FAF5FF', borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 };
+  if (!open) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setOpen(true)} style={{ ...smallBtn(), padding: '6px 12px', border: '1px solid #7C3AED', color: '#6D28D9', background: '#FAF5FF' }}>✨ AI로 낱말 만들기</button>
+        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{stds.length ? `성취기준 ${stds.length}개를 근거로 학년 수준의 단어·숙어를 만듭니다.` : '① 기본 정보에서 핵심평가영역 · 성취기준을 고르면 쓸 수 있습니다.'}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={panel} aria-label="AI로 낱말 만들기">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ fontSize: 'var(--neo-font-size-sm)', color: '#6D28D9' }}>✨ AI로 낱말 만들기</b>
+        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{[ai.cur?.schoolLevelName, ai.cur?.gradeLabel, ai.cur?.curriculumName].filter(Boolean).join(' · ')} · 성취기준 {stds.length}개</span>
+        <span style={{ marginLeft: 'auto' }} />
+        <button type="button" onClick={() => { setOpen(false); setResult(null); setErr(null); }} style={smallBtn()}>닫기</button>
+      </div>
+      {!stds.length && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>① 기본 정보에서 핵심평가영역 · 성취기준을 1개 이상 골라 주세요.</div>}
+      {!keyOk && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>AI를 쓸 수 없는 환경입니다(API 키 없음) — 직접 입력하거나 엑셀로 올려 주세요.</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={optLabel}>개수</span>
+        {[10, 20, 30].map((n) => <button key={n} type="button" onClick={() => setCount(n)} style={chip(count === n)} aria-pressed={count === n}>{n}개</button>)}
+        <span style={{ ...optLabel, marginLeft: 8 }}>종류</span>
+        {Object.entries(WORD_KINDS).map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} style={chip(kind === k)} aria-pressed={kind === k}>{l}</button>)}
+        <button type="button" disabled={busy || !stds.length || !keyOk} onClick={run}
+          style={{ ...smallBtn(), padding: '6px 14px', marginLeft: 'auto', background: busy || !stds.length || !keyOk ? '#E2E8F0' : '#7C3AED', color: busy || !stds.length || !keyOk ? '#94A3B8' : 'white', border: '1px solid transparent', cursor: busy || !stds.length || !keyOk ? 'not-allowed' : 'pointer' }}>
+          {busy ? 'AI가 만드는 중…' : result ? '다시 만들기' : '만들기'}
+        </button>
+      </div>
+      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>성취기준에는 단어 목록이 없어 AI가 학년 수준을 추정합니다. 추가하기 전에 뜻과 수준을 확인해 주세요. 만들기 1번 = AI 호출 1번.</div>
+      {busy && <div role="status" style={{ fontSize: 'var(--neo-font-size-xs)', color: '#6D28D9', fontWeight: 700 }}>AI가 낱말을 만드는 중입니다. 보통 수십 초, AI 서버가 혼잡하면 1~3분 걸릴 수 있습니다.</div>}
+      {err && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ {err.message} {err.hint}</div>}
+      {result && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>AI가 만든 낱말 {result.length}개{result.some((w) => w.dup) ? ` · 이미 있음 ${result.filter((w) => w.dup).length}개` : ''}</span>
+            <button type="button" onClick={() => setResult(result.map((w) => ({ ...w, on: !w.dup })))} style={smallBtn()}>모두 고르기</button>
+            <button type="button" onClick={() => setResult(result.map((w) => ({ ...w, on: false })))} style={smallBtn()}>모두 빼기</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+            {result.map((w, i) => (
+              <label key={`${w.word}-${i}`} title={w.dup ? '이미 목록에 있는 낱말' : w.standard ? `근거 ${w.standard}` : ''}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'white', border: `1px solid ${w.on && !w.dup ? '#C4B5FD' : '#E2E8F0'}`, opacity: w.dup ? 0.45 : 1, cursor: w.dup ? 'not-allowed' : 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>
+                <input type="checkbox" disabled={w.dup} checked={w.on && !w.dup} onChange={() => setResult(result.map((x, j) => (j === i ? { ...x, on: !x.on } : x)))} />
+                <b>{w.word}</b><span style={{ color: '#475569' }}>{w.meaning}</span>
+                {w.type === 'idiom' && <span style={{ fontSize: 10, color: '#7C3AED', fontWeight: 800 }}>숙어</span>}
+                {w.dup && <span style={{ fontSize: 10, color: '#94A3B8' }}>이미 있음</span>}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" disabled={!chosen.length} onClick={() => { onAdd(chosen.map((w) => ({ id: newId('w'), word: w.word, meaning: w.meaning, ai: true, standard: w.standard, wordType: w.type }))); setResult(null); setOpen(false); }}
+              style={{ ...smallBtn(), padding: '6px 14px', background: chosen.length ? '#2A75F3' : '#E2E8F0', color: chosen.length ? 'white' : '#94A3B8', border: '1px solid transparent', cursor: chosen.length ? 'pointer' : 'not-allowed' }}>
+              고른 {chosen.length}개 추가
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
