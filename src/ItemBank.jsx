@@ -339,18 +339,15 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, o
               </select>
               <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
             </div>
-            {/* [TSK-15 v1.9] 단계 화면 — ① 기본 정보 ② 순서 배치(저장). 단계 칩으로 자유롭게 오간다 */}
+            {/* [TSK-15 v1.9] 단계 화면 — ① 기본 정보 ② 순서 배치(저장). 단계 이동은 위 단계 칩으로만 (v1.13 — 본문의 [다음]·[← 기본 정보] 중복 삭제) */}
             <StepChips steps={['기본 정보', '순서 배치']} step={wbStep} onStep={setWbStep} />
             {wbStep === 1 && (
-              <BasicInfoCard title={taskInfo.title} onTitle={(t) => setTaskInfo({ title: t })} curriculum={curriculum} onCurriculum={(c) => setTaskInfo({ curriculum: c })} entries={entries}>
-                <button onClick={() => setWbStep(2)} style={btn(true)}>다음: 순서 배치 →</button>
-              </BasicInfoCard>
+              <BasicInfoCard title={taskInfo.title} onTitle={(t) => setTaskInfo({ title: t })} curriculum={curriculum} onCurriculum={(c) => setTaskInfo({ curriculum: c })} entries={entries} />
             )}
             {wbStep === 2 && (
               <>
                 <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <ArrangeSummary entries={entries}>
-                    <button onClick={() => setWbStep(1)} style={btn(false)}>← 기본 정보</button>
                     {onSaveTask && <button onClick={saveTask} disabled={!taskInfo.title.trim() || !entries.length}
                       title={!taskInfo.title.trim() ? '기본 정보에서 과제명을 입력해 주세요.' : '이 순서·배점으로 정답형 과제(시험지)를 저장합니다'} style={btn(true, !taskInfo.title.trim() || !entries.length)}>💾 과제로 저장</button>}
                   </ArrangeSummary>
