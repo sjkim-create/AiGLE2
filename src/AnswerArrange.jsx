@@ -137,7 +137,7 @@ export const catalogOptions = (cat, schoolLevelName, gradeLabel, curriculumName)
   return { curricula, subjects };
 };
 
-export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle, onTitleBlur, curriculum, onCurriculum, onCurriculumSave }) => {
+export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle, onTitleBlur, curriculum, onCurriculum, onCurriculumSave, children }) => {
   const [cat, setCat] = React.useState(null);
   React.useEffect(() => { loadCatalog().then(setCat).catch(() => {}); }, []);
   const opts = catalogOptions(cat, curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName);
@@ -193,6 +193,7 @@ export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle,
             {withCurrent(opts.subjects, curriculum.subjectName).map((x) => <option key={x}>{x}</option>)}
           </select></div>
       </div>
+      {children}
     </div>
   );
 };

@@ -67,7 +67,7 @@ export const WorkbookPicker = ({ open, itemIds, defaultTitle = '', defaultPurpos
   useEffect(() => {
     if (!open) return;
     setTitle(defaultTitle); setPurpose(defaultPurpose); setTarget('new');
-    listWorkbooks().then(setWorkbooks).catch(() => setWorkbooks([]));
+    listWorkbooks().then((ws) => setWorkbooks(ws.filter((w) => w.kind !== 'word'))).catch(() => setWorkbooks([])); // 낱말 문제집은 문항을 담지 않는다
   }, [open, defaultTitle, defaultPurpose]);
   if (!open) return null;
   const canSave = itemIds.length > 0 && (target !== 'new' || title.trim());

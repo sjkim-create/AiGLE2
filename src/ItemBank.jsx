@@ -7,7 +7,7 @@
  * 저장소: lib/itemBank (프로토 IndexedDB — 상용은 서버 DB)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ITEM_TYPES, ITEM_TYPE_KEYS, TRACKS, WORKBOOK_PURPOSES, isReady, listItems, listPassages, listSources, putItem, deleteItems, listWorkbooks, putWorkbook, deleteWorkbook } from './lib/itemBank';
+import { newId, ITEM_TYPES, ITEM_TYPE_KEYS, TRACKS, WORKBOOK_PURPOSES, isReady, listItems, listPassages, listSources, putItem, deleteItems, listWorkbooks, putWorkbook, deleteWorkbook } from './lib/itemBank';
 import { BulkEditBar, WorkbookPicker } from './ItemBankParts';
 import ItemCard from './ItemCard';
 import { loadCatalog } from './lib/taskFromFile';
@@ -16,6 +16,7 @@ import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
 import { WorkbookInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
+import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordLayoutOptions, WordSheet, wordIssues } from './WordWorkbook';
 
 const Crumb = ({ path }) => (
   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
@@ -291,17 +292,36 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         const wb = workbooks.find((w) => w.id === openWbId);
         const save = async (next) => { await putWorkbook(next); };
         const move = (idx, d) => { const ids = [...wb.itemIds]; const j = idx + d; if (j < 0 || j >= ids.length) return; [ids[idx], ids[j]] = [ids[j], ids[idx]]; save({ ...wb, itemIds: ids }); };
+        // [TSK-15 v1.26] 낱말 문제집 — 영어 단어 시험 · 받아쓰기. 교사가 직접 낱말을 입력한다
+        const createWordWb = async () => {
+          const id = newId('wb');
+          await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'meaning', layout: { ...DEFAULT_WORD_LAYOUT } });
+          setOpenWbId(id); setWbStep(1); setWbEditing(true); setWbRemoved(null);
+        };
+        const wordBtn = <button onClick={createWordWb} style={{ ...btn(false), borderColor: '#2A75F3', color: '#1D4ED8' }}>+ 🔤 낱말 문제집 만들기</button>;
         if (!wb) {
           return workbooks.length === 0 ? (
             <div className="task-empty-state">
               <div className="empty-icon" aria-hidden="true">📚</div>
               <p className="empty-title">아직 문제집이 없습니다.</p>
-              <p className="empty-sub">문항 탭에서 문항을 고르고 [📚 문제집에 담기]를 누르면 문제집이 만들어집니다.</p>
-              <button onClick={() => setTab('items')} style={btn(true)}>문항 고르러 가기</button>
+              <p className="empty-sub">문항 탭에서 문항을 고르고 [📚 문제집에 담기]를 누르면 문제집이 만들어집니다. 영어 단어 시험 · 받아쓰기는 낱말 문제집으로 만듭니다.</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}><button onClick={() => setTab('items')} style={btn(true)}>문항 고르러 가기</button>{wordBtn}</div>
             </div>
           ) : (
+            <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>{wordBtn}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
               {workbooks.map((w) => {
+                if (w.kind === 'word') {
+                  const n = (w.words || []).filter((x) => x.word.trim()).length;
+                  return (
+                    <button key={w.id} onClick={() => { setOpenWbId(w.id); setWbStep(1); setWbEditing(false); setWbRemoved(null); }} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>🔤 낱말 문제집 · {WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
+                      <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B' }}>{w.title}</span>
+                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>낱말 {n}개 · {WORD_MODES[w.mode]?.label}</span>
+                    </button>
+                  );
+                }
                 const its = w.itemIds.map((id) => itemById[id]).filter(Boolean);
                 const review = its.filter((i) => !isReady(i)).length;
                 return (
@@ -313,6 +333,76 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                   </button>
                 );
               })}
+            </div>
+            </>
+          );
+        }
+        if (wb.kind === 'word') {
+          const words = wb.words || [];
+          const wcur = wb.curriculum || {};
+          const setW = (patch) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, ...patch } : w)));
+          const wShort = [wb.purpose === 'basic' ? '기초학력' : '', wcur.schoolLevelName, wcur.gradeLabel, wcur.curriculumName].filter(Boolean).join(' · ');
+          const actualW = (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>
+              <input type="checkbox" checked={wbActual} onChange={(e) => setWbActual(e.target.checked)} /> 100%로 보기
+            </label>
+          );
+          const issues = wordIssues(words, wb.mode);
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 문제집 목록</button>
+                <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>🔤 {wb.title || '이름 없는 낱말 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{wShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
+                {wbEditing ? (
+                  <button onClick={() => { save(wb); setWbEditing(false); }} style={btn(true)}>✅ 수정 끝내기</button>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORD_MODES[wb.mode]?.icon} {WORD_MODES[wb.mode]?.label}</span>
+                    <button onClick={() => { setWbEditing(true); setWbStep(1); }} style={{ ...btn(false), borderColor: '#2A75F3', color: '#1D4ED8' }}>✏️ 수정</button>
+                    <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
+                  </>
+                )}
+              </div>
+              {!wbEditing && (
+                <>
+                  {issues.length > 0 && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ {issues.join(' · ')}</div>}
+                  <WordLayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualW}</WordLayoutOptions>
+                  <WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize={wbActual} />
+                </>
+              )}
+              {wbEditing && (
+                <>
+                  <StepChips steps={['기본 정보', '낱말 입력', '문제집 배치']} step={wbStep} onStep={setWbStep} />
+                  {wbStep === 1 && (
+                    <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES} onPurpose={(p) => save({ ...wb, purpose: p })}
+                      title={wb.title} onTitle={(t) => setW({ title: t })} onTitleBlur={() => save(wb)}
+                      curriculum={wcur} onCurriculum={(c) => setW({ curriculum: c })} onCurriculumSave={(c) => save({ ...wb, curriculum: c })}>
+                      <div><span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 6, display: 'block' }}>출제 방식</span>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="radiogroup" aria-label="출제 방식">
+                          {Object.entries(WORD_MODES).map(([k, m]) => (
+                            <button key={k} type="button" role="radio" aria-checked={wb.mode === k} onClick={() => save({ ...wb, mode: k })}
+                              style={{ padding: '8px 12px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${wb.mode === k ? '#2A75F3' : '#E2E8F0'}`, background: wb.mode === k ? '#EFF6FF' : 'white', color: wb.mode === k ? '#1D4ED8' : '#475569' }}>
+                              {m.icon} {m.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 6 }}>
+                          {wb.mode === 'meaning' && '시험지에 영어 낱말이 보이고, 학생이 한글 뜻을 씁니다.'}
+                          {wb.mode === 'spelling' && '시험지에 한글 뜻이 보이고, 학생이 영어 낱말을 씁니다.'}
+                          {wb.mode === 'dictation' && '시험지에는 번호와 빈칸만 나옵니다. 교사가 낱말을 불러 주면 학생이 듣고 씁니다 (국어 · 영어 받아쓰기).'}
+                        </div>
+                      </div>
+                    </WorkbookInfoCard>
+                  )}
+                  {wbStep === 2 && <WordEditor words={words} mode={wb.mode} onChange={(next, commit) => { setW({ words: next }); if (commit) save({ ...wb, words: next }); }} onCommit={() => save(wb)} />}
+                  {wbStep === 3 && (
+                    <>
+                      <WordLayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualW}</WordLayoutOptions>
+                      <WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize={wbActual} />
+                    </>
+                  )}
+                </>
+              )}
             </div>
           );
         }
