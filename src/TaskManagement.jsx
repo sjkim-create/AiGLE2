@@ -52,9 +52,25 @@ export const BASE_TASKS = [
 // onAdd 시그니처: (mode) 또는 (taskObject). taskObject는 lib/taskSchema.js 기반.
 // onAddTask: wizard에서 task 객체를 직접 부모로 전달할 때 호출 (영속화용)
 // onOpenDetail: 상세보기 분기 라우팅 (source에 따라 detail 컴포넌트 선택)
+// [TSK-15] 새 과제 등록 — 과제 형태별 입구
+const REGISTER_GROUPS = [
+    { title: '📝 서·논술형 과제', sub: '문항별 답안지 · 루브릭 채점', color: '#6D28D9', hover: '#F5F3FF', border: '#DDD6FE', items: [
+        { mode: 'direct', icon: '📝', label: '직접 입력', desc: '문제 텍스트·이미지를 시스템 내에서 직접 작성합니다.' },
+        { mode: 'direct2', icon: '🧩', label: '직접 입력 2', desc: '탭 단계형 입력 — 문항 → 채점 기준 → 등급 환산까지 단계별로 작성합니다.' },
+        { mode: 'upload', icon: '📷', label: '파일 업로드', desc: '기존 종이 양식(PDF/이미지)을 업로드하여 그대로 학생 문답지로 사용합니다.' },
+        { mode: 'generate', icon: '✨', label: '스마트 과제 등록', desc: '평가 자료를 올리면 AI가 문항·모범답안·채점 기준까지 채워 서·논술 과제를 만듭니다.' },
+    ] },
+    { title: '✅ 정답형 과제', sub: '객관식·진위·단답 등 · 한 장 시험지 · 정답 대조 채점', color: '#1D4ED8', hover: '#EFF6FF', border: '#BFDBFE', items: [
+        { mode: 'answer-direct', icon: '✍️', label: '직접 입력', desc: '문항 유형(선다형·양자택일형·진위형·연결형·단답형·완성형·서술형)을 골라 직접 작성합니다.' },
+        { mode: 'answer-smart', icon: '✨', label: '스마트 과제 등록', desc: '시험지·교재를 올리면 AI가 문항 분류·정답·배점·과제명까지 채웁니다. 확인만 하면 됩니다.' },
+        { mode: 'answer-bank', icon: '🗂️', label: '문제 은행에서 고르기', desc: '문제 은행의 문항·문제집을 골라 시험지를 만듭니다.' },
+    ] },
+];
+
 const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [] }) => {
     const [viewMode, setViewMode] = useState('card'); // 'card' | 'list'
     const [statusFilter, setStatusFilter] = useState('전체'); // '전체' | '작성중' | '배포됨'
+    const [formFilter, setFormFilter] = useState('전체'); // [TSK-15] '전체' | 'essay' | 'answer'
     // [v3.5] 과제 등록 화면 진입 — 「+ 새 과제 등록」 버튼 클릭 시
     const [showRegistration, setShowRegistration] = useState(false);
     const [toastMsg, setToastMsg] = useState(null);
@@ -153,9 +169,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
         </span>
     );
 
-    const filteredTasks = statusFilter === '전체'
-        ? allTasks
-        : allTasks.filter(t => t.status === statusFilter);
+    const filteredTasks = allTasks
+        .filter(t => statusFilter === '전체' || t.status === statusFilter)
+        .filter(t => formFilter === '전체' || (formFilter === 'answer' ? t.form === 'answer' : t.form !== 'answer'));
 
     const getStatusClass = (s) => s === '배포됨' ? 'completed' : 'writing';
     const getVisibilityClass = (v) => v === '공유' ? 'public' : 'private';
@@ -173,6 +189,11 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                         <select className="filter-select"><option>학년</option></select>
                         <select className="filter-select"><option>교과</option></select>
                         <select className="filter-select" style={{ flex: 1.5 }}><option>핵심 역량</option></select>
+                        <select className="filter-select" value={formFilter} onChange={(e) => setFormFilter(e.target.value)} aria-label="과제 형태">
+                            <option value="전체">과제 형태: 전체</option>
+                            <option value="essay">📝 서·논술형</option>
+                            <option value="answer">✅ 정답형</option>
+                        </select>
                         <select
                             className="filter-select"
                             value={statusFilter}
@@ -263,102 +284,25 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                 <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', marginTop: '2px' }}>과제를 어떤 방식으로 만드시겠습니까?</div>
                             </div>
                             <div style={{ padding: '8px' }}>
-                                <button
-                                    role="menuitem"
-                                    onClick={() => handleRegisterMethod('direct')}
-                                    style={{
-                                        width: '100%', textAlign: 'left',
-                                        display: 'flex', alignItems: 'flex-start', gap: '12px',
-                                        padding: '12px 14px',
-                                        background: 'transparent', border: '1px solid transparent',
-                                        borderRadius: '10px', cursor: 'pointer',
-                                        transition: 'background 0.12s, border-color 0.12s',
-                                        fontFamily: 'inherit',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#EFF6FF'; e.currentTarget.style.borderColor = '#BFDBFE'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
-                                >
-                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>📝</span>
-                                    <span style={{ flex: 1 }}>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>직접 입력</span>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>
-                                            문제 텍스트·이미지를 시스템 내에서 직접 작성합니다.
-                                        </span>
-                                    </span>
-                                    <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
-                                </button>
-                                <button
-                                    role="menuitem"
-                                    onClick={() => handleRegisterMethod('direct2')}
-                                    style={{
-                                        width: '100%', textAlign: 'left',
-                                        display: 'flex', alignItems: 'flex-start', gap: '12px',
-                                        padding: '12px 14px',
-                                        background: 'transparent', border: '1px solid transparent',
-                                        borderRadius: '10px', cursor: 'pointer',
-                                        transition: 'background 0.12s, border-color 0.12s',
-                                        fontFamily: 'inherit',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F3FF'; e.currentTarget.style.borderColor = '#DDD6FE'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
-                                >
-                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>🧩</span>
-                                    <span style={{ flex: 1 }}>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>직접 입력 2</span>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>
-                                            탭 단계형 입력 — 문항 → 자동/자율 채점 기준 → 등급 환산까지 단계별로 작성합니다.
-                                        </span>
-                                    </span>
-                                    <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
-                                </button>
-                                <button
-                                    role="menuitem"
-                                    onClick={() => handleRegisterMethod('upload')}
-                                    style={{
-                                        width: '100%', textAlign: 'left',
-                                        display: 'flex', alignItems: 'flex-start', gap: '12px',
-                                        padding: '12px 14px',
-                                        background: 'transparent', border: '1px solid transparent',
-                                        borderRadius: '10px', cursor: 'pointer',
-                                        transition: 'background 0.12s, border-color 0.12s',
-                                        fontFamily: 'inherit',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.borderColor = '#BBF7D0'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
-                                >
-                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>📷</span>
-                                    <span style={{ flex: 1 }}>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>파일 업로드</span>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>
-                                            기존 종이 양식(PDF/이미지)을 업로드하여 그대로 학생 문답지로 사용합니다.
-                                        </span>
-                                    </span>
-                                    <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
-                                </button>
-                                <button
-                                    role="menuitem"
-                                    onClick={() => handleRegisterMethod('generate')}
-                                    style={{
-                                        width: '100%', textAlign: 'left',
-                                        display: 'flex', alignItems: 'flex-start', gap: '12px',
-                                        padding: '12px 14px',
-                                        background: 'transparent', border: '1px solid transparent',
-                                        borderRadius: '10px', cursor: 'pointer',
-                                        transition: 'background 0.12s, border-color 0.12s',
-                                        fontFamily: 'inherit',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#FFFBEB'; e.currentTarget.style.borderColor = '#FDE68A'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
-                                >
-                                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>✨</span>
-                                    <span style={{ flex: 1 }}>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>스마트 과제 등록</span>
-                                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>
-                                            평가 자료(PDF/이미지)를 올리면 AI가 읽어 서·논술 과제를 바로 만듭니다. 정답형 과제는 문제 은행의 문항으로 만듭니다.
-                                        </span>
-                                    </span>
-                                    <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
-                                </button>
+                                {/* [TSK-15] 과제 형태별로 묶는다 — 서·논술형 과제 / 정답형 과제 (객관식·기타) */}
+                                {REGISTER_GROUPS.map((g) => (
+                                    <div key={g.title} style={{ marginBottom: 4 }}>
+                                        <div style={{ padding: '8px 10px 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 900, color: g.color }}>{g.title} <span style={{ color: '#94A3B8', fontWeight: 600 }}>{g.sub}</span></div>
+                                        {g.items.map((m) => (
+                                            <button key={m.mode} role="menuitem" onClick={() => handleRegisterMethod(m.mode)}
+                                                style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', background: 'transparent', border: '1px solid transparent', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit' }}
+                                                onMouseEnter={(e) => { e.currentTarget.style.background = g.hover; e.currentTarget.style.borderColor = g.border; }}
+                                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
+                                                <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{m.icon}</span>
+                                                <span style={{ flex: 1 }}>
+                                                    <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>{m.label}</span>
+                                                    <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: '2px', lineHeight: 1.5 }}>{m.desc}</span>
+                                                </span>
+                                                <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -382,6 +326,7 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                 <div className="status-tags">
                                     <span className={`task-status-tag ${getStatusClass(task.status)}`}>{task.status}</span>
                                     <span className={`task-status-tag ${getVisibilityClass(task.visibility)}`}>{task.visibility}</span>
+                                    <span className="task-status-tag" style={task.form === 'answer' ? { background: '#EFF6FF', color: '#1D4ED8' } : { background: '#F5F3FF', color: '#6D28D9' }}>{task.form === 'answer' ? '✅ 정답형' : '📝 서·논술형'}</span>
                                 </div>
                                 <div className="card-teacher-meta" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <span className="t-date">최근 수정 : {task.lastUpdate}</span>

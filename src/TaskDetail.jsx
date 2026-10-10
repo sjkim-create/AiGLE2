@@ -6,6 +6,8 @@
 import React from 'react';
 import { IssueList } from './TaskFileGenerate';
 import { downloadAssignmentJson } from './lib/assignmentJson';
+import ItemCard from './ItemCard';
+import { ITEM_TYPES } from './lib/itemBank';
 
 const labelStyle = { fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', marginRight: 8 };
 const valueStyle = { fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', fontWeight: 700 };
@@ -16,6 +18,7 @@ const SOURCE_BADGE = {
   file_upload: { label: '📷 파일 업로드 등록', bg: '#EFF6FF', color: '#1D4ED8' },
   direct_input: { label: '📝 직접 입력 등록', bg: '#F5F3FF', color: '#7C3AED' },
   file_generate: { label: '📄 파일로 생성', bg: '#FFFBEB', color: '#B45309' },
+  answer_based: { label: '✅ 정답형 과제', bg: '#EFF6FF', color: '#1D4ED8' },
 };
 
 const HeaderBar = ({ task, onBack, onDelete }) => (
@@ -251,6 +254,35 @@ const FileGenerateTaskDetail = ({ task, onBack, onDelete }) => {
   );
 };
 
+// [TSK-15] 정답형 과제 상세 — 배치된 문항(스냅샷) · 배점 · 유형 구성
+const AnswerTaskDetail = ({ task, onBack, onDelete }) => {
+  const d = task.detail || {};
+  const entries = d.entries || [];
+  const pById = Object.fromEntries((d.passages || []).map((p) => [p.id, p]));
+  const typeCount = entries.reduce((acc, e) => ({ ...acc, [e.item.itemType]: (acc[e.item.itemType] || 0) + 1 }), {});
+  return (
+    <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
+      <HeaderBar task={task} onBack={onBack} onDelete={onDelete} />
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px' }}>
+        <MetaRow task={task} />
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>🧾 문항 구성</div>
+          <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
+            {Object.entries(typeCount).map(([k, n]) => `${ITEM_TYPES[k]?.icon || ''} ${ITEM_TYPES[k]?.label || k} ${n}`).join(' · ')} — 총 {task.points}점
+          </div>
+          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', marginTop: 6 }}>다음 단계 (준비 중): Ncode 시험지 출력 · 학생 배포 · 정답 대조 채점</div>
+        </div>
+        {entries.map((e) => (
+          <div key={e.item.id} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 54, paddingTop: 12, textAlign: 'center', fontWeight: 900, color: '#2A75F3' }}>{e.number}번<div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 700 }}>{e.points}점</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><ItemCard item={{ ...e.item, number: String(e.number) }} passage={pById[e.item.passageId]} /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // 기존 BASE_TASKS(mock) — source 미정의 → generic detail
 const GenericTaskDetail = ({ task, onBack, onDelete }) => (
   <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
@@ -270,6 +302,7 @@ const TaskDetail = ({ task, onBack, onDelete }) => {
   if (task.source === 'file_upload') return <FileUploadTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
   if (task.source === 'direct_input') return <DirectInputTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
   if (task.source === 'file_generate') return <FileGenerateTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
+  if (task.source === 'answer_based') return <AnswerTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
   return <GenericTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
 };
 

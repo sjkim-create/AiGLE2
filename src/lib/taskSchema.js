@@ -110,3 +110,31 @@ export const buildDirectInputTask = ({
     evalMode, groupList,
   },
 });
+
+// [TSK-15] 정답형 과제 — 문항(문제 은행 문항 또는 새로 만든 문항)을 순서대로 배치한 시험지형 과제
+//   form: 'answer' (서·논술형 과제는 form 없음 = 'essay')
+//   detail.entries: 배치 순서대로 { number, points, item(스냅샷) } — 배포 뒤 문제 은행 원본을 고쳐도 과제는 그대로
+export const buildAnswerTask = ({ id, title, entries, passages = [], curriculum = {}, origin = 'direct' }) => {
+  const level = curriculum.schoolLevelName || '';
+  const grade = curriculum.gradeLabel || '';
+  return {
+    id: id ?? Date.now(),
+    form: 'answer',
+    status: '작성중',
+    visibility: '비공유',
+    lastUpdate: todayISO(),
+    title,
+    schoolLevel: formatSchoolLevel(level, grade) || (entries.every((e) => e.item.track === 'basic') ? '기초학력' : ''),
+    subject: curriculum.curriculumName || curriculum.subjectName || '',
+    subSubject: curriculum.subjectName && curriculum.subjectName !== curriculum.curriculumName ? curriculum.subjectName : '',
+    questions: entries.length,
+    points: entries.reduce((s, e) => s + (Number(e.points) || 0), 0),
+    competencies: '',
+    source: 'answer_based',
+    detail: {
+      origin, // 'direct' | 'file' | 'bank' — 처음 시작한 방법
+      entries: entries.map((e, i) => ({ number: i + 1, points: Number(e.points) || 0, item: e.item })),
+      passages,
+    },
+  };
+};

@@ -24,9 +24,9 @@ const chipBtn = (on) => ({
   border: `1px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', color: on ? '#1D4ED8' : '#475569', whiteSpace: 'nowrap',
 });
 
-const Stepper = ({ step }) => (
+const Stepper = ({ step, steps = STEPS }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-    {STEPS.map((label, i) => {
+    {steps.map((label, i) => {
       const n = i + 1; const state = n < step ? 'done' : n === step ? 'now' : 'todo';
       return (
         <React.Fragment key={label}>
@@ -36,14 +36,15 @@ const Stepper = ({ step }) => (
             color: state === 'now' ? '#1D4ED8' : state === 'done' ? '#047857' : '#94A3B8',
             border: `1px solid ${state === 'now' ? '#93C5FD' : state === 'done' ? '#A7F3D0' : '#E2E8F0'}`,
           }}>{state === 'done' ? '✓' : n}. {label}</span>
-          {n < STEPS.length && <span style={{ color: '#CBD5E1' }}>›</span>}
+          {n < steps.length && <span style={{ color: '#CBD5E1' }}>›</span>}
         </React.Fragment>
       );
     })}
   </div>
 );
 
-const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
+// onPick — 정답형 과제 만들기(과제 관리) 안에서 쓸 때: 확인·선택 뒤 문제 은행에 저장하지 않고 고른 문항을 넘긴다 ({ items, passages, source })
+const ItemExtractWizard = ({ onBack, onGoItemBank, onPick }) => {
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
   const [subStep, setSubStep] = useState(null);
@@ -115,7 +116,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
 
   return (
     <div>
-      <Stepper step={step} />
+      <Stepper step={step} steps={onPick ? STEPS.slice(0, 3) : STEPS} />
 
       {/* STEP 1 — 자료 올리기 */}
       {step === 1 && (
@@ -234,7 +235,12 @@ const ItemExtractWizard = ({ onBack, onGoItemBank }) => {
             {chosenNoAnswer > 0 && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>· 정답 없는 문항 {chosenNoAnswer}개는 「확인 필요」로 저장됩니다</span>}
             <span style={{ flex: 1 }} />
             <button onClick={reset} style={btn(false)}>다른 자료 올리기</button>
-            <button onClick={save} disabled={!chosen.length || saving} style={btn(true, !chosen.length || saving)}>{saving ? '저장 중…' : `문제 은행에 ${chosen.length}개 저장`}</button>
+            {onPick ? (
+              <button onClick={() => { const used = new Set(chosen.map((it) => it.passageId).filter(Boolean)); onPick({ items: chosen, passages: result.passages.filter((p) => used.has(p.id)), source: result.source }); }}
+                disabled={!chosen.length} style={btn(true, !chosen.length)}>{`선택한 ${chosen.length}개로 다음 →`}</button>
+            ) : (
+              <button onClick={save} disabled={!chosen.length || saving} style={btn(true, !chosen.length || saving)}>{saving ? '저장 중…' : `문제 은행에 ${chosen.length}개 저장`}</button>
+            )}
           </div>
           {error?.code === 'SAVE' && <IssueList issues={[{ level: 'error', field: '저장', message: `${error.message} ${error.hint || ''}` }]} />}
         </div>

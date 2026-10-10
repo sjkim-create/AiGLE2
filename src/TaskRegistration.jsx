@@ -3,6 +3,7 @@ import './index.css';
 import TaskFileUploadWizard from './TaskFileUploadWizard';
 import TaskDirectInputWizard from './TaskDirectInputWizard';
 import SmartTaskRegistration from './SmartTaskRegistration';
+import AnswerTaskWizard from './AnswerTaskWizard';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
 import NumberTagPreviewModal from './NumberTagPreviewModal';
 
@@ -389,10 +390,18 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
     return <TaskFileUploadWizard onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
   }
 
-  // ✨ 스마트 과제 등록 (TSK-14) — 서·논술형(바로 과제) / 정답형(문제 은행) 분기
+  // ✅ 정답형 과제 (TSK-15) — 직접 입력 / ✨ 스마트(자료) / 문제 은행에서 고르기
+  if (registrationMode === 'answer-direct' || registrationMode === 'answer-smart' || registrationMode === 'answer-bank') {
+    const src = { 'answer-direct': 'direct', 'answer-smart': 'file', 'answer-bank': 'bank' }[registrationMode];
+    return <AnswerTaskWizard initialSource={src} onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
+  }
+
+  // ✨ 스마트 과제 등록 (TSK-14) — 서·논술형(바로 과제) / 정답형(→ TSK-15 스마트)
   if (registrationMode === 'generate' || registrationMode === 'generate-answer') {
-    return <SmartTaskRegistration initialKind={registrationMode === 'generate-answer' ? 'answer' : null}
-      onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onGoItemBank={onGoItemBank} />;
+    // 등록 메뉴가 형태별로 나뉘어 있으므로 서·논술 그룹의 스마트 과제 등록은 서·논술형으로 바로 시작
+    return <SmartTaskRegistration initialKind={registrationMode === 'generate-answer' ? 'answer' : 'essay'}
+      onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onGoItemBank={onGoItemBank}
+      onStartAnswer={() => setRegistrationMode('answer-smart')} />;
   }
 
   // 직접 입력 2 — 탭 단계형 Wizard 모드

@@ -26,12 +26,13 @@ const KINDS = {
   answer: {
     icon: '✅', title: '정답형', color: '#2A75F3', bg: '#EFF6FF',
     summary: '선다형·진위형·단답형처럼 정답이 정해진 문항으로 시험지 과제를 만듭니다. 문제와 답안 칸이 한 장입니다.',
-    points: ['문항은 문제 은행에서 자료를 올려 모음', '문제 은행 문항·문제집을 골라 과제 배치 (준비 중)', 'Ncode 시험지 출력 → 정답 대조 채점'],
+    points: ['자료를 읽어 문항 분류·정답·배점·과제명까지 자동 입력', '확인·배치 후 정답형 과제로 등록', '가져온 문항은 문제 은행에도 저장 (선택)'],
   },
 };
 
 // onGoItemBank(view) — 'import'면 문제 은행의 「자료에서 문항 가져오기」로, 아니면 문제 은행 목록으로
-const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, initialKind = null }) => {
+// onStartAnswer — 정답형을 고르면 정답형 과제 만들기(TSK-15) 스마트로 바로 (자료 → 문항 → 배치 → 저장, 과제 관리 안)
+const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, initialKind = null }) => {
   const [kind, setKind] = useState(initialKind); // null | 'essay' | 'answer'
 
   return (
@@ -61,7 +62,7 @@ const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, initialKind = null
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                 {Object.entries(KINDS).map(([k, v]) => (
-                  <button key={k} onClick={() => setKind(k)}
+                  <button key={k} onClick={() => (k === 'answer' && onStartAnswer ? onStartAnswer() : setKind(k))}
                     style={{ textAlign: 'left', background: 'white', border: '2px solid #E2E8F0', borderRadius: 16, padding: '24px 22px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 10, transition: 'all 0.15s' }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = v.color; e.currentTarget.style.background = v.bg; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}>
