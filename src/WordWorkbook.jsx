@@ -133,23 +133,21 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
         <button type="button" onClick={() => onChange([...words, { id: newId('w'), word: '', meaning: '' }], true)} style={{ ...smallBtn(), padding: '6px 12px' }}>+ 한 줄 추가</button>
       </div>
       <div style={{ borderTop: '1px dashed #E2E8F0', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* [v1.37] 엑셀 — 양식 내려받기 · 올리기(버튼 또는 파일을 끌어 놓기) */}
-        <div onDragOver={(e) => { e.preventDefault(); if (!dragOn) setDragOn(true); }} onDragLeave={() => setDragOn(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOn(false); upload(e.dataTransfer.files?.[0]); }}
-          aria-label="엑셀 파일을 끌어 놓는 곳"
-          style={{ border: `2px dashed ${dragOn ? '#2A75F3' : '#CBD5E1'}`, background: dragOn ? '#EFF6FF' : '#F8FAFC', borderRadius: 12, padding: '14px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '1.3rem' }}>📊</span>
-          <span style={{ flex: 1, minWidth: 220, fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
-            <b>엑셀 파일을 여기로 끌어 놓거나</b> [📤 엑셀 올리기]를 누르세요.
-            <span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>A열 {dict ? '불러 줄 낱말·문장' : '영어 낱말'} · B열 {dict ? '메모' : '한글 뜻'}, 1행은 머리글 — 2행부터 읽어 목록 끝에 덧붙입니다.</span>
-          </span>
-          <button type="button" onClick={downloadTemplate} style={{ ...smallBtn(), padding: '6px 12px' }}>⬇️ 양식 내려받기</button>
-          <button type="button" onClick={() => fileRef.current?.click()} style={{ ...smallBtn(), padding: '6px 12px', border: '1px solid #2A75F3', color: '#1D4ED8' }}>📤 엑셀 올리기</button>
-          <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="엑셀 파일 선택" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
-        </div>
         <span style={optLabel}>여러 개 붙여넣기 — 한 줄에 하나{dict ? '' : ' · 「낱말 [Tab] 뜻」 (엑셀 두 열 복사) 또는 「낱말 | 뜻」'}</span>
-        <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4} aria-label="낱말 붙여넣기"
-          placeholder={dict ? (dictLang === '영어' ? 'apple\nHow are you?\nI like it.' : '무릎\n넓다\n읽고 찾기') : 'apple\t사과\nrun | 달리다, 뛰다'} style={{ ...input, fontFamily: 'monospace' }} />
+        {/* [v1.39] 붙여넣기 칸 오른쪽에 엑셀 — 양식 내려받기 · 올리기(버튼 또는 끌어 놓기). 열 안내 문구 삭제 */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+          <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4} aria-label="낱말 붙여넣기"
+            placeholder={dict ? (dictLang === '영어' ? 'apple\nHow are you?\nI like it.' : '무릎\n넓다\n읽고 찾기') : 'apple\t사과\nrun | 달리다, 뛰다'} style={{ ...input, fontFamily: 'monospace', flex: '1 1 320px', width: 'auto' }} />
+          <div onDragOver={(e) => { e.preventDefault(); if (!dragOn) setDragOn(true); }} onDragLeave={() => setDragOn(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOn(false); upload(e.dataTransfer.files?.[0]); }}
+            aria-label="엑셀 파일을 끌어 놓는 곳" title="엑셀 파일을 여기로 끌어 놓아도 됩니다"
+            style={{ flex: '0 0 190px', border: `2px dashed ${dragOn ? '#2A75F3' : '#CBD5E1'}`, background: dragOn ? '#EFF6FF' : '#F8FAFC', borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>
+            <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', textAlign: 'center' }}>📊 엑셀 끌어 놓기</span>
+            <button type="button" onClick={() => fileRef.current?.click()} style={{ ...smallBtn(), padding: '6px 10px', border: '1px solid #2A75F3', color: '#1D4ED8' }}>📤 엑셀 올리기</button>
+            <button type="button" onClick={downloadTemplate} style={{ ...smallBtn(), padding: '6px 10px' }}>⬇️ 양식 내려받기</button>
+            <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="엑셀 파일 선택" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button type="button" disabled={!paste.trim()} onClick={() => { onChange([...kept(), ...parseWordPaste(paste, mode)], true); setPaste(''); }}
             style={{ ...smallBtn(), padding: '6px 12px', background: paste.trim() ? '#2A75F3' : '#E2E8F0', color: paste.trim() ? 'white' : '#94A3B8', border: '1px solid transparent', cursor: paste.trim() ? 'pointer' : 'not-allowed' }}>
