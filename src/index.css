@@ -91,6 +91,10 @@ body {
   z-index: 100;
   padding: 1.5rem 0;
   flex-shrink: 0;
+  /* 메뉴가 화면보다 길면 사이드바만 스크롤 (부모 .app-container는 100vh · overflow hidden) */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .logo-container {
