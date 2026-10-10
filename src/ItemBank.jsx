@@ -322,8 +322,8 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         const entries = its.map((item) => ({ item, points: wb.points?.[item.id] ?? item.points ?? 1 }));
         const curriculum = wb.curriculum || topCurriculum(its);
         const setLocal = (patch) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, ...patch } : w)));
-        // 제목 옆 — 학교급 · 학년 · 교과 (기초학력 문제집은 학년 대신 「기초학력」)
-        const curShort = (wb.purpose === 'basic' ? ['기초학력', curriculum.schoolLevelName, curriculum.curriculumName] : [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName]).filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '');
+        // 제목 옆 — 학교급 · 학년 · 교과 (기초학력 문제집은 앞에 「기초학력」)
+        const curShort = [wb.purpose === 'basic' ? '기초학력' : '', curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '');
         const curText = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정');
         const sheetProps = {
           title: wb.title, curriculum, entries, passages: passageById, layout: wb.layout, actualSize: wbActual,
@@ -374,7 +374,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                 <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />
                 {wbStep === 1 && (
                   <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES}
-                    onPurpose={(p) => save({ ...wb, purpose: p, ...(p === 'basic' ? { curriculum: { ...curriculum, gradeLabel: '' } } : {}) })}
+                    onPurpose={(p) => save({ ...wb, purpose: p })}
                     title={wb.title} onTitle={(t) => setLocal({ title: t })} onTitleBlur={() => save(wb)}
                     curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumSave={(c) => save({ ...wb, curriculum: c })} />
                 )}
