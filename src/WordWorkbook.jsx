@@ -21,7 +21,13 @@ export const WORD_MODES = {
 export const normMode = (m) => (m === 'dictation' ? 'dictation' : 'vocab');
 // 빈칸 — 'meaning'(한글 뜻을 쓴다, 영어가 보임) · 'word'(영어를 쓴다, 한글 뜻이 보임)
 //   정하지 않은 낱말은 번호로 번갈아 — 1번 영어 빈칸(한글이 보임), 2번 한글 빈칸(영어가 보임) … (v1.30 — 기본이 모두 한글 빈칸이라 영어만 보이던 문제)
-export const blankOf = (w, rawMode, index = 0) => w.blank || (rawMode === 'spelling' ? 'word' : (index % 2 === 0 ? 'word' : 'meaning'));
+export const blankOf = (w, rawMode, index = 0) => {
+  const b = w.blank || (rawMode === 'spelling' ? 'word' : (index % 2 === 0 ? 'word' : 'meaning'));
+  // 문제로 보일 쪽이 비어 있으면 빈칸을 반대로 — 어떤 경우에도 한글이나 영어 중 하나는 문제로 보인다 (v1.31)
+  if (b === 'word' && !String(w.meaning || '').trim()) return 'meaning';
+  if (b === 'meaning' && !String(w.word || '').trim()) return 'word';
+  return b;
+};
 export const BLANK_LABEL = { meaning: '한글', word: '영어' };
 export const DEFAULT_WORD_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', style: 'line', nameBox: true, answerKey: false };
 // 줄 간격 — 넓게는 舊 56px의 2배 (v1.27)
@@ -130,7 +136,8 @@ export const WordEditor = ({ words, mode: rawMode, onChange, onCommit, onNotice 
 // ③ 문제집 배치 — 순서 · 빈칸 한꺼번에 (낱말 시험만 빈칸) · 시험지 위에서는 끌어서 순서, 눌러서 빈칸 바꾸기
 export const WordOrderTools = ({ words, mode: rawMode, onChange }) => {
   const vocab = normMode(rawMode) === 'vocab';
-  const setBlanks = (fn) => onChange(words.map((w, i) => ({ ...w, blank: fn(w, i) })));
+  const setBlanks = (fn) => onChange(words.map((w, i) => ({ ...w, blank: blankOf({ ...w, blank: fn(w, i) }, rawMode, i) })));
+  const noMeaning = vocab ? words.filter((w) => w.word.trim() && !String(w.meaning || '').trim()).length : 0;
   const shuffle = () => { const n = [...words]; for (let i = n.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [n[i], n[j]] = [n[j], n[i]]; } onChange(n); };
   return (
     <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '10px 16px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -145,6 +152,7 @@ export const WordOrderTools = ({ words, mode: rawMode, onChange }) => {
           <button type="button" onClick={() => setBlanks(() => 'word')} style={smallBtn()}>모두 영어 빈칸</button>
         </>
       )}
+      {noMeaning > 0 && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ 뜻이 없는 낱말 {noMeaning}개는 늘 영어를 보이고 한글 칸을 비웁니다 — 낱말 입력에서 뜻을 넣어 주세요</span>}
       <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>시험지에서 낱말을 끌면 순서{vocab ? ', 누르면 빈칸(영어↔한글)' : ''}이 바뀝니다</span>
     </div>
   );
