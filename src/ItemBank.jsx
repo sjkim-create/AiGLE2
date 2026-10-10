@@ -350,7 +350,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                     <button onClick={() => setWbEdit((v) => !v)} aria-pressed={wbEdit} style={{ ...btn(wbEdit), ...(wbEdit ? {} : { borderColor: '#2A75F3', color: '#1D4ED8' }) }}>{wbEdit ? '✅ 편집 끝내기' : '✏️ 편집 모드'}</button>
                   </ArrangeSummary>
                   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-                    {curText} · {wbEdit ? '⠿를 누른 채 끌어 원하는 문항 위/아래에 놓으면 순서가 바뀝니다. 공통 지문 문항은 묶음으로 움직이고, 묶음 안 순서는 ↑↓로 바꿉니다. 바꾼 내용은 문제집에 바로 저장됩니다.' : '[✏️ 편집 모드]에서 문항 순서 · 배점 · 수정 · 빼기를 합니다. 문항을 더 넣으려면 「문항」 메뉴에서 골라 [📚 문제집에 담기].'}
+                    {curText} · {wbEdit ? '⠿를 누른 채 끌어 원하는 문항 위에 놓으면 그 문항의 번호 자리로 갑니다(파란 표시에 갈 번호). 공통 지문 문항은 묶음으로 움직이고, 묶음 안 순서는 ↑↓로 바꿉니다. 바꾼 내용은 문제집에 바로 저장됩니다.' : '[✏️ 편집 모드]에서 문항 순서 · 배점 · 수정 · 빼기를 합니다. 문항을 더 넣으려면 「문항」 메뉴에서 골라 [📚 문제집에 담기].'}
                   </div>
                   {wbRemoved && wbRemoved.wbId === wb.id && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', background: '#FEF2F2', borderRadius: 8, padding: '6px 10px' }}>

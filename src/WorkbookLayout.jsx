@@ -2,7 +2,7 @@
  * WorkbookLayout — 문제집 배치 (TSK-15 v1.14 · QBK-01)
  *
  * 순서 배치를 마친 문제집을 종이(A4) 지면으로 배치해 미리 본다.
- *   · 설정: 시험지 크기(A4 · B4 · A3) · 단(1단 · 2단) · 문항 간격(좁게 · 보통 · 넓게 = 한 단에 2문항) · 배점 표시 · 이름 칸 — 바꾸면 문제집에 바로 저장
+ *   · 설정: 시험지 크기(A4 · B4 · A3) · 단(1단 · 2단) · 문항 간격(좁게 · 보통 · 한 단 2문항 · 한 단 1문항) · 배점 표시 · 이름 칸 — 바꾸면 문제집에 바로 저장
  *   · 공통 지문은 그 지문을 쓰는 첫 문항 앞에 한 번 「[1~3] 다음 글을 읽고 물음에 답하시오.」로
  *   · 유형별 답 쓰는 자리: 선다형 ①~⑤ · 양자택일형 ( A / B ) · 진위형 ( O / X ) · 연결형 · 단답형 답 칸 · 완성형 빈칸 · 서술형 줄 칸
  * 쪽 나누기: 문항 높이를 재서 단 · 쪽을 채운다 (종이가 클수록 한 쪽에 문항이 많다). Ncode 입힌 출력 · 과제로 저장(배포·채점)은 다음 단계.
@@ -15,8 +15,9 @@ export const PAPERS = { A4: { w: 210, h: 297, label: 'A4 (210×297)' }, B4: { w:
 const MM = 3.78;
 // 문항 간격 — 넓게는 「한 단에 문항 2개」: 단 높이를 둘로 나눠 문항 사이에 풀이 공간을 둔다
 // 보통 = 舊 넓게(34px)보다 조금 더 여유 있게 40px (v1.17)
-const SPACING = { narrow: 10, normal: 40, wide: 20 };
-const WIDE_PER_COL = 2;
+const SPACING = { narrow: 10, normal: 40, wide: 20, wide1: 20 };
+// 한 단에 문항 수를 정하는 간격 — 단 높이를 문항 수로 나눠 문항 아래를 풀이 공간으로 (v1.19 — 한 단 1문항 추가)
+const PER_COL = { wide: 2, wide1: 1 };
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
 
 const chip = (on) => ({
@@ -201,14 +202,14 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
   const pages = [];
   if (heights && blocks.length) {
     const avail = (first) => pageH - PAD_V * 2 - FOOTER - (first ? heights.header : 0);
-    const wide = L.spacing === 'wide';
+    const perCol = PER_COL[L.spacing] || 0;
     let page = { cols: [[]], first: true }; let used = 0; let first = true; let nItems = 0;
     pages.push(page);
     blocks.forEach((b, idx) => {
       const h = heights.blocks[idx] || 0;
       const prevGap = used > 0 ? page.cols[page.cols.length - 1].slice(-1)[0].gapAfter : 0;
       // 넓게: 이 단에 문항이 이미 2개면 다음 단으로 (공통 지문은 뒤 문항과 같은 단에 오도록 문항 수로만 센다)
-      const full = wide && nItems >= WIDE_PER_COL;
+      const full = perCol > 0 && nItems >= perCol;
       if (used > 0 && (full || used + prevGap + h > avail(first))) {
         if (page.cols.length < L.columns) page.cols.push([]);
         else { page = { cols: [[]], first: false }; pages.push(page); first = false; }
@@ -241,21 +242,27 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
       onDragOver: (ev) => {
         if (!dragId) return;
         ev.preventDefault();
-        const r = ev.currentTarget.getBoundingClientRect();
-        const before = b.no ? ev.clientY < r.top + r.height / 2 : true;
-        if (!over || over.key !== b.key || over.before !== before) setOver({ key: b.key, before });
+        const ids = entries.map((x) => x.item.id);
+        const before = b.no ? ids.indexOf(targetId) < ids.indexOf(dragId) : true;
+        if (!over || over.key !== b.key || over.before !== before) setOver({ key: b.key, before, no: ids.indexOf(targetId) + 1 });
         const sp = scrollParentOf(ev.currentTarget); const sr = sp === document.scrollingElement ? { top: 0, bottom: innerHeight } : sp.getBoundingClientRect();
         if (ev.clientY < sr.top + 60) sp.scrollBy(0, -24); else if (ev.clientY > sr.bottom - 60) sp.scrollBy(0, 24);
       },
       onDrop: (ev) => {
         ev.preventDefault();
-        if (dragId && targetId) onOrder?.(reorderByDrop(entries, dragId, targetId, b.no ? (over?.before ?? true) : true));
+        if (dragId && targetId) { const ids = entries.map((x) => x.item.id); onOrder?.(reorderByDrop(entries, dragId, targetId, b.no ? ids.indexOf(targetId) < ids.indexOf(dragId) : true)); }
         setDragId(null); setOver(null); setArmed(null);
       },
     };
   };
-  const dropLine = (b) => (over && over.key === b.key && dragId && dragId !== b.key
-    ? { boxShadow: over.before ? 'inset 0 3px 0 #2A75F3' : 'inset 0 -3px 0 #2A75F3' } : {});
+  const isTarget = (b) => over && over.key === b.key && dragId && !unitOf(entries, dragId).includes(b.key);
+  const dropLine = (b) => (isTarget(b) ? { boxShadow: over.before ? 'inset 0 4px 0 #2A75F3' : 'inset 0 -4px 0 #2A75F3', background: 'rgba(42,117,243,0.06)' } : {});
+  // 놓으면 갈 번호를 미리 보인다
+  const dropBadge = (b) => (isTarget(b) ? (
+    <span style={{ position: 'absolute', right: 6, [over.before ? 'top' : 'bottom']: -10, background: '#2A75F3', color: 'white', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 800, fontFamily: 'Pretendard, sans-serif', pointerEvents: 'none', zIndex: 2 }}>
+      {b.no ? `${over.no}번 자리로` : '이 지문 묶음 앞으로'}
+    </span>
+  ) : null);
   const availOf = (first) => (heights ? pageH - PAD_V * 2 - FOOTER - (first ? heights.header : 0) : 0);
   const perPage = pages.map((pg) => pg.cols.flat().filter((b) => b.no).length);
 
@@ -279,12 +286,12 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
             {pi === 0 && header}
             <div style={{ display: 'flex', gap: COL_GAP }}>
               {Array.from({ length: L.columns }).map((_, ci) => (
-                <div key={ci} style={{ width: colW, flex: '0 0 auto', position: 'relative', ...(L.spacing === 'wide' ? { height: availOf(pg.first), display: 'flex', flexDirection: 'column' } : {}) }}>
+                <div key={ci} style={{ width: colW, flex: '0 0 auto', position: 'relative', ...(PER_COL[L.spacing] ? { height: availOf(pg.first), display: 'flex', flexDirection: 'column' } : {}) }}>
                   {ci > 0 && <div style={{ position: 'absolute', left: -COL_GAP / 2, top: 0, bottom: 0, borderLeft: '1px solid #CBD5E1' }} />}
                   {(pg.cols[ci] || []).map((b, bi) => (
                     // 넓게: 문항이 단 높이를 나눠 갖고(1/2씩) 남는 아래쪽이 풀이 공간
-                    <div key={b.key} data-block={b.key} {...blockDnd(b)} style={{ display: 'flow-root', marginTop: bi > 0 ? pg.cols[ci][bi - 1].gapAfter : 0, ...(L.spacing === 'wide' && b.no ? { flex: '1 1 0', minHeight: 0 } : {}),
-                      ...(editMode ? { outline: b.no ? '1px dashed #93C5FD' : '1px dotted #CBD5E1', outlineOffset: 3, borderRadius: 4, opacity: dragId && unitOf(entries, dragId).includes(b.key) ? 0.4 : 1 } : {}), ...dropLine(b) }}>{b.node}</div>
+                    <div key={b.key} data-block={b.key} {...blockDnd(b)} style={{ display: 'flow-root', marginTop: bi > 0 ? pg.cols[ci][bi - 1].gapAfter : 0, position: 'relative', ...(PER_COL[L.spacing] && b.no ? { flex: '1 1 0', minHeight: 0 } : {}),
+                      ...(editMode ? { outline: b.no ? '1px dashed #93C5FD' : '1px dotted #CBD5E1', outlineOffset: 3, borderRadius: 4, opacity: dragId && unitOf(entries, dragId).includes(b.key) ? 0.4 : 1 } : {}), ...dropLine(b) }}>{b.node}{dropBadge(b)}</div>
                   ))}
                 </div>
               ))}
@@ -312,7 +319,7 @@ export const LayoutOptions = ({ layout, onChange }) => {
       <span style={{ ...optLabel, marginLeft: 6 }}>단</span>
       {[1, 2].map((n) => <button key={n} type="button" onClick={() => set('columns', n)} style={chip(L.columns === n)} aria-pressed={L.columns === n}>{n}단</button>)}
       <span style={{ ...optLabel, marginLeft: 6 }}>문항 간격</span>
-      {[['narrow', '좁게'], ['normal', '보통'], ['wide', '넓게 (한 단 2문항)']].map(([k, l]) => <button key={k} type="button" onClick={() => set('spacing', k)} style={chip(L.spacing === k)} aria-pressed={L.spacing === k}>{l}</button>)}
+      {[['narrow', '좁게'], ['normal', '보통'], ['wide', '한 단 2문항'], ['wide1', '한 단 1문항']].map(([k, l]) => <button key={k} type="button" onClick={() => set('spacing', k)} style={chip(L.spacing === k)} aria-pressed={L.spacing === k}>{l}</button>)}
       <label style={{ ...optLabel, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 6 }}><input type="checkbox" checked={L.showPoints} onChange={(e) => set('showPoints', e.target.checked)} /> 배점 표시</label>
       <label style={{ ...optLabel, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}><input type="checkbox" checked={L.nameBox} onChange={(e) => set('nameBox', e.target.checked)} /> 이름 칸</label>
       <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>바꾸면 문제집에 바로 저장 · Ncode 출력·과제로 저장은 다음 단계</span>
