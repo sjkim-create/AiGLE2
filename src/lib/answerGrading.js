@@ -7,6 +7,7 @@
  * 프로토: 학생 답은 모의로 만든다(실제 스캔 OCR · Ncode 펜 인식은 다음 단계).
  */
 import { answerText, hasAnswer } from './itemBank';
+import { blankOf } from '../WordWorkbook';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
 const NAMES = ['김하늘', '이서준', '박지우', '최민서', '정예준', '강서연', '조하준', '윤지민', '장도윤', '임수아', '한시우', '오지호', '서유나', '신은우', '권하린', '황지안', '안로운', '송다온', '류시아', '전이준', '홍채원', '고서윤', '문건우', '양하율', '손지아', '배도현', '백나윤', '허준서', '유이서', '남주원'];
@@ -22,8 +23,7 @@ export const gradingQuestionsOf = (wb, itemsById = {}) => {
     const words = (wb.words || []).filter((w) => w.word.trim());
     return words.map((w, i) => {
       const dict = wb.mode === 'dictation';
-      const blank = dict ? 'word' : (w.blank || (i % 2 === 0 ? 'word' : 'meaning'));
-      const blankSide = blank === 'word' && !String(w.meaning || '').trim() ? 'meaning' : blank;
+      const blankSide = dict ? 'word' : blankOf(w, wb.mode, (wb.words || []).indexOf(w)); // 시험지(WordSheet)와 같은 빈칸
       const answer = blankSide === 'word' ? w.word : w.meaning;
       return {
         key: w.id, no: i + 1, kind: 'word',

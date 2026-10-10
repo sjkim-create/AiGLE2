@@ -8,6 +8,7 @@
  * 쪽 나누기: 문항 높이를 재서 단 · 쪽을 채운다 (종이가 클수록 한 쪽에 문항이 많다). Ncode 입힌 출력 · 과제로 저장(배포·채점)은 다음 단계.
  */
 import React from 'react';
+import { PEN, MarkedNo, AnswerNote } from './GradeMarks';
 
 export const DEFAULT_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', showPoints: true, nameBox: true };
 // 시험지 크기 (세로, mm) — 미리 보기는 1mm ≈ 3.78px, 화면 폭에 맞게 줄여 보인다
@@ -27,19 +28,25 @@ const chip = (on) => ({
 const optLabel = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' };
 
 // 유형별 답 쓰는 자리
-const AnswerArea = ({ item }) => {
+//   g(채점 상세) — { ans{text,uncertain}, v(○✗?), correct } : 고른 답에 펜 동그라미, 쓴 답은 펜 글씨, 틀리면 옆에 정답
+const penRing = { border: '2px solid #2563EB', borderRadius: '50%', padding: '0 3px', margin: '0 -5px' };
+const AnswerArea = ({ item, g = null }) => {
   const ch = item.choices || [];
+  const picked = (t) => g && String(g.ans?.text || '').trim() === String(t).trim();
+  const note = g ? <AnswerNote v={g.v} correct={g.correct} uncertain={g.ans?.uncertain} /> : null;
+  const pen = g ? <span style={PEN}>{g.ans?.text || ''}</span> : null;
   switch (item.itemType) {
     case 'multiple_choice':
       return (
         <div style={{ display: 'grid', gridTemplateColumns: ch.some((c) => (c.text || '').length > 14) ? '1fr' : 'repeat(auto-fill, minmax(120px, 1fr))', gap: '2px 12px', marginTop: 4 }}>
-          {ch.map((c) => <div key={c.no}>{CIRCLED[c.no - 1] || c.no} {c.text}</div>)}
+          {ch.map((c) => { const mk = CIRCLED[c.no - 1] || c.no; return <div key={c.no}><span style={picked(mk) ? penRing : undefined}>{mk}</span> {c.text}</div>; })}
+          {note && <div>{note}</div>}
         </div>
       );
     case 'binary_choice':
-      return <div style={{ marginTop: 4 }}>( {ch[0]?.text || '　'} / {ch[1]?.text || '　'} )</div>;
+      return <div style={{ marginTop: 4 }}>( <span style={picked(ch[0]?.text) ? penRing : undefined}>{ch[0]?.text || '　'}</span> / <span style={picked(ch[1]?.text) ? penRing : undefined}>{ch[1]?.text || '　'}</span> ){note}</div>;
     case 'true_false':
-      return <div style={{ marginTop: 4, textAlign: 'right' }}>( O / X )</div>;
+      return <div style={{ marginTop: 4, textAlign: 'right' }}>( <span style={picked('O') ? penRing : undefined}>O</span> / <span style={picked('X') ? penRing : undefined}>X</span> ){note}</div>;
     case 'matching': {
       const m = item.matching || { left: [], right: [] };
       return (
@@ -50,26 +57,29 @@ const AnswerArea = ({ item }) => {
               <div>{m.right[i] ? `• ${'ㄱㄴㄷㄹㅁㅂㅅㅇ'[i] || i + 1}. ${m.right[i]}` : ''}</div>
             </React.Fragment>
           ))}
+          {g && <div style={{ gridColumn: '1 / -1' }}>답: {pen}{note}</div>}
         </div>
       );
     }
     case 'short_answer':
-      return <div style={{ marginTop: 6 }}>답: <span style={{ display: 'inline-block', width: '60%', borderBottom: '1px solid #334155' }}>&nbsp;</span></div>;
+      return <div style={{ marginTop: 6 }}>답: <span style={{ display: 'inline-block', width: '60%', borderBottom: '1px solid #334155' }}>{pen || <>&nbsp;</>}</span>{note}</div>;
     case 'completion':
       return (
         <div style={{ marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {Array.from({ length: Math.max(1, item.blankCount || 1) }).map((_, i) => (
-            <span key={i}>({i + 1}) <span style={{ display: 'inline-block', width: 90, borderBottom: '1px solid #334155' }}>&nbsp;</span></span>
+            <span key={i}>({i + 1}) <span style={{ display: 'inline-block', minWidth: 90, borderBottom: '1px solid #334155' }}>{(i === 0 && pen) || <>&nbsp;</>}</span></span>
           ))}
+          {note}
         </div>
       );
     case 'essay':
       return (
         <div style={{ marginTop: 6, border: '1px solid #94A3B8', borderRadius: 2, padding: '4px 8px' }}>
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} style={{ height: 22, borderBottom: i < 3 ? '1px dashed #CBD5E1' : 'none' }} />)}
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} style={{ height: 22, borderBottom: i < 3 ? '1px dashed #CBD5E1' : 'none' }}>{i === 0 && pen}</div>)}
+          {note}
         </div>
       );
-    default: return null;
+    default: return g ? <div style={{ marginTop: 6 }}>답: {pen}{note}</div> : null;
   }
 };
 
@@ -115,7 +125,8 @@ export const moveByStep = (entries, id, d) => {
 const scrollParentOf = (el) => { let p = el?.parentElement; while (p) { const o = getComputedStyle(p).overflowY; if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p; p = p.parentElement; } return document.scrollingElement; };
 const tb = { padding: '1px 6px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'Pretendard, sans-serif', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: '#334155' };
 
-export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layout, editMode = false, onOrder, onPoints, onEdit, onRemove, actualSize = false }) => {
+// grading — 채점 상세(TSK-15 v1.44): { answers{id:{text,uncertain}}, marks{id:true|false|null}, correct{id:정답}, onMark(id) } — 문항을 누르면 O ↔ X
+export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layout, editMode = false, onOrder, onPoints, onEdit, onRemove, actualSize = false, grading = null }) => {
   const [armed, setArmed] = React.useState(null);   // ⠿를 누른 문항 — 그 문항만 끌 수 있다
   const [dragId, setDragId] = React.useState(null);
   const [over, setOver] = React.useState(null);     // { key, before }
@@ -177,10 +188,10 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
             <button type="button" onClick={() => onRemove?.(it.id)} aria-label={`${i + 1}번 빼기`} style={{ ...tb, color: '#B91C1C', borderColor: '#FCA5A5' }}>🗑 빼기</button>
           </div>
         )}
-        <div><b>{i + 1}.</b> {it.stem || '(발문 없음)'}{L.showPoints && <span style={{ fontSize: 11, color: '#475569' }}> [{Number(e.points) || 0}점]</span>}</div>
+        <div>{grading ? <MarkedNo no={i + 1} v={grading.marks?.[it.id]} /> : <b>{i + 1}.</b>} {it.stem || '(발문 없음)'}{L.showPoints && <span style={{ fontSize: 11, color: '#475569' }}> [{Number(e.points) || 0}점]</span>}</div>
         {it.material && <div style={{ border: '1px solid #94A3B8', padding: '4px 10px', margin: '4px 0', whiteSpace: 'pre-wrap', fontSize: 12 }}><b>&lt;보기&gt;</b> {it.material}</div>}
         {(it.images || []).map((im, k) => <img key={k} src={im.dataUrl} alt={im.label || ''} style={{ maxWidth: '100%', maxHeight: 180, display: 'block', margin: '4px 0' }} />)}
-        <AnswerArea item={it} />
+        <AnswerArea item={it} g={grading ? { ans: grading.answers?.[it.id], v: grading.marks?.[it.id], correct: grading.correct?.[it.id] } : null} />
       </>
     ) });
   });
@@ -190,7 +201,7 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
   const headerRef = React.useRef(null);
   const [heights, setHeights] = React.useState(null);
   const [tick, setTick] = React.useState(0);
-  const sig = `${editMode}|${L.paper}|${L.columns}|${L.spacing}|${L.showPoints}|${L.nameBox}|${title}|${curText}|${blocks.map((b) => b.key).join(',')}|${entries.map((e) => `${e.points}:${e.item.updatedAt || ''}:${e.item.itemType}`).join(',')}`;
+  const sig = `${editMode}|${grading ? 'g' : ''}|${L.paper}|${L.columns}|${L.spacing}|${L.showPoints}|${L.nameBox}|${title}|${curText}|${blocks.map((b) => b.key).join(',')}|${entries.map((e) => `${e.points}:${e.item.updatedAt || ''}:${e.item.itemType}`).join(',')}`;
   React.useLayoutEffect(() => {
     if (!measureRef.current) return;
     const hs = [...measureRef.current.children].map((el) => el.getBoundingClientRect().height);
@@ -290,7 +301,7 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
                   {ci > 0 && <div style={{ position: 'absolute', left: -COL_GAP / 2, top: 0, bottom: 0, borderLeft: '1px solid #CBD5E1' }} />}
                   {(pg.cols[ci] || []).map((b, bi) => (
                     // 넓게: 문항이 단 높이를 나눠 갖고(1/2씩) 남는 아래쪽이 풀이 공간
-                    <div key={b.key} data-block={b.key} {...blockDnd(b)} style={{ display: 'flow-root', marginTop: bi > 0 ? pg.cols[ci][bi - 1].gapAfter : 0, position: 'relative', ...(PER_COL[L.spacing] && b.no ? { flex: '1 1 0', minHeight: 0 } : {}),
+                    <div key={b.key} data-block={b.key} {...blockDnd(b)} {...(grading && b.no ? { onClick: () => grading.onMark?.(b.key), title: '누르면 O ↔ X', 'data-grade-row': b.key } : {})} style={{ display: 'flow-root', ...(grading && b.no ? { cursor: 'pointer', borderRadius: 4, background: grading.marks?.[b.key] == null ? 'rgba(254,243,199,0.6)' : undefined } : {}), marginTop: bi > 0 ? pg.cols[ci][bi - 1].gapAfter : 0, position: 'relative', ...(PER_COL[L.spacing] && b.no ? { flex: '1 1 0', minHeight: 0 } : {}),
                       ...(editMode ? { outline: b.no ? '1px dashed #93C5FD' : '1px dotted #CBD5E1', outlineOffset: 3, borderRadius: 4, opacity: dragId && unitOf(entries, dragId).includes(b.key) ? 0.4 : 1 } : {}), ...dropLine(b) }}>{b.node}{dropBadge(b)}</div>
                   ))}
                 </div>

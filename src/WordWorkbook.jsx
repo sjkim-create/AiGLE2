@@ -10,6 +10,7 @@
 import React from 'react';
 import { newId } from './lib/itemBank';
 import { PAPERS } from './WorkbookLayout';
+import { PEN, MarkedNo, AnswerNote } from './GradeMarks';
 import { readXlsxRows, makeXlsxBlob, downloadBlob } from './lib/xlsxLite';
 import { loadCatalog, isFileGenerateAvailable } from './lib/taskFromFile';
 import { catalogStandardsFor, generateWords, WORD_KINDS } from './lib/wordAI';
@@ -239,7 +240,9 @@ export const WordLayoutOptions = ({ layout, onChange, children }) => {
 
 // ③ 문제집 배치 — 번호 · (보여 줄 것) · 답 칸. 단을 위에서부터 채우고 넘치면 다음 단 · 다음 쪽
 // editMode — 낱말을 끌어 다른 낱말 위에 놓으면 그 번호 자리로(onOrder), 누르면 빈칸 영어↔한글(onToggleBlank, 낱말 시험만)
-export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, actualSize = false, editMode = false, onOrder, onToggleBlank }) => {
+// grading — 채점 상세(TSK-15 v1.44): { answers{id:{text,uncertain}}, marks{id:true|false|null}, correct{id:정답}, onMark(id) }
+//   빈칸에 학생 답을 펜 글씨로, 번호에 ○ / ╱ / ?, 줄을 누르면 O ↔ X
+export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, actualSize = false, editMode = false, onOrder, onToggleBlank, grading = null }) => {
   const mode = normMode(rawMode);
   const [dragId, setDragId] = React.useState(null);
   const [overId, setOverId] = React.useState(null);
@@ -266,8 +269,11 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
     cursor: 'grab', outline: overId === w.id && dragId !== w.id ? '2px solid #2A75F3' : '1px dashed #93C5FD', outlineOffset: 1,
     background: overId === w.id && dragId !== w.id ? 'rgba(42,117,243,0.08)' : undefined, opacity: dragId === w.id ? 0.4 : 1,
   } : {});
-  const L = { ...DEFAULT_WORD_LAYOUT, ...(layout || {}) };
+  const L = { ...DEFAULT_WORD_LAYOUT, ...(layout || {}), ...(grading ? { answerKey: false } : {}) };
   const M = WORD_MODES[mode];
+  const gRow = (w) => (grading ? { onClick: () => grading.onMark?.(w.id), title: '누르면 O ↔ X', 'data-grade-row': w.id } : {});
+  const gStyle = (w) => (grading ? { cursor: 'pointer', background: grading.marks?.[w.id] == null ? 'rgba(254,243,199,0.6)' : undefined } : {});
+  const gNo = (w, no, suffix) => (grading ? <MarkedNo no={no} v={grading.marks?.[w.id]} suffix={suffix} /> : null);
   const paper = PAPERS[L.paper] || PAPERS.A4;
   const pageW = Math.round(paper.w * MM); const pageH = Math.round(paper.h * MM);
   const colW = Math.floor((pageW - PAD_H * 2 - COL_GAP * (L.columns - 1)) / L.columns);
@@ -334,20 +340,21 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
                     const cells = mode === 'vocab'
                       ? [{ k: 'word', text: w.word }, { k: 'meaning', text: w.meaning }].map((c) => ({ ...c, blank: blankOf(w, rawMode, idxOf(w)) === c.k }))
                       : [{ k: 'word', text: w.word, blank: true }];
-                    const cellText = (c) => (c.blank ? (L.answerKey ? c.text : '') : c.text);
-                    const textStyle = (c) => (c.blank ? answerStyle : { overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: (c.text || '').length > 6 ? 12 : 13 });
+                    const ga = grading?.answers?.[w.id];
+                    const cellText = (c) => (c.blank ? (grading ? <><span style={PEN}>{ga?.text || ''}</span><AnswerNote v={grading.marks?.[w.id]} correct={grading.correct?.[w.id]} uncertain={ga?.uncertain} /></> : (L.answerKey ? c.text : '')) : c.text);
+                    const textStyle = (c) => (c.blank ? (grading ? { display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden' } : answerStyle) : { overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: (c.text || '').length > 6 ? 12 : 13 });
                     return L.style === 'table' ? (
                       // 표 — 번호 | 영어 | 한글
-                      <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box', ...rowEditStyle(w) }}>
-                        <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{no}</b>
+                      <div key={w.id} data-word-row {...rowEdit(w, no)} {...gRow(w)} style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box', ...rowEditStyle(w), ...gStyle(w) }}>
+                        <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{gNo(w, no, '') || no}</b>
                         {cells.map((c, ci2) => (
                           <span key={c.k} data-cell={c.k} data-blank={c.blank ? 'y' : 'n'} style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 6px', ...(ci2 < cells.length - 1 ? { borderRight: '1px solid #334155' } : {}), ...textStyle(c) }}>{cellText(c)}</span>
                         ))}
                       </div>
                     ) : (
                       // 밑줄 — 번호 · 영어 · 한글 (빈칸 쪽은 밑줄)
-                      <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 4, boxSizing: 'border-box', ...rowEditStyle(w) }}>
-                        <b style={{ minWidth: 26 }}>{no}.</b>
+                      <div key={w.id} data-word-row {...rowEdit(w, no)} {...gRow(w)} style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 8, paddingBottom: 4, boxSizing: 'border-box', ...rowEditStyle(w), ...gStyle(w) }}>
+                        <b style={{ minWidth: 26 }}>{gNo(w, no, '.') || `${no}.`}</b>
                         {cells.map((c) => (
                           <span key={c.k} data-cell={c.k} data-blank={c.blank ? 'y' : 'n'} style={{ flex: '1 1 0', minWidth: 0, paddingLeft: 2, ...(c.blank ? { borderBottom: '1px solid #334155', minHeight: 18 } : {}), ...textStyle(c) }}>{cellText(c) || ' '}</span>
                         ))}

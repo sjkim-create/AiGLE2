@@ -1,36 +1,48 @@
 /**
- * AnswerGradingPanel — 채점 관리 › 정답형 문제집 · 낱말 문제집 (SCR 후속 · TSK-15 v1.43, 로컬 프로토)
+ * AnswerGradingPanel — 채점 관리 › 정답형 문제집 · 낱말 문제집 (TSK-15 v1.43~v1.44, 로컬 프로토)
  *
  * 서·논술 채점과 같은 흐름 · 같은 목록:
  *   탭 미채점 → 채점 확인 → 결과 발송 · [🖊 크래들 일괄채점] [📷 스캔 채점] · [✓ 검토 완료 처리] · [📤 결과발송]
- *   학생 목록 칸: 학생 이름 · 학년/반/번호 · 제출 방식 · 자동 채점 · 교사 채점 · 상태 · 상세보기
- * 다른 것: 채점기 = 정답 대조(「자동 채점」 — 맞힌 수 · 점수), 상세 = 문항별 학생 답 · 정답 · O/X, 교사가 O/X를 고친다
- * 학생 답은 모의(실제 스캔 OCR · Ncode 펜 인식은 다음 단계). 채점 정보는 문제집(wb.grading)에 저장.
+ *   카드 보기(학생 1명 = 카드) / 목록 보기 — 학생 이름 · 학년/반/번호 · 제출 방식 · 자동 채점 · 교사 채점 · 상태 · 상세보기
+ * 다른 것: 채점기 = 정답 대조(「자동 채점」 — 맞힌 수 · 점수)
+ * 상세(v1.44): 학생이 답을 쓴 문제지 모양 그대로 — 고른 답은 펜 동그라미, 쓴 답은 펜 글씨, 번호에 ○ / ╱ / ?
+ *   문항(줄)을 누르면 O ↔ X. 학생 답은 모의(실제 스캔 OCR · Ncode 펜 인식은 다음 단계). 채점 정보는 문제집(wb.grading)에 저장.
  */
 import React from 'react';
-import { listItems, listWorkbooks, putWorkbook } from './lib/itemBank';
+import { listItems, listPassages, listWorkbooks, putWorkbook } from './lib/itemBank';
 import { gradingQuestionsOf, mockAnswersFor, autoGrade, scoreOf, scoreLabel, rosterOf } from './lib/answerGrading';
+import { WordSheet } from './WordWorkbook';
+import { WorkbookSheet } from './WorkbookLayout';
+import { nextMark } from './GradeMarks';
 
 const TABS = ['미채점', '채점 확인', '결과 발송'];
 const inTab = (s, tab) => (tab === '미채점' ? s.status === '미채점' : tab === '채점 확인' ? s.status === '채점 확인' : s.status === '결과 발송 전' || s.status === '결과 발송 완료');
 const STATUS_STYLE = {
-  미채점: ['#F1F5F9', '#64748B'], '채점 확인': ['#FEF3C7', '#B45309'], '결과 발송 전': ['#DBEAFE', '#1D4ED8'], '결과 발송 완료': ['#D1FAE5', '#047857'],
+  미채점: ['#FEE2E2', '#B91C1C'], '채점 확인': ['#FEF3C7', '#B45309'], '결과 발송 전': ['#DBEAFE', '#1D4ED8'], '결과 발송 완료': ['#D1FAE5', '#047857'],
 };
 const pill = ([bg, color]) => ({ background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' });
-const oxBtn = (on, ok) => ({ width: 30, height: 26, borderRadius: 6, fontFamily: 'inherit', fontWeight: 900, cursor: 'pointer', border: `1px solid ${on ? (ok ? '#10B981' : '#EF4444') : '#CBD5E1'}`, background: on ? (ok ? '#10B981' : '#EF4444') : 'white', color: on ? 'white' : '#64748B' });
+const submitLabel = (t) => (t === 'pen' ? '🖊 펜' : t === 'ocr' ? '📷 스캔' : '-');
+const btn = (primary, off) => ({ padding: '8px 14px', borderRadius: 8, fontFamily: 'inherit', fontWeight: 800, cursor: off ? 'not-allowed' : 'pointer', border: primary ? 'none' : '1px solid #CBD5E1', background: primary ? (off ? '#CBD5E1' : '#E8590C') : 'white', color: primary ? 'white' : '#334155', opacity: !primary && off ? 0.45 : 1 });
 
 const AnswerGradingPanel = ({ task }) => {
   const wbId = task.wb.id;
+  const isWord = task.wb.kind === 'word';
   const [items, setItems] = React.useState(null);
+  const [passages, setPassages] = React.useState({});
   const [students, setStudents] = React.useState(null);
   const [tab, setTab] = React.useState('미채점');
+  const [view, setView] = React.useState('card'); // 서·논술과 같은 기본 — 카드
   const [groupF, setGroupF] = React.useState('all');
   const [sel, setSel] = React.useState([]);
   const [review, setReview] = React.useState(null); // 학생 id
   const [toast, setToast] = React.useState('');
+  const sheetBoxRef = React.useRef(null);
   React.useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
 
-  React.useEffect(() => { listItems().then(setItems).catch(() => setItems([])); }, []);
+  React.useEffect(() => {
+    listItems().then(setItems).catch(() => setItems([]));
+    listPassages().then((ps) => setPassages(Object.fromEntries(ps.map((p) => [p.id, p])))).catch(() => {});
+  }, []);
   const itemsById = React.useMemo(() => Object.fromEntries((items || []).map((i) => [i.id, i])), [items]);
   const questions = React.useMemo(() => (items ? gradingQuestionsOf(task.wb, itemsById) : []), [items, itemsById, task.wb]);
 
@@ -55,9 +67,12 @@ const AnswerGradingPanel = ({ task }) => {
   const visible = students.filter((s) => inTab(s, tab) && (groupF === 'all' || String(s.groupId) === groupF));
   const selVisible = sel.filter((id) => visible.some((s) => s.id === id));
   const allOn = visible.length > 0 && visible.every((s) => sel.includes(s.id));
+  const toggleAll = () => setSel(allOn ? [] : visible.map((s) => s.id));
+  const toggle = (id) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
   const resultOf = (s) => (s.auto ? scoreOf(questions, s.auto, s.overrides) : null);
   const autoOnly = (s) => (s.auto ? scoreOf(questions, s.auto, {}) : null);
   const totalPts = questions.reduce((a, q) => a + q.points, 0);
+  const sendable = selVisible.filter((id) => students.find((s) => s.id === id)?.status === '결과 발송 전');
 
   // 미채점 → 채점 확인: 답안 받기(모의) + 자동 채점
   const receive = (type) => {
@@ -79,6 +94,9 @@ const AnswerGradingPanel = ({ task }) => {
     setToast(`${ok.length}명에게 결과를 발송했습니다 (점수 · 틀린 문항 · 정답).`);
   };
 
+  const autoCell = (s) => { const a = autoOnly(s); return a ? <span>{a.correct}/{a.count} · <b>{a.score}점</b>{a.pending ? <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }}>확인 필요 {a.pending}</span> : null}</span> : '-'; };
+  const teacherCell = (s) => { const r = resultOf(s); return s.teacherEdited && r ? <span>{r.correct}/{r.count} · <b>{r.score}점</b></span> : '-'; };
+
   const cur = review ? students.find((s) => s.id === review) : null;
   const curIdx = cur ? visible.findIndex((s) => s.id === cur.id) : -1;
 
@@ -88,7 +106,7 @@ const AnswerGradingPanel = ({ task }) => {
         <div className="info-left">
           <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800 }}>[{task.type}] {task.title}</h2>
           <div className="stats-summary" style={{ fontSize: 'var(--neo-font-size-sm)', color: '#8A94A1' }}>
-            문제지 인쇄일: {task.date} ∙ {task.groups.length}개 그룹 ∙ {students.length}명 ∙ {task.wb.kind === 'word' ? '낱말 문제집' : '정답형 문제집'} ∙ {questions.length}문항 · {totalPts}점 ∙ 채점: 자동 채점(정답 대조)
+            문제지 인쇄일: {task.date} ∙ {task.groups.length}개 그룹 ∙ {students.length}명 ∙ {isWord ? '낱말 문제집' : '정답형 문제집'} ∙ {questions.length}문항 · {totalPts}점 ∙ 채점: 자동 채점(정답 대조)
           </div>
         </div>
       </div>
@@ -103,7 +121,7 @@ const AnswerGradingPanel = ({ task }) => {
             {task.groups.map((g) => <option key={g.id} value={String(g.id)}>{g.label}</option>)}
           </select>
           <label className="select-all-wrapper">
-            <input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? [] : visible.map((s) => s.id))} /> 전체 선택
+            <input type="checkbox" checked={allOn} onChange={toggleAll} /> 전체 선택
           </label>
           {tab === '미채점' && selVisible.length > 0 && (
             <>
@@ -112,102 +130,135 @@ const AnswerGradingPanel = ({ task }) => {
             </>
           )}
           {tab === '채점 확인' && selVisible.length > 0 && <button className="btn-bulk-grading" style={{ background: '#E8590C' }} onClick={() => completeReview(selVisible)}>✓ 검토 완료 처리 ({selVisible.length}명)</button>}
-          {tab === '결과 발송' && selVisible.filter((id) => students.find((s) => s.id === id)?.status === '결과 발송 전').length > 0 && (
-            <button className="btn-bulk-grading" style={{ background: '#2A75F3' }} onClick={() => send(selVisible)}>📤 결과발송 ({selVisible.filter((id) => students.find((s) => s.id === id)?.status === '결과 발송 전').length}명)</button>
-          )}
+          {tab === '결과 발송' && sendable.length > 0 && <button className="btn-bulk-grading" style={{ background: '#2A75F3' }} onClick={() => send(sendable)}>📤 결과발송 ({sendable.length}명)</button>}
+          <div className={`btn-icon ${view === 'card' ? 'active' : ''}`} onClick={() => setView('card')} role="button" aria-pressed={view === 'card'} title="카드 보기" style={{ marginLeft: 'auto' }}>▦</div>
+          <div className={`btn-icon ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} role="button" aria-pressed={view === 'list'} title="목록 보기">☰</div>
         </div>
       </div>
 
-      <div className="student-list-table-wrapper">
-        <table className="student-list-table">
-          <thead>
-            <tr>
-              <th style={{ width: 40 }}><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? [] : visible.map((s) => s.id))} aria-label="전체 선택" /></th>
-              <th>학생 이름</th>
-              <th>학년/반/번호</th>
-              <th>제출 방식</th>
-              <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>
-              <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>
-              <th>상태</th>
-              <th style={{ width: 100 }}>상세보기</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((s) => {
-              const a = autoOnly(s); const r = resultOf(s);
-              return (
+      {visible.length === 0 && <div style={{ textAlign: 'center', color: '#94A3B8', padding: 32 }}>이 단계의 학생이 없습니다.</div>}
+
+      {view === 'card' && visible.length > 0 && (
+        <div className="student-grid" style={{ flexShrink: 0 }}>
+          {visible.map((s) => (
+            <div key={s.id} className="student-card">
+              <input type="checkbox" className="card-checkbox" checked={sel.includes(s.id)} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} />
+              <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                <div style={pill(STATUS_STYLE[s.status] || STATUS_STYLE.미채점)}>{s.status}</div>
+                {s.submitType && <div style={pill(['#F1F5F9', '#475569'])}>{submitLabel(s.submitType)}</div>}
+              </div>
+              <div className="student-name">{s.name}</div>
+              <div className="student-meta">{s.grade}</div>
+              <div className="grading-info">
+                <div className="grading-row"><span className="label">자동채점 :</span><span className="value">{autoCell(s)}</span></div>
+                <div className="grading-row"><span className="label">교사채점 :</span><span className="value">{s.teacherEdited && <span className="badge-dot badge-orange" />}{teacherCell(s)}</span></div>
+              </div>
+              <button className="btn-card-detail" disabled={!s.answers} onClick={() => setReview(s.id)} title={s.answers ? undefined : '답안을 받은 뒤 볼 수 있습니다.'} style={s.answers ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}>상세보기</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {view === 'list' && visible.length > 0 && (
+        <div className="student-list-table-wrapper" style={{ flexShrink: 0 }}>
+          <table className="student-list-table">
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}><input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="전체 선택" /></th>
+                <th>학생 이름</th>
+                <th>학년/반/번호</th>
+                <th>제출 방식</th>
+                <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>
+                <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>
+                <th>상태</th>
+                <th style={{ width: 100 }}>상세보기</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((s) => (
                 <tr key={s.id}>
-                  <td><input type="checkbox" checked={sel.includes(s.id)} onChange={() => setSel((x) => (x.includes(s.id) ? x.filter((y) => y !== s.id) : [...x, s.id]))} aria-label={`${s.name} 선택`} /></td>
+                  <td><input type="checkbox" checked={sel.includes(s.id)} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} /></td>
                   <td style={{ fontWeight: 700 }}>{s.name}</td>
                   <td>{s.grade}</td>
-                  <td>{s.submitType === 'pen' ? '🖊 펜' : s.submitType === 'ocr' ? '📷 스캔' : '-'}</td>
-                  <td>{a ? <span>{a.correct}/{a.count} · <b>{a.score}점</b>{a.pending ? <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }}>확인 필요 {a.pending}</span> : null}</span> : '-'}</td>
-                  <td>{s.teacherEdited && r ? <span>{r.correct}/{r.count} · <b>{r.score}점</b></span> : '-'}</td>
+                  <td>{submitLabel(s.submitType)}</td>
+                  <td>{autoCell(s)}</td>
+                  <td>{teacherCell(s)}</td>
                   <td><span style={pill(STATUS_STYLE[s.status] || STATUS_STYLE.미채점)}>{s.status}</span></td>
-                  <td><button className="btn-card-detail" disabled={!s.answers} onClick={() => setReview(s.id)} style={{ width: 'auto', height: 'auto', padding: '4px 10px', opacity: s.answers ? 1 : 0.4, cursor: s.answers ? 'pointer' : 'not-allowed' }}>보기</button></td>
+                  <td>{s.answers ? <span role="button" style={{ cursor: 'pointer', color: '#2A75F3', fontWeight: 700 }} onClick={() => setReview(s.id)}>상세보기 &gt;</span> : <span style={{ color: '#CBD5E1' }}>상세보기 &gt;</span>}</td>
                 </tr>
-              );
-            })}
-            {visible.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94A3B8', padding: 24 }}>이 단계의 학생이 없습니다.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {/* 상세 — 문항별 학생 답 · 정답 · 자동 O/X · 교사 O/X */}
+      {/* 상세 — 학생이 답을 쓴 문제지 그대로. 문항을 누르면 O ↔ X */}
       {cur && (() => {
         const r = resultOf(cur); const a = autoOnly(cur);
-        const setOv = (key, v) => patch([cur.id], (s) => ({ overrides: { ...s.overrides, [key]: v }, teacherEdited: true }));
+        const marks = Object.fromEntries(questions.map((q) => [q.key, q.key in (cur.overrides || {}) ? cur.overrides[q.key] : cur.auto?.[q.key]]));
+        const grading = {
+          answers: cur.answers || {}, marks, correct: Object.fromEntries(questions.map((q) => [q.key, q.correct])),
+          onMark: (key) => patch([cur.id], (s) => ({ overrides: { ...s.overrides, [key]: nextMark(marks[key]) }, teacherEdited: true })),
+        };
+        const pending = questions.filter((q) => marks[q.key] == null);
+        const wrong = questions.filter((q) => marks[q.key] === false);
+        const jump = (key) => sheetBoxRef.current?.querySelector(`[data-grade-row="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const go = (d) => { const n = visible[curIdx + d]; if (n?.answers) setReview(n.id); };
+        const entries = isWord ? null : (task.wb.itemIds || []).map((id) => itemsById[id]).filter(Boolean).map((item) => ({ item, points: task.wb.points?.[item.id] ?? item.points ?? 1 }));
+        const chip = (q, tone) => (
+          <button key={q.key} type="button" onClick={() => jump(q.key)} title={`${q.no}번으로`}
+            style={{ minWidth: 30, padding: '2px 6px', borderRadius: 6, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${tone[1]}`, background: tone[0], color: tone[1] }}>{q.no}</button>
+        );
         return (
           <div onClick={() => setReview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
             <div role="dialog" aria-modal="true" aria-label="정답형 채점 상세" onClick={(e) => e.stopPropagation()}
-              style={{ background: 'white', borderRadius: 14, width: 'min(980px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '14px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              style={{ background: 'white', borderRadius: 14, width: 'min(1200px, 97vw)', height: '94vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <b style={{ fontSize: 'var(--neo-font-size-lg)' }}>{cur.name}</b>
-                <span style={{ color: '#64748B' }}>{cur.grade} · {cur.submitType === 'pen' ? '🖊 펜' : '📷 스캔'}</span>
+                <span style={{ color: '#64748B' }}>{cur.grade} · {submitLabel(cur.submitType)}</span>
                 <span style={pill(STATUS_STYLE[cur.status])}>{cur.status}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)' }}>자동 채점 <b>{scoreLabel(a)}</b> → 최종 <b style={{ color: '#1D4ED8' }}>{r.correct}/{r.count} · {r.score}점</b><span style={{ color: '#94A3B8' }}> (만점 {r.total}점)</span>{r.pending ? <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }}>확인 필요 {r.pending}</span> : null}</span>
+                <span style={{ marginLeft: 'auto', color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}>{task.title}</span>
               </div>
-              <div style={{ overflowY: 'auto', padding: '8px 18px 12px' }}>
-                <table className="student-list-table" style={{ width: '100%' }}>
-                  <thead><tr><th style={{ width: 48 }}>번호</th><th>문제</th><th>학생 답 (인식)</th><th>정답</th><th style={{ width: 60 }}>배점</th><th style={{ width: 90 }}>자동</th><th style={{ width: 90 }}>교사 O/X</th></tr></thead>
-                  <tbody>
-                    {questions.map((q) => {
-                      const ans = cur.answers?.[q.key]; const auto = cur.auto?.[q.key];
-                      const ov = q.key in (cur.overrides || {}) ? cur.overrides[q.key] : undefined;
-                      const final = ov !== undefined ? ov : auto;
-                      return (
-                        <tr key={q.key} style={final == null ? { background: '#FFFBEB' } : undefined}>
-                          <td style={{ fontWeight: 800 }}>{q.no}</td>
-                          <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={q.prompt}>{q.prompt}</td>
-                          <td>
-                            <span style={{ display: 'inline-block', minWidth: 60, padding: '2px 8px', border: '1px dashed #94A3B8', borderRadius: 6, fontFamily: '"Nanum Pen Script", "Comic Sans MS", cursive', fontSize: 16 }}>{ans?.text || '—'}</span>
-                            {ans?.uncertain && <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }} title="글씨가 흐리거나 두 개를 표시해 인식이 애매합니다">인식 애매</span>}
-                          </td>
-                          <td style={{ color: '#047857', fontWeight: 700 }}>{q.correct || <span style={{ color: '#94A3B8' }}>{q.manual ? '교사 판단' : '정답 없음'}</span>}</td>
-                          <td>{q.points}</td>
-                          <td>{auto === true ? <b style={{ color: '#10B981' }}>O</b> : auto === false ? <b style={{ color: '#EF4444' }}>X</b> : <span style={pill(['#FEF3C7', '#B45309'])}>확인 필요</span>}</td>
-                          <td>
-                            <span style={{ display: 'flex', gap: 4 }} role="radiogroup" aria-label={`${q.no}번 교사 O/X`}>
-                              <button type="button" role="radio" aria-checked={final === true} onClick={() => setOv(q.key, true)} style={oxBtn(final === true, true)}>O</button>
-                              <button type="button" role="radio" aria-checked={final === false} onClick={() => setOv(q.key, false)} style={oxBtn(final === false, false)}>X</button>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                {/* 왼쪽 — 학생 답안지 */}
+                <div ref={sheetBoxRef} style={{ flex: '1 1 auto', minWidth: 0, overflowY: 'auto', padding: 12, background: '#F1F5F9' }}>
+                  {isWord
+                    ? <WordSheet title={task.wb.title} curriculum={task.wb.curriculum} words={task.wb.words || []} mode={task.wb.mode} layout={task.wb.layout} grading={grading} />
+                    : <WorkbookSheet title={task.wb.title} curriculum={task.wb.curriculum} entries={entries} passages={passages} layout={task.wb.layout} grading={grading} />}
+                </div>
+                {/* 오른쪽 — 점수 · 확인 필요 · 틀린 문항 */}
+                <aside aria-label="채점 요약" style={{ flex: '0 0 240px', borderLeft: '1px solid #E2E8F0', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', boxSizing: 'border-box' }}>
+                  <div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 700 }}>자동 채점</div>
+                    <div style={{ fontWeight: 800 }}>{scoreLabel(a)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 700 }}>최종 (교사 확인)</div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, color: '#1D4ED8' }}>{r.score}<span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}> / {r.total}점</span></div>
+                    <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>맞힌 문항 {r.correct}/{r.count}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#B45309', marginBottom: 6 }}>확인 필요 {pending.length}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{pending.length ? pending.map((q) => chip(q, ['#FEF3C7', '#B45309'])) : <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>없음</span>}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#DC2626', marginBottom: 6 }}>틀린 문항 {wrong.length}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{wrong.length ? wrong.map((q) => chip(q, ['#FEF2F2', '#DC2626'])) : <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>없음</span>}</div>
+                  </div>
+                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.6, background: '#F8FAFC', borderRadius: 8, padding: 10 }}>
+                    <b style={{ color: '#DC2626' }}>○</b> 맞음 · <b style={{ color: '#DC2626' }}>╱</b> 틀림 · <b style={{ color: '#B45309' }}>노란 칸</b> 확인 필요<br />
+                    답안지의 문항을 누르면 O ↔ X로 바뀌고 바로 저장됩니다. 확인 필요가 모두 정해져야 검토 완료할 수 있습니다.
+                  </div>
+                </aside>
               </div>
               <div style={{ padding: '10px 18px', borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button type="button" className="btn-card-detail" disabled={curIdx <= 0} onClick={() => go(-1)} style={{ width: 'auto', height: 'auto', padding: '6px 12px' }}>← 이전 학생</button>
-                <button type="button" className="btn-card-detail" disabled={curIdx < 0 || curIdx >= visible.length - 1} onClick={() => go(1)} style={{ width: 'auto', height: 'auto', padding: '6px 12px' }}>다음 학생 →</button>
-                <span style={{ flex: 1, fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>O/X를 누르면 바로 저장됩니다. 「확인 필요」가 모두 정해져야 검토 완료할 수 있습니다.</span>
-                <button type="button" onClick={() => setReview(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>닫기</button>
+                <button type="button" disabled={curIdx <= 0} onClick={() => go(-1)} style={btn(false, curIdx <= 0)}>← 이전 학생</button>
+                <button type="button" disabled={curIdx < 0 || curIdx >= visible.length - 1} onClick={() => go(1)} style={btn(false, curIdx < 0 || curIdx >= visible.length - 1)}>다음 학생 →</button>
+                <span style={{ flex: 1 }} />
+                <button type="button" onClick={() => setReview(null)} style={btn(false)}>닫기</button>
                 {cur.status === '채점 확인' && (
                   <button type="button" disabled={r.pending > 0} onClick={() => { completeReview([cur.id]); setReview(null); }}
-                    title={r.pending > 0 ? '확인 필요 문항의 O/X를 먼저 정해 주세요.' : ''}
-                    style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: r.pending > 0 ? '#CBD5E1' : '#E8590C', color: 'white', fontWeight: 800, cursor: r.pending > 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>✓ 검토 완료</button>
+                    title={r.pending > 0 ? '확인 필요 문항의 O/X를 먼저 정해 주세요.' : ''} style={btn(true, r.pending > 0)}>✓ 검토 완료</button>
                 )}
               </div>
             </div>

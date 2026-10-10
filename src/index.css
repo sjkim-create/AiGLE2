@@ -645,6 +645,7 @@ body {
 
 /* --- SCR-01 학생 리스트 테이블 뷰 --- */
 .student-list-table-wrapper {
+  flex-shrink: 0; /* detail-view(세로 flex · 스크롤) 안에서 줄어들어 표가 잘리지 않게 */
   background: white;
   border-radius: 16px;
   border: 1px solid var(--border);
