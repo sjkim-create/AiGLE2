@@ -16,8 +16,11 @@ export const WORD_MODES = {
   spelling: { label: '한글 뜻 → 영어 철자', icon: '✍️', shown: 'meaning', answer: 'word', shownLabel: '한글 뜻', answerLabel: '영어 낱말' },
   dictation: { label: '받아쓰기 (듣고 쓰기)', icon: '👂', shown: null, answer: 'word', shownLabel: null, answerLabel: '불러 줄 낱말·문장' },
 };
-export const DEFAULT_WORD_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', nameBox: true, answerKey: false };
-const ROW_H = { narrow: 30, normal: 40, wide: 56 };
+export const DEFAULT_WORD_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', style: 'line', nameBox: true, answerKey: false };
+// 줄 간격 — 넓게는 舊 56px의 2배 (v1.27)
+const ROW_H = { narrow: 30, normal: 40, wide: 112 };
+// 배치 형태 — 밑줄(번호 · 낱말 · 답 줄) / 표(칸을 그은 표)
+export const WORD_STYLES = { line: '밑줄', table: '표' };
 const MM = 3.78; const PAD_V = 48; const PAD_H = 44; const COL_GAP = 24; const FOOTER = 24; const HEADER_H = 74;
 const SHEET_FONT = { fontFamily: '"Noto Serif KR", "Batang", serif', fontSize: 13, lineHeight: 1.5, color: '#0F172A' };
 
@@ -103,6 +106,8 @@ export const WordLayoutOptions = ({ layout, onChange, children }) => {
       </label>
       <span style={{ ...optLabel, marginLeft: 6 }}>단</span>
       {[1, 2, 3, 4].map((n) => <button key={n} type="button" onClick={() => set('columns', n)} style={chip(L.columns === n)} aria-pressed={L.columns === n}>{n}단</button>)}
+      <span style={{ ...optLabel, marginLeft: 6 }}>형태</span>
+      {Object.entries(WORD_STYLES).map(([k, l]) => <button key={k} type="button" onClick={() => set('style', k)} style={chip((L.style || 'line') === k)} aria-pressed={(L.style || 'line') === k}>{l}</button>)}
       <span style={{ ...optLabel, marginLeft: 6 }}>줄 간격</span>
       {[['narrow', '좁게'], ['normal', '보통'], ['wide', '넓게']].map(([k, l]) => <button key={k} type="button" onClick={() => set('spacing', k)} style={chip(L.spacing === k)} aria-pressed={L.spacing === k}>{l}</button>)}
       <label style={{ ...optLabel, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 6 }}><input type="checkbox" checked={L.nameBox} onChange={(e) => set('nameBox', e.target.checked)} /> 이름 칸</label>
@@ -125,8 +130,12 @@ export const WordSheet = ({ title, curriculum, words, mode, layout, actualSize =
   const pages = [];
   let k = 0; let first = true;
   while (k < list.length) {
+    // 이 쪽에 들어갈 낱말 수 → 단마다 고르게 (예: 12개 · 4단 → 3개씩)
+    const cap = perCol(first);
+    const onPage = Math.min(list.length - k, cap * L.columns);
+    const per = Math.min(cap, Math.ceil(onPage / L.columns));
     const cols = [];
-    for (let c = 0; c < L.columns && k < list.length; c += 1) { const n = perCol(first); cols.push(list.slice(k, k + n).map((w, j) => ({ w, no: k + j + 1 }))); k += n; }
+    for (let c = 0; c < L.columns && k < list.length && cols.flat().length < onPage; c += 1) { const n = Math.min(per, onPage - cols.flat().length); cols.push(list.slice(k, k + n).map((w, j) => ({ w, no: k + j + 1 }))); k += n; }
     pages.push({ cols, first }); first = false;
   }
   const boxRef = React.useRef(null);
@@ -140,6 +149,8 @@ export const WordSheet = ({ title, curriculum, words, mode, layout, actualSize =
   const zoom = actualSize ? 1 : (boxW ? Math.min(1, boxW / pageW) : 1);
   const curText = [curriculum?.schoolLevelName, curriculum?.gradeLabel, curriculum?.curriculumName, curriculum?.subjectName].filter(Boolean).join(' · ');
   const answerOf = (w) => (M.answer === 'word' ? w.word : w.meaning);
+  // 정답 보기(교사용) — 줄여 보여도 읽히게 굵고 진하게
+  const answerStyle = { color: '#DC2626', fontSize: 15, fontWeight: 800, fontFamily: 'Pretendard, sans-serif', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
   const shownOf = (w) => (M.shown === 'word' ? w.word : M.shown === 'meaning' ? w.meaning : '');
   return (
     <div ref={boxRef} style={{ background: '#E2E8F0', padding: 16, borderRadius: 12, overflow: actualSize ? 'auto' : 'hidden' }}>
@@ -169,14 +180,22 @@ export const WordSheet = ({ title, curriculum, words, mode, layout, actualSize =
             )}
             <div style={{ display: 'flex', gap: COL_GAP }}>
               {Array.from({ length: L.columns }).map((_, ci) => (
-                <div key={ci} style={{ width: colW, flex: '0 0 auto' }}>
-                  {(pg.cols[ci] || []).map(({ w, no }) => (
+                <div key={ci} style={{ width: colW, flex: '0 0 auto', ...(L.style === 'table' && (pg.cols[ci] || []).length ? { border: '1px solid #334155', borderBottom: 'none', alignSelf: 'flex-start' } : {}) }}>
+                  {(pg.cols[ci] || []).map(({ w, no }) => (L.style === 'table' ? (
+                    // 표 — 번호 | 보여 줄 것 | 답 칸
+                    <div key={w.id} data-word-row style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box' }}>
+                      <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{no}</b>
+                      {M.shown && <span style={{ flex: '0 1 45%', display: 'flex', alignItems: 'center', padding: '0 6px', borderRight: '1px solid #334155', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shownOf(w)}</span>}
+                      <span style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 6px', minWidth: 40, ...answerStyle }}>{L.answerKey ? answerOf(w) : ''}</span>
+                    </div>
+                  ) : (
+                    // 밑줄 — 번호 · 보여 줄 것 · 답 줄
                     <div key={w.id} data-word-row style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 4, boxSizing: 'border-box' }}>
                       <b style={{ minWidth: 26 }}>{no}.</b>
                       {M.shown && <span style={{ flex: '0 1 45%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shownOf(w)}</span>}
-                      <span style={{ flex: 1, borderBottom: '1px solid #334155', minWidth: 40, color: '#DC2626', fontSize: 12, paddingLeft: 4, whiteSpace: 'nowrap', overflow: 'hidden' }}>{L.answerKey ? answerOf(w) : ' '}</span>
+                      <span style={{ flex: 1, borderBottom: '1px solid #334155', minWidth: 40, paddingLeft: 4, ...answerStyle }}>{L.answerKey ? answerOf(w) : ' '}</span>
                     </div>
-                  ))}
+                  )))}
                 </div>
               ))}
             </div>

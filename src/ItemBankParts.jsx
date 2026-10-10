@@ -85,7 +85,7 @@ export const WorkbookPicker = ({ open, itemIds, defaultTitle = '', defaultPurpos
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div role="dialog" aria-modal="true" aria-label="문제집에 담기" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '20px 22px', width: 460, maxWidth: '94vw' }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>📚 문제집에 담기</h3>
-        <p style={{ margin: '0 0 14px', fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>고른 문항 {itemIds.length}개를 문제집 끝에 순서대로 담습니다. 이미 담긴 문항은 건너뜁니다.</p>
+        <p style={{ margin: '0 0 14px', fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>고른 문항 {itemIds.length}개를 문제집 끝에 순서대로 담습니다. 다른 문제집에 이미 담긴 문항도 얼마든지 다시 담을 수 있습니다(같은 문제집 안에서만 겹치지 않게 건너뜁니다).</p>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, marginBottom: 8, cursor: 'pointer' }}>
           <input type="radio" checked={target === 'new'} onChange={() => setTarget('new')} /> 새 문제집 만들기
         </label>
