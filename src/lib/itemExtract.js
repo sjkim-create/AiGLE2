@@ -5,7 +5,7 @@
  *      → 그림 자르기(cropImage) → source / passages / items 레코드 + 문항별 부족한 항목(issues)
  * 저장은 하지 않는다 — 교사가 확인·선택한 뒤 itemBank.saveExtraction으로 저장
  */
-import { readFilePages, callGeminiJson, loadCatalog, matchCatalog, cropImage, GenerateError, MAX_PAGES } from './taskFromFile';
+import { readFilePages, callGeminiJson, loadCatalog, matchCatalog, cropImage, pageImagesOf, GenerateError, MAX_PAGES } from './taskFromFile';
 import { ITEM_TYPES, ITEM_SCHEMA_VERSION, emptyAnswer, hasAnswer, newId } from './itemBank';
 
 // 프롬프트 본문은 PRD에 두지 않는다 (코드에만 존재)
@@ -298,6 +298,7 @@ export const extractItemsFromFile = async (file, onStep = () => {}, { analyze } 
     skill,
     examScope: { units: (meta.scopeUnits || []).map(String).filter(Boolean), standardCodes: (meta.standardCodes || []).map(String) },
     itemIds: items.map((i) => i.id),
+    pageImages: pageImagesOf(pages), // 원본 쪽 — 그림 범위 조정·새로 자르기 (QBK-01 문항 편집)
     uploadedAt: now,
   };
   return { source, passages, items, summaryIssues };

@@ -166,6 +166,7 @@ function Setting() {
 
   // [1주차] 상세보기 — source 분기 라우팅 대상
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
+  const [editTask, setEditTask] = useState(null); // [✏️ 직접 입력 2에서 수정]으로 연 서·논술 과제
   /* [TSK v3.8] 과제 삭제 — 목록·상세 어디서든 같은 확인창을 거친다. 삭제된 id는 목록에서 걷어낸다(프로토타입 로컬 상태) */
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [deletedTaskIds, setDeletedTaskIds] = useState([]);
@@ -738,10 +739,13 @@ function Setting() {
         ) : activeMenu === '과제 관리' ? (
           /* [v4.7] 과제 관리 메뉴 — 과제 관리 / 과제 등록 / 과제 상세 / 공유된 과제 */
           selectedTaskDetail ? (
-            <TaskDetail task={selectedTaskDetail} onBack={() => setSelectedTaskDetail(null)} onDelete={(task) => setTaskToDelete(task)} />
+            <TaskDetail task={selectedTaskDetail} onBack={() => setSelectedTaskDetail(null)} onDelete={(task) => setTaskToDelete(task)}
+              onEdit={(task) => { setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setSelectedTaskDetail(null); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '과제 등록' ? (
             <TaskRegistration
-              onBack={() => { setLeaveGuard(null); setActiveSubMenu('과제 관리'); }}
+              key={editTask?.n || 'reg'}
+              initialEditTask={editTask?.task || null}
+              onBack={() => { setLeaveGuard(null); setEditTask(null); setActiveSubMenu('과제 관리'); }}
               showToast={showToast}
               initialMode={taskRegistrationMode}
               onLeaveGuardChange={setLeaveGuard}
@@ -758,7 +762,7 @@ function Setting() {
             />
           ) : (
             <TaskManagement
-              onAdd={(mode) => { setTaskRegistrationMode(mode || 'select'); setActiveSubMenu('과제 등록'); }}
+              onAdd={(mode) => { setEditTask(null); setTaskRegistrationMode(mode || 'select'); setActiveSubMenu('과제 등록'); }}
               extraTasks={[...registeredTasks, ...copiedTasks]}
               deletedTaskIds={deletedTaskIds}
               onAddTask={(task) => { setRegisteredTasks((prev) => upsertTask(prev, task)); }}

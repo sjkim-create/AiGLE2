@@ -21,18 +21,23 @@ const SOURCE_BADGE = {
   answer_based: { label: '✅ 정답형 과제', bg: '#EFF6FF', color: '#1D4ED8' },
 };
 
-const HeaderBar = ({ task, onBack, onDelete }) => (
+// onEdit — 서·논술 과제를 직접 입력 2 화면으로 열어 고친다 (TSK-13 · TSK-14)
+const HeaderBar = ({ task, onBack, onDelete, onEdit }) => (
   <header style={{ position: 'sticky', top: 0, zIndex: 5, background: 'white', borderBottom: '1px solid #E2E8F0', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
     <button onClick={onBack} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>← 목록</button>
     <h1 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: 0, color: '#1E293B' }}>{task.title || '제목 없음'}</h1>
     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: task.status === '배포됨' ? '#D1FAE5' : '#FEF3C7', color: task.status === '배포됨' ? '#047857' : '#92400E' }}>{task.status}</span>
     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: SOURCE_BADGE[task.source]?.bg || '#F1F5F9', color: SOURCE_BADGE[task.source]?.color || '#475569' }}>
-      {SOURCE_BADGE[task.source]?.label || '기존 등록'}
+      {task.source === 'direct_input' && task.detail?.fromFile ? '📄 파일로 생성 · ✏️ 직접 입력 2 수정' : (SOURCE_BADGE[task.source]?.label || '기존 등록')}
     </span>
+    {onEdit && (
+      <button onClick={() => onEdit(task)} title="지문·문항·성취기준·채점 기준·모범답안(그림 포함)을 직접 입력 2 화면에서 고칩니다"
+        style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, border: '1px solid #2A75F3', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 800, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✏️ 직접 입력 2에서 수정</button>
+    )}
     {/* [TSK v3.8] 과제 삭제 — 상세에서도 지울 수 있다. 확인창은 상위가 띄운다 */}
     {onDelete && (
       <button onClick={() => onDelete(task)} title="과제와 배포·채점 이력을 삭제합니다 (학생·그룹 정보는 유지)"
-        style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#DC2626', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>🗑 과제 삭제</button>
+        style={{ marginLeft: onEdit ? 0 : 'auto', padding: '8px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#DC2626', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>🗑 과제 삭제</button>
     )}
   </header>
 );
@@ -123,12 +128,12 @@ const FileUploadTaskDetail = ({ task, onBack, onDelete }) => {
 };
 
 // 「직접 입력」 상세 — 지문·문항·성취기준·모범답안·채점
-const DirectInputTaskDetail = ({ task, onBack, onDelete }) => {
+const DirectInputTaskDetail = ({ task, onBack, onDelete, onEdit }) => {
   const d = task.detail || {};
   const { passage, questions = [] } = d;
   return (
     <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
-      <HeaderBar task={task} onBack={onBack} onDelete={onDelete} />
+      <HeaderBar task={task} onBack={onBack} onDelete={onDelete} onEdit={onEdit} />
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px' }}>
         <MetaRow task={task} />
 
@@ -145,6 +150,17 @@ const DirectInputTaskDetail = ({ task, onBack, onDelete }) => {
             <div key={q.id || i} style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: 14, marginBottom: 10 }}>
               <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)', color: '#1E293B', marginBottom: 6 }}>문항 {i + 1}{q.standard && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', color: '#047857', background: '#D1FAE5', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>성취기준 매핑</span>}</div>
               <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', whiteSpace: 'pre-wrap', marginBottom: 8 }}>{q.content || '(내용 없음)'}</div>
+              {(q.contentImages || []).length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {q.contentImages.map((im, k) => <img key={k} src={im.dataUrl} alt={im.label || `그림 ${k + 1}`} style={{ maxWidth: 220, maxHeight: 150, borderRadius: 6, border: '1px solid #E2E8F0', objectFit: 'contain' }} />)}
+                </div>
+              )}
+              {q.modelAnswer?.html && (
+                <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
+                  <strong style={{ color: '#10B981' }}>모범답안</strong>
+                  <div style={{ marginTop: 4 }} dangerouslySetInnerHTML={{ __html: q.modelAnswer.html }} />
+                </div>
+              )}
               {q.modelAnswers && (q.modelAnswers.상 || q.modelAnswers.중 || q.modelAnswers.하) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
                   {['상', '중', '하'].map((lv) => q.modelAnswers[lv] && (
@@ -170,12 +186,12 @@ const DirectInputTaskDetail = ({ task, onBack, onDelete }) => {
 
 // 「파일로 과제 생성」 상세 — 부족한 항목 + 성취기준 + 지문·문항·모범답안(그림) + 자율 평가 기준표
 const imgStyle = { maxWidth: 280, maxHeight: 200, borderRadius: 6, border: '1px solid #E2E8F0', objectFit: 'contain', background: 'white' };
-const FileGenerateTaskDetail = ({ task, onBack, onDelete }) => {
+const FileGenerateTaskDetail = ({ task, onBack, onDelete, onEdit }) => {
   const d = task.detail || {};
   const { meta = {}, passage, questions = [], issues = [], sourceFile } = d;
   return (
     <div style={{ background: '#F4F7FB', minHeight: '100%' }}>
-      <HeaderBar task={task} onBack={onBack} onDelete={onDelete} />
+      <HeaderBar task={task} onBack={onBack} onDelete={onDelete} onEdit={onEdit} />
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px' }}>
         <MetaRow task={task} />
 
@@ -297,11 +313,11 @@ const GenericTaskDetail = ({ task, onBack, onDelete }) => (
 );
 
 // 분기 라우터
-const TaskDetail = ({ task, onBack, onDelete }) => {
+const TaskDetail = ({ task, onBack, onDelete, onEdit }) => {
   if (!task) return null;
   if (task.source === 'file_upload') return <FileUploadTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
-  if (task.source === 'direct_input') return <DirectInputTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
-  if (task.source === 'file_generate') return <FileGenerateTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
+  if (task.source === 'direct_input') return <DirectInputTaskDetail task={task} onBack={onBack} onDelete={onDelete} onEdit={onEdit} />;
+  if (task.source === 'file_generate') return <FileGenerateTaskDetail task={task} onBack={onBack} onDelete={onDelete} onEdit={onEdit} />;
   if (task.source === 'answer_based') return <AnswerTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
   return <GenericTaskDetail task={task} onBack={onBack} onDelete={onDelete} />;
 };

@@ -14,6 +14,7 @@ import { loadCatalog } from './lib/taskFromFile';
 import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
 import ItemExtractWizard from './ItemExtractWizard';
+import { ItemEditDialog } from './ItemEditForm';
 
 const Crumb = ({ path }) => (
   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
@@ -99,6 +100,7 @@ const ItemBank = ({ initialView = 'list' }) => {
   // [QBK-01 v1.2] 목록 | 상세 나란히 — 다른 문항을 누르면 상세가 닫히지 않고 그 문항으로 바뀐다
   //   고친 내용이 있으면 이동 전에 저장 여부를 묻는다 (pendingOpen)
   const [pendingOpen, setPendingOpen] = useState(null);
+  const [editOpen, setEditOpen] = useState(false); // 문항 편집 (직접 작성과 같은 화면)
   const show = (it) => { setOpenId(it.id); setDraft(it); };
   const open = (it) => {
     if (it.id === openId) return;
@@ -145,7 +147,7 @@ const ItemBank = ({ initialView = 'list' }) => {
                   <div style={{ fontWeight: 800, marginBottom: 4 }}>📖 공통 지문 {passageById[draft.passageId].range}</div>{passageById[draft.passageId].text}
                 </div>
               )}
-              <ItemCard item={draft} editable onChange={setDraft} unitOptions={catalog ? unitOptionsFor(catalog, draft.curriculum?.subjectId) : []} />
+              <ItemCard item={draft} editable onChange={setDraft} onEdit={() => setEditOpen(true)} unitOptions={catalog ? unitOptionsFor(catalog, draft.curriculum?.subjectId) : []} />
               {draft.explanation && <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap' }}><b>해설</b><br />{draft.explanation}</div>}
               <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.8 }}>
                 <div><b>교육과정</b> {[draft.curriculum?.schoolLevelName, draft.curriculum?.gradeLabel, draft.curriculum?.curriculumName, draft.curriculum?.subjectName].filter(Boolean).join(' · ') || '미확인'}</div>
@@ -161,6 +163,7 @@ const ItemBank = ({ initialView = 'list' }) => {
             </div>
             <div style={{ padding: '12px 16px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => setConfirmDelete([opened.id])} style={btn(false, false, true)}>🗑 삭제</button>
+              <button onClick={() => setEditOpen(true)} style={btn(false)}>✏️ 문항 편집</button>
               <button disabled title="다음 단계에서 만듭니다 — 이 문항을 원본으로, 숫자·보기·표현을 바꾼 변형 문항을 AI로 만들고 원본과 연결" style={btn(false, true)}>🧬 파생 문항 만들기 (준비 중)</button>
               <span style={{ flex: 1 }} />
               <button onClick={saveDraft} disabled={!dirty} style={btn(true, !dirty)}>저장</button>
@@ -348,6 +351,11 @@ const ItemBank = ({ initialView = 'list' }) => {
           </aside>
         </div>
       )}
+
+      {/* 문항 편집 — 문제 은행 원본이 바뀐다 (이미 과제에 담긴 사본은 그대로) */}
+      <ItemEditDialog open={editOpen && !!draft} item={draft} pages={sources.find((x) => x.id === draft?.source?.sourceId)?.pageImages}
+        scopeNote="문제 은행 원본이 바뀝니다 · 이미 과제에 담긴 문항은 그대로" onClose={() => setEditOpen(false)}
+        onSave={async (x) => { const saved = await putItem({ ...x, status: isReady(x) ? 'ready' : 'needs_review' }); setDraft(saved); setToast(`${x.number}번 문항을 저장했습니다.`); }} />
 
       {/* 고친 내용이 있는데 다른 문항을 누름 */}
       {pendingOpen && (

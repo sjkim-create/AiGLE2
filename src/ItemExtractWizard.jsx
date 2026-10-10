@@ -10,6 +10,7 @@ import { isFileGenerateAvailable, GenerateError, MAX_PAGES, MAX_FILE_MB, loadCat
 import { ITEM_TYPES, ITEM_TYPE_KEYS, hasAnswer, saveExtraction } from './lib/itemBank';
 import ItemCard from './ItemCard';
 import { BulkEditBar, WorkbookPicker } from './ItemBankParts';
+import { ItemEditDialog } from './ItemEditForm';
 import { IssueList } from './TaskFileGenerate';
 
 const STEPS = ['자료 올리기', '문항 분류', '확인·선택', '문제 은행 저장'];
@@ -55,6 +56,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank, onPick }) => {
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedIds, setSavedIds] = useState([]);
+  const [editing, setEditing] = useState(null); // 문항 편집 중인 문항
   const [wbOpen, setWbOpen] = useState(false);
   const [wbDone, setWbDone] = useState(null); // 담은 문제집
   const [dragOver, setDragOver] = useState(false);
@@ -220,12 +222,13 @@ const ItemExtractWizard = ({ onBack, onGoItemBank, onPick }) => {
             </label>
             <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{visible.length}개 표시 중</span>
           </div>
+          <ItemEditDialog open={!!editing} item={editing} pages={result.source.pageImages} onSave={updateItem} onClose={() => setEditing(null)} scopeNote="저장 전 — 확인·선택에 바로 반영" />
           <div style={{ padding: '0 4px' }}>
             <BulkEditBar items={chosen} onApply={updateMany} unitOptions={unitOptions} skill={result.source.skill} />
           </div>
           {visible.map((it) => (
             <ItemCard key={it.id} item={it} passage={passageById[it.passageId]} selectable checked={!!selected[it.id]}
-              onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} editable onChange={updateItem} unitOptions={unitOptions} dimUnchecked />
+              onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} editable onChange={updateItem} unitOptions={unitOptions} dimUnchecked onEdit={() => setEditing(it)} />
           ))}
           {visible.length === 0 && <div style={{ ...card, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>조건에 맞는 문항이 없습니다.</div>}
 

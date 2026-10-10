@@ -138,3 +138,53 @@ export const buildAnswerTask = ({ id, title, entries, passages = [], curriculum 
     },
   };
 };
+
+// [TSK-13 · TSK-14] 서·논술 과제를 직접 입력 2(편집 화면)로 열기 — 스마트 과제 등록 결과(file_generate) 또는 직접 입력 과제(direct_input)
+//   교과·영역·성취기준·역량은 실제 교육과정 값이라 직접 입력 2의 기본 목록에 없을 수 있어 extraOptions로 선택지에 더한다
+//   그림은 <img data-page data-box>로 넣어 두어 직접 입력 2에서도 원본 쪽 위 범위 조정이 된다
+const escHtml = (t) => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const imageTag = (im) => `<p><img src="${im.dataUrl}" alt="${escHtml(im.label)}" data-page="${im.page ?? ''}" data-box="${(im.box || []).join(',')}" data-origin="${im.origin || ''}" style="max-width:100%"></p>`;
+export const taskToDirectInputData = (task) => {
+  const d = task.detail || {};
+  if (task.source === 'direct_input') {
+    return { taskId: task.id, basicInfo: d.basicInfo, passage: d.passage || '', questions: d.questions, extraOptions: d.fromFile?.extraOptions, pageImages: d.fromFile?.pageImages || [], keep: d.fromFile || null };
+  }
+  const meta = d.meta || {};
+  const std = (x) => `std-${x.id}`;
+  const comps = (meta.competencies || []).map((c) => c.name);
+  const questions = (d.questions || []).map((q, i) => ({
+    id: q.id || `q-file-${i + 1}`,
+    content: q.content || '',
+    contentImages: q.contentImages || [], // 문제 속 그림 — 직접 입력 2에서 범위 조정
+    evaluationAreas: [...new Set((q.evaluationAreas || []).map((a) => a.name).filter(Boolean))],
+    standards: (q.standards || []).map(std),
+    standard: q.standards?.[0] ? std(q.standards[0]) : '',
+    points: q.points ? String(q.points) : '',
+    modelAnswer: { html: escHtml(q.modelAnswer).split('\n').map((l) => `<div>${l || '<br>'}</div>`).join('') + (q.modelAnswerImages || []).map(imageTag).join('') },
+    criteria: (q.criteria || []).map((c) => ({
+      id: c.id, name: c.name, maxPoints: c.maxPoints, levels: c.levels.length,
+      interval: c.levels.length > 1 ? Math.max(1, c.levels[0].score - c.levels[1].score) : 1,
+      rows: c.levels.map((l) => ({ score: l.score, desc: l.content })),
+    })),
+  }));
+  const extraOptions = {
+    competencies: comps,
+    areas: [...new Set((meta.standards || []).map((x) => x.areaName).filter(Boolean))],
+    standards: (meta.standards || []).map((x) => ({ id: std(x), area: x.areaName, competencies: comps, text: `${x.code} ${x.text}` })),
+  };
+  return {
+    taskId: task.id,
+    basicInfo: {
+      title: task.title, type: '서술형',
+      subject: meta.curriculumName || task.subject || '국어', subSubject: meta.subjectName || task.subSubject || '',
+      schoolLevel: meta.schoolLevelName || '고등학교', grade: (meta.gradeLabel || '1-3학년').replace('-', '~'),
+      competencies: comps,
+    },
+    passage: d.passage || '',
+    questions: questions.length ? questions : undefined,
+    selfScale: d.questions?.[0]?.criteria?.[0]?.levels?.length || 3,
+    extraOptions,
+    pageImages: d.pageImages || [],
+    keep: { origin: 'file_generate', issues: d.issues, sourceFile: d.sourceFile, pageImages: d.pageImages || [], meta, extraOptions },
+  };
+};

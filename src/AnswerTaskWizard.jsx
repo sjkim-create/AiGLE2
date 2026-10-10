@@ -11,11 +11,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ItemCard from './ItemCard';
 import ItemExtractWizard from './ItemExtractWizard';
+import ItemEditForm, { ItemEditDialog } from './ItemEditForm';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
 import { IssueList } from './TaskFileGenerate';
 import { buildAnswerTask } from './lib/taskSchema';
-import { ITEM_TYPES, ITEM_TYPE_KEYS, ITEM_SCHEMA_VERSION, WORKBOOK_PURPOSES, emptyAnswer, hasAnswer, newId, recheckAnswer,
-  listItems, listPassages, listWorkbooks, saveExtraction, putItem } from './lib/itemBank';
+import { ITEM_TYPES, ITEM_TYPE_KEYS, WORKBOOK_PURPOSES, hasAnswer,
+  listItems, listPassages, listWorkbooks, listSources, saveExtraction, putItem } from './lib/itemBank';
 
 const STEPS = ['문항 모으기', '배치', '기본 정보·저장'];
 const SOURCES = {
@@ -33,75 +34,7 @@ const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#4
 const chipBtn = (on) => ({ padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', color: on ? '#1D4ED8' : '#475569' });
 const Crumb = ({ path }) => <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>;
 
-// ───────────── 직접 작성 — 새 문항 1개 ─────────────
-const blankItem = (type = 'multiple_choice') => ({
-  id: newId('itm'), schemaVersion: ITEM_SCHEMA_VERSION, number: '', itemType: type, stem: '', material: '',
-  choices: type === 'binary_choice' ? [{ no: 1, text: '' }, { no: 2, text: '' }] : type === 'multiple_choice' ? [1, 2, 3, 4, 5].map((no) => ({ no, text: '' })) : [],
-  matching: type === 'matching' ? { left: ['', ''], right: ['', ''] } : null, blankCount: type === 'completion' ? 1 : 0,
-  answer: emptyAnswer(), answerSource: 'teacher', explanation: '', points: null, images: [], passageId: null,
-  unit: { label: '', areaId: null, areaName: '', source: 'none' }, track: 'curriculum', skill: '',
-  curriculum: { standardsBasis: 'unit', standards: [] }, source: { sourceId: null, fileName: '직접 작성', page: null },
-  lineage: { rootId: null, parentId: null, derivation: null }, issues: [], createdAt: '', updatedAt: '',
-});
-
-const ItemEditor = ({ onAdd }) => {
-  const [it, setIt] = useState(() => blankItem());
-  const set = (patch) => setIt((x) => ({ ...x, ...patch }));
-  const changeType = (type) => { const b = blankItem(type); setIt((x) => ({ ...b, id: x.id, stem: x.stem, material: x.material })); };
-  const ready = it.stem.trim() && (!['multiple_choice', 'binary_choice'].includes(it.itemType) || it.choices.filter((c) => c.text.trim()).length >= 2);
-  const add = () => {
-    const now = new Date().toISOString();
-    const item = recheckAnswer({ ...it, choices: it.choices.filter((c) => c.text.trim()).map((c, i) => ({ no: i + 1, text: c.text.trim() })), createdAt: now, updatedAt: now, lineage: { rootId: it.id, parentId: null, derivation: null } });
-    onAdd(item);
-    setIt(blankItem(it.itemType));
-  };
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div>
-        <span style={label}>유형</span>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {ITEM_TYPE_KEYS.map((k) => <button key={k} type="button" onClick={() => changeType(k)} style={chipBtn(it.itemType === k)} title={ITEM_TYPES[k].desc}>{ITEM_TYPES[k].icon} {ITEM_TYPES[k].label}</button>)}
-        </div>
-      </div>
-      <div><span style={label}>발문 *</span><textarea value={it.stem} onChange={(e) => set({ stem: e.target.value })} rows={2} placeholder="예: 다음 중 힘의 단위로 옳은 것은?" style={{ ...input, resize: 'vertical', borderColor: it.stem.trim() ? '#CBD5E1' : '#FCA5A5' }} /></div>
-      <div><span style={label}>&lt;보기&gt;·제시 자료 (선택)</span><textarea value={it.material} onChange={(e) => set({ material: e.target.value })} rows={2} style={{ ...input, resize: 'vertical' }} /></div>
-      {['multiple_choice', 'binary_choice'].includes(it.itemType) && (
-        <div>
-          <span style={label}>{it.itemType === 'binary_choice' ? '두 낱말 *' : '보기 * (2개 이상)'}</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {it.choices.map((c, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ width: 22, fontWeight: 800, color: '#64748B' }}>{it.itemType === 'binary_choice' ? (i ? 'B' : 'A') : '①②③④⑤⑥⑦⑧'[i]}</span>
-                <input value={c.text} onChange={(e) => set({ choices: it.choices.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })} style={input} />
-                {it.itemType === 'multiple_choice' && it.choices.length > 2 && <button type="button" onClick={() => set({ choices: it.choices.filter((_, j) => j !== i).map((x, j) => ({ ...x, no: j + 1 })), answer: emptyAnswer() })} style={{ ...btn(false), padding: '4px 8px' }} aria-label="보기 삭제">✕</button>}
-              </div>
-            ))}
-            {it.itemType === 'multiple_choice' && it.choices.length < 8 && <button type="button" onClick={() => set({ choices: [...it.choices, { no: it.choices.length + 1, text: '' }] })} style={{ ...btn(false), alignSelf: 'flex-start', padding: '4px 10px' }}>+ 보기 추가</button>}
-          </div>
-        </div>
-      )}
-      {it.itemType === 'matching' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {['left', 'right'].map((side) => (
-            <div key={side}><span style={label}>{side === 'left' ? '왼쪽 항목 (한 줄에 하나)' : '오른쪽 항목 (한 줄에 하나)'}</span>
-              <textarea value={it.matching[side].join('\n')} rows={4} onChange={(e) => set({ matching: { ...it.matching, [side]: e.target.value.split('\n') } })} style={{ ...input, resize: 'vertical' }} /></div>
-          ))}
-        </div>
-      )}
-      {it.itemType === 'completion' && (
-        <div style={{ width: 160 }}><span style={label}>빈칸 수</span><input type="number" min={1} max={10} value={it.blankCount} onChange={(e) => set({ blankCount: Math.max(1, Number(e.target.value) || 1) })} style={input} /></div>
-      )}
-      <div style={{ width: 160 }}><span style={label}>배점 (선택)</span><input type="number" min={0} value={it.points ?? ''} onChange={(e) => set({ points: e.target.value === '' ? null : Number(e.target.value) })} style={input} /></div>
-      <div>
-        <span style={label}>미리 보기 · 정답 지정</span>
-        <ItemCard item={{ ...it, number: '새', matching: it.matching ? { left: it.matching.left.filter(Boolean), right: it.matching.right.filter(Boolean) } : null }} editable onChange={(x) => set({ answer: x.answer, itemType: x.itemType })} />
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={add} disabled={!ready} style={btn(true, !ready)} title={ready ? '' : '발문과 보기를 입력해 주세요'}>+ 이 문항 담기</button>
-      </div>
-    </div>
-  );
-};
+// 직접 작성은 ItemEditForm(create) — 문항 편집과 같은 화면
 
 // ───────────── 문제 은행·문제집에서 고르기 ─────────────
 const BankPicker = ({ takenIds, onAdd }) => {
@@ -160,6 +93,9 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
   const [done, setDone] = useState(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const [editIdx, setEditIdx] = useState(null);   // 배치 단계 문항 편집 — 이 과제에만 적용
+  const [bankSources, setBankSources] = useState([]); // 문제 은행 문항의 원본 쪽 이미지
+  useEffect(() => { listSources().then(setBankSources).catch(() => {}); }, []);
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2200); return () => clearTimeout(t); }, [toast]);
 
   const takenIds = useMemo(() => new Set(entries.map((e) => e.item.id)), [entries]);
@@ -253,7 +189,7 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
                     <button onClick={() => setStep(2)} disabled={!entries.length} style={btn(true, !entries.length)}>다음: 배치 →</button>
                   </div>
                   <div style={card}>
-                    {tab === 'direct' && <ItemEditor onAdd={(item) => add([item])} />}
+                    {tab === 'direct' && <ItemEditForm mode="create" onSubmit={(item) => add([item])} />}
                     {tab === 'file' && <ItemExtractWizard onPick={onPicked} onBack={() => setTab('direct')} />}
                     {tab === 'bank' && <BankPicker takenIds={takenIds} onAdd={(items, pById) => { setPassages((p) => ({ ...p, ...Object.fromEntries(items.filter((i) => i.passageId && pById[i.passageId]).map((i) => [i.passageId, pById[i.passageId]])) })); add(items, { fromBank: true }); }} />}
                   </div>
@@ -284,7 +220,7 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
                         <button onClick={() => setEntries((es) => es.filter((_, j) => j !== i))} aria-label="빼기" style={{ ...btn(false), padding: '2px 8px' }}>✕</button>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <ItemCard item={{ ...e.item, number: String(i + 1) }} passage={passages[e.item.passageId]} editable
+                        <ItemCard item={{ ...e.item, number: String(i + 1) }} passage={passages[e.item.passageId]} editable onEdit={() => setEditIdx(i)}
                           onChange={(x) => setEntries((es) => es.map((y, j) => (j === i ? { ...y, item: { ...x, number: e.item.number } } : y)))} />
                       </div>
                     </div>
@@ -320,6 +256,12 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
         </div>
       </div>
 
+      {editIdx != null && entries[editIdx] && (() => {
+        const it = entries[editIdx].item;
+        const pages = [...pending.sources, ...bankSources].find((x) => x.id === it.source?.sourceId)?.pageImages;
+        return <ItemEditDialog open item={{ ...it, number: String(editIdx + 1) }} pages={pages} scopeNote="이 과제에만 적용 · 문제 은행 원본은 그대로"
+          onClose={() => setEditIdx(null)} onSave={(x) => setEntries((es) => es.map((y, j) => (j === editIdx ? { ...y, item: { ...x, number: it.number } } : y)))} />;
+      })()}
       <UnsavedLeaveModal open={leaveOpen} canSave={false} onStay={() => setLeaveOpen(false)} onLeave={() => { setLeaveOpen(false); onLeaveGuardChange?.(null); onBack && onBack(); }} />
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 1100 }}>{toast}</div>}
     </div>

@@ -16,6 +16,8 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
+import CropDialog from './CropDialog';
+import { imageTag } from './lib/taskSchema';
 import {
   subjectsOf, gradesOf, competenciesOf, evalAreasOf,
   defaultGradeScale,
@@ -125,9 +127,17 @@ function InlineEditor({ value, onChange, placeholder, minHeight = 120 }) {
   );
 }
 
-const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange }) => {
+// [v3.90] initialData — 기존 서·논술 과제를 이 화면으로 열어 고친다 (스마트 과제 등록 결과·직접 입력 과제, lib/taskSchema.taskToDirectInputData)
+//   extraOptions: 실제 교육과정의 교과 역량·핵심평가영역·성취기준을 선택지에 더한다 · pageImages: 모범답안 그림 범위 조정용 원본 쪽
+const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, initialData }) => {
+  const extra = initialData?.extraOptions || { competencies: [], areas: [], standards: [] };
+  const STANDARDS = [...MOCK_STANDARDS, ...(extra.standards || [])];
+  const compsOf = (subj) => [...new Set([...competenciesOf(subj), ...(extra.competencies || [])])];
+  const areasOf = (subj) => [...new Set([...evalAreasOf(subj), ...(extra.areas || [])])];
+  const pageImages = initialData?.pageImages || [];
+  const [cropTarget, setCropTarget] = useState(null); // { qid, index(-1 = 새로), initial }
   const [step, setStep] = useState(1);
-  const [basicInfo, setBasicInfo] = useState({
+  const [basicInfo, setBasicInfo] = useState(() => initialData?.basicInfo ? { ...initialData.basicInfo } : {
     title: '',
     type: '서술형',
     subject: '국어',       // 교과
@@ -137,8 +147,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
     competencies: [],
     // [v2.7] evaluationAreas는 questions[].evaluationAreas로 이관 — 문항별 독립 관리
   });
-  const [passage, setPassage] = useState(''); // 지문 (과제 단위, Step 2)
-  const [questions, setQuestions] = useState([makeQuestion(0)]);
+  const [passage, setPassage] = useState(initialData?.passage || ''); // 지문 (과제 단위, Step 2)
+  const [questions, setQuestions] = useState(() => initialData?.questions?.length ? initialData.questions : [makeQuestion(0)]);
   const [activeQId, setActiveQId] = useState(null); // Step 2 문항 입력 탭 — 현재 선택된 문항 id
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { qid, idx } — 내용 있는 문항 삭제 확인 모달
   // [v2.11] worksheetOpen·worksheetMode state 폐기 — 미리보기 영역·모달 통째 제거
@@ -151,9 +161,9 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
   const evalMode = 'self'; // [v3.74] 자동평가 폐기 — 자율평가 단일 체제 (저장 스키마 호환용 고정값)
   const [resultScale, setResultScale] = useState(3); // 등급 환산 체계
   const [resultMode, setResultMode] = useState('grade'); // [v3.82] 채점 결과 표시 — 'grade'(등급) | 'score'(점수)
-  const [selfScale, setSelfScale] = useState(3);     // 채점 등급(3/4/5) — Step 4 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정. 점수 구간은 3개 고정
+  const [selfScale, setSelfScale] = useState(initialData?.selfScale || 3);     // 채점 등급(3/4/5) — Step 4 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정. 점수 구간은 3개 고정
   // Step 4 진입 처리 완료 여부 { [qid]: true } — [v3.85] 자동 설계 폐기 후에는 채점 등급 기본값 1회 적용 판별에만 쓴다
-  const [rubricReady, setRubricReady] = useState({});
+  const [rubricReady, setRubricReady] = useState(() => (initialData?.questions ? Object.fromEntries(initialData.questions.map((q) => [q.id, true])) : {}));
   const [worksheetPreviewOpen, setWorksheetPreviewOpen] = useState(false); // [TSK-05 v2.30] 평가 답안지 미리보기 모달
   const [stdOpen, setStdOpen] = useState({}); // 문항별 성취기준 목록 펼침 상태 { [qid]: bool }
   const [taskStdOpen, setTaskStdOpen] = useState(false); // [v3.46] 과제 단위 성취기준 펼침 상태 — 미선택=자동 펼침
@@ -177,7 +187,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
   const toast = (m) => showToast && showToast(m);
 
   // [v2.7] 문항별 성취기준 후보 — 활성 문항의 evaluationAreas + 과제 단위 competencies로 필터
-  const filteredStandardsFor = (qEvalAreas) => MOCK_STANDARDS.filter((s) => {
+  const filteredStandardsFor = (qEvalAreas) => STANDARDS.filter((s) => {
     if (!qEvalAreas || qEvalAreas.length === 0) return false;
     if (!qEvalAreas.includes(s.area)) return false;
     if (basicInfo.competencies.length > 0 && !s.competencies.some((c) => basicInfo.competencies.includes(c))) return false;
@@ -187,7 +197,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
   // [v2.7] 핵심역량 변경 시 — 문항의 성취기준이 더 이상 유효하지 않으면 해제 (영역은 문항별이므로 영역 변경은 별도 핸들러에서 처리)
   useEffect(() => {
     const valid = (q, sid) => {
-      const s = MOCK_STANDARDS.find((x) => x.id === sid);
+      const s = STANDARDS.find((x) => x.id === sid);
       return !!s && q.evaluationAreas.includes(s.area) && (basicInfo.competencies.length === 0 || s.competencies.some((c) => basicInfo.competencies.includes(c)));
     };
     // [v2.31] 핵심역량 변경 시 — invalid한 standards는 자동 해제. standard·standards 동기화
@@ -201,8 +211,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
 
   // 교과 변경 시 — 새 교과 프레임워크에 속하지 않는 기존 선택 chip 자동 해제
   useEffect(() => {
-    const allowedComp = new Set(competenciesOf(basicInfo.subject));
-    const allowedArea = new Set(evalAreasOf(basicInfo.subject));
+    const allowedComp = new Set(compsOf(basicInfo.subject));
+    const allowedArea = new Set(areasOf(basicInfo.subject));
     setBasicInfo((p) => {
       const nextComp = p.competencies.filter((c) => allowedComp.has(c));
       if (nextComp.length === p.competencies.length) return p;
@@ -312,7 +322,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
     setQuestions((qs) => qs.map((x) => {
       if (x.id !== qid) return x;
       const nextAreas = Array.from(new Set(nextStandards
-        .map((id) => MOCK_STANDARDS.find((y) => y.id === id)?.area)
+        .map((id) => STANDARDS.find((y) => y.id === id)?.area)
         .filter(Boolean)));
       return {
         ...x,
@@ -623,7 +633,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
   const aiGenerateCriteria = (qid) => {
     const q = questions.find((x) => x.id === qid);
     if (!q || !q.content.trim()) { toast('AI 생성을 위해 문항 내용을 먼저 입력해 주세요.'); return; }
-    const std = MOCK_STANDARDS.find((s) => s.id === q.standard);
+    const std = STANDARDS.find((s) => s.id === q.standard);
     const { criteria, filled, skipped } = aiFillCriteria(q.criteria, std?.area || '평가 영역');
     updateQuestion(qid, { criteria });
     if (filled === 0) toast('비어 있는 채점 기준이 없습니다. [+ 채점 기준 추가]로 새 기준을 만들거나, 기준명·평가 내용을 비운 뒤 다시 실행하세요.');
@@ -703,16 +713,18 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
   //   (v3.87 「1~4단계 모두 입력해야 저장」·자동 저장 폐기를 되돌림)
   const SAVE_BLOCKED_MSG = '현재 단계의 필수 항목을 입력해야 저장할 수 있습니다.';
   const canSave = Array.from({ length: Math.min(step, 4) }, (_, i) => i + 1).every(stepValid);
-  const taskIdRef = useRef(Date.now());            // 자동 저장·최종 저장이 같은 과제를 덮어쓰도록 고정 id
+  const taskIdRef = useRef(initialData?.taskId ?? Date.now()); // 자동 저장·최종 저장이 같은 과제를 덮어쓰도록 고정 id (고치기면 원래 과제 id)
   const snapshot = () => JSON.stringify({ basicInfo, passage, questions });
-  const savedSnapRef = useRef(null);               // 마지막 저장 시점 내용 — 이후 변경 여부(이탈 경고) 판정
+  const savedSnapRef = useRef(initialData ? JSON.stringify({ basicInfo: initialData.basicInfo, passage: initialData.passage || '', questions: initialData.questions }) : null); // 마지막 저장 시점 내용 — 고치기로 열면 처음 상태가 저장본
   const saveTask = () => {
     if (onAdd) {
-      onAdd(buildDirectInputTask({
+      const task = buildDirectInputTask({
         id: taskIdRef.current,
         basicInfo, passage, questions,
         evalMode, groupList, isShared,
-      }));
+      });
+      if (initialData?.keep) task.detail.fromFile = { ...initialData.keep, extraOptions: extra }; // 원래 자료·원본 쪽 보존 (다시 고칠 때)
+      onAdd(task);
     }
     savedSnapRef.current = snapshot();
   };
@@ -816,9 +828,23 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
       {/* 헤더 + Step indicator (고정) */}
       <div style={{ flexShrink: 0, background: 'white', borderBottom: '1px solid #E2E8F0' }}>
         <header style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>직접 입력 2 — 과제 등록</h1>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>직접 입력 2 — {initialData ? '과제 수정' : '과제 등록'}</h1>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={handleExitNoSave} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>나가기</button>
+            <CropDialog open={!!cropTarget} pages={pageImages} initial={cropTarget?.initial} title={cropTarget?.index === -1 ? '자료에서 그림 자르기' : '그림 범위 조정'}
+              onClose={() => setCropTarget(null)}
+              onApply={(img) => {
+                const q = questions.find((x) => x.id === cropTarget.qid);
+                if (cropTarget.where === 'content') {
+                  const list = [...(q?.contentImages || [])];
+                  if (cropTarget.index === -1) list.push(img); else list[cropTarget.index] = { ...img, label: list[cropTarget.index]?.label || img.label };
+                  updateQuestion(cropTarget.qid, { contentImages: list }); setCropTarget(null); toast('그림을 넣었습니다.'); return;
+                }
+                const html = getModelAnswer(q).html || '';
+                let n = -1;
+                const next = cropTarget.index === -1 ? html + imageTag(img) : html.replace(/<img\b[^>]*>/gi, (tag) => { n += 1; return n === cropTarget.index ? imageTag(img).replace(/^<p>|<\/p>$/g, '') : tag; });
+                updateModelAnswerHtml(cropTarget.qid, next); setCropTarget(null); toast('그림을 넣었습니다.');
+              }} />
             <UnsavedLeaveModal open={leaveOpen} canSave={canSave} onStay={() => setLeaveOpen(false)} onLeave={() => { setLeaveOpen(false); onLeaveGuardChange?.(null); onBack && onBack(); }} />
             {/* [v2.2] 공유 버튼을 더보기에서 헤더로 외부 노출 — 1차 액션으로 승격 */}
             <button onClick={handleToggleShare}
@@ -931,19 +957,20 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                   <div>
                     <label style={label}>학년 <span style={{ color: '#EF4444' }}>*</span></label>
                     <select style={input} value={basicInfo.grade} onChange={(e) => setBasicInfo((p) => ({ ...p, grade: e.target.value }))}>
-                      {gradesOf(basicInfo.schoolLevel).map((g) => <option key={g}>{g}</option>)}
+                      {[...new Set([...gradesOf(basicInfo.schoolLevel), basicInfo.grade].filter(Boolean))].map((g) => <option key={g}>{g}</option>)}
                     </select>
                   </div>
                   <div>
                     <label style={label}>교과 <span style={{ color: '#EF4444' }}>*</span></label>
                     <select style={input} value={basicInfo.subject} onChange={(e) => { const subject = e.target.value; setBasicInfo((p) => ({ ...p, subject, subSubject: subjectsOf(subject)[0] || '' })); }}>
                       <option>국어</option><option>영어</option><option>사회</option><option>과학</option><option>도덕</option>
+                      {!['국어', '영어', '사회', '과학', '도덕'].includes(basicInfo.subject) && <option>{basicInfo.subject}</option>}
                     </select>
                   </div>
                   <div>
                     <label style={label}>과목 <span style={{ color: '#EF4444' }}>*</span></label>
                     <select style={input} value={basicInfo.subSubject} onChange={(e) => setBasicInfo((p) => ({ ...p, subSubject: e.target.value }))}>
-                      {subjectsOf(basicInfo.subject).map((s) => <option key={s}>{s}</option>)}
+                      {[...new Set([...subjectsOf(basicInfo.subject), basicInfo.subSubject].filter(Boolean))].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
@@ -951,9 +978,9 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={label}>핵심 역량 <span style={{ color: '#94A3B8', fontWeight: 600 }}>(선택 · 다중)</span></label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {competenciesOf(basicInfo.subject).length === 0 ? (
+                    {compsOf(basicInfo.subject).length === 0 ? (
                       <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>선택한 교과에 정의된 핵심 역량이 없습니다.</span>
-                    ) : competenciesOf(basicInfo.subject).map((c) => (
+                    ) : compsOf(basicInfo.subject).map((c) => (
                       <span key={c} style={chip(basicInfo.competencies.includes(c))} onClick={() => toggleChip('competencies', c)}>{c}</span>
                     ))}
                   </div>
@@ -1043,6 +1070,26 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                         <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>문항 {activeIdx + 1}</span>
                       </div>
                       <InlineEditor value={activeQ.content} onChange={(e) => updateQuestion(activeQ.id, { content: e.target.value })} placeholder={`문항 ${activeIdx + 1} 내용을 입력하세요.`} minHeight={180} />
+                      {/* 문제 속 그림 — 자료에서 자른 그림은 원본 쪽 위에서 범위를 다시 잡는다 */}
+                      {(pageImages.length > 0 || (activeQ.contentImages || []).length > 0) && (
+                        <div style={{ marginTop: 10, padding: 10, border: '1px dashed #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>🖼 문항 그림 {(activeQ.contentImages || []).length}장</span>
+                            {pageImages.length > 0 && <button type="button" onClick={() => setCropTarget({ qid: activeQ.id, where: 'content', index: -1, initial: null })} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>✂️ 자료에서 그림 자르기</button>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {(activeQ.contentImages || []).map((im, i) => (
+                              <div key={i} style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: 4, width: 150, background: 'white' }}>
+                                <img src={im.dataUrl} alt={im.label || `그림 ${i + 1}`} style={{ width: '100%', height: 90, objectFit: 'contain' }} />
+                                <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                                  {pageImages.length > 0 && <button type="button" onClick={() => setCropTarget({ qid: activeQ.id, where: 'content', index: i, initial: { page: im.page, box: im.box, dataUrl: im.dataUrl } })} style={{ ...{ padding: '4px 8px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }, flex: 1 }}>✂️ 범위 조정</button>}
+                                  <button type="button" aria-label="그림 삭제" onClick={() => updateQuestion(activeQ.id, { contentImages: activeQ.contentImages.filter((_, j) => j !== i) })} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>🗑</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {/* 문항 편집 도구 — 문항 내용 입력 후 활성화 */}
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         {(() => {
@@ -1081,7 +1128,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
               if (has) {
                 const curStandards = q.standards || (q.standard ? [q.standard] : []);
                 const validStandards = curStandards.filter((sid) => {
-                  const std = MOCK_STANDARDS.find((s) => s.id === sid);
+                  const std = STANDARDS.find((s) => s.id === sid);
                   return std && nextAreas.includes(std.area);
                 });
                 return {
@@ -1164,9 +1211,9 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                   </div>
                   <label style={label}>핵심평가영역 <span style={{ color: '#EF4444' }}>*</span> <span style={{ color: '#94A3B8', fontWeight: 600 }}>(이 문항에 적용 · 1개 이상 · 다중)</span></label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                    {evalAreasOf(basicInfo.subject).length === 0 ? (
+                    {areasOf(basicInfo.subject).length === 0 ? (
                       <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>선택한 교과에 정의된 핵심평가영역이 없습니다.</span>
-                    ) : evalAreasOf(basicInfo.subject).map((a) => (
+                    ) : areasOf(basicInfo.subject).map((a) => (
                       <span key={a} style={chip(q.evaluationAreas.includes(a), '#047857')} onClick={() => toggleActiveQEvalArea(a)}>{a}</span>
                     ))}
                   </div>
@@ -1258,6 +1305,10 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                               <button onClick={() => clearModelAnswer(q.id)} title="텍스트·이미지 전체 비우기"
                                 style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#94A3B8', fontWeight: 700, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>전체 비우기</button>
                             )}
+                            {pageImages.length > 0 && (
+                              <button onClick={() => setCropTarget({ qid: q.id, index: -1, initial: null })} title="원본 자료 쪽에서 그림을 잘라 모범답안에 넣습니다"
+                                style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#334155', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>✂️ 자료에서 그림 자르기</button>
+                            )}
                             <button onClick={() => generateModelAnswers(q.id)} disabled={!hasContent}
                               title={hasContent ? '문항 내용·성취기준을 기반으로 모범답안 텍스트를 생성합니다.' : '문항 내용을 먼저 입력하세요(Step 2).'}
                               style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${hasContent ? '#2A75F3' : '#E2E8F0'}`, background: hasContent ? '#EFF6FF' : '#F1F5F9', color: hasContent ? '#1D4ED8' : '#94A3B8', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: hasContent ? 'pointer' : 'not-allowed' }}>🤖 자동 생성</button>
@@ -1284,6 +1335,23 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                                 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>또는 텍스트를 입력하거나 Ctrl+V로 이미지를 붙여넣으세요</span>
                               </div>
                             )}
+                            {pageImages.length > 0 && (() => {
+                              // 자료에서 자른 그림(data-box) — 원본 쪽 위에서 범위를 다시 잡는다
+                              const imgs = [...(ma.html || '').matchAll(/<img\b[^>]*>/gi)].map((m, idx) => ({ idx, tag: m[0], src: (m[0].match(/src="([^"]+)"/) || [])[1], page: Number((m[0].match(/data-page="(\d+)"/) || [])[1]) || null, box: ((m[0].match(/data-box="([\d,.]+)"/) || [])[1] || '').split(',').filter(Boolean).map(Number) }));
+                              const adjustable = imgs.filter((x) => x.page && x.box.length === 4);
+                              if (!adjustable.length) return null;
+                              return (
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                                  {adjustable.map((x) => (
+                                    <div key={x.idx} style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: 4, width: 130, background: 'white' }}>
+                                      <img src={x.src} alt="" style={{ width: '100%', height: 70, objectFit: 'contain' }} />
+                                      <button onClick={() => setCropTarget({ qid: q.id, index: x.idx, initial: { page: x.page, box: x.box, dataUrl: x.src } })}
+                                        style={{ width: '100%', marginTop: 4, padding: '3px 6px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>✂️ 범위 조정</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                             <button onClick={() => setFormulaModal({ target: 'modelAnswer', qid: q.id, level: 'single', initialContent: '' })}
                               title="모범답안에 수식(LaTeX)을 삽입·편집합니다"
                               style={{ position: 'absolute', right: 8, top: 8, padding: '3px 9px', border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.4 }}>∑ 수식</button>
@@ -1356,7 +1424,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange })
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 12 }}>
                       <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#475569' }}>성취기준:</span>
                       {(() => {
-                        const s = MOCK_STANDARDS.find((x) => x.id === q.standard);
+                        const s = STANDARDS.find((x) => x.id === q.standard);
                         return s
                           ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#047857', background: '#D1FAE5', padding: '3px 9px', borderRadius: 999 }}>[{s.area}] {stdCode(s.text)}</span>
                           : <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309' }}>Step 3에서 선택해 주세요.</span>;

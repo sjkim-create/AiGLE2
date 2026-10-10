@@ -25,7 +25,8 @@ export const TypeBadge = ({ type }) => {
 
 // dimUnchecked — 정답형 확인 단계처럼 「선택 안 함 = 저장에서 빠짐」일 때만 흐리게. 문제 은행 목록은 선택이 고르기일 뿐이라 흐리게 하지 않는다
 // active — 문제 은행에서 지금 상세에 열린 문항 (파란 테두리)
-const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false, active = false }) => {
+// onEdit — [✏️ 문항 편집](직접 작성과 같은 편집 화면)을 연다. 그림 위 ✂️도 같은 화면으로
+const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false, active = false, onEdit }) => {
   const missing = !hasAnswer(item);
   const src = ANSWER_SOURCE[missing ? 'none' : item.answerSource] || ANSWER_SOURCE.none;
   const a = item.answer || {};
@@ -100,6 +101,10 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
           )}
           {item.lineage?.parentId && <span style={chip('#FDF4FF', '#A21CAF')}>파생</span>}
           {!editable && (errCount + warnCount) > 0 && <span style={chip(errCount ? '#FEE2E2' : '#FEF3C7', errCount ? '#B91C1C' : '#92400E')}>확인 {errCount + warnCount}</span>}
+          {onEdit && (
+            <button type="button" onClick={(e) => { stop(e); onEdit(); }} title="발문·보기·그림·정답 등 문항 전체를 고칩니다"
+              style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#334155', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>✏️ 문항 편집</button>
+          )}
         </div>
 
         {passage && !compact && (
@@ -115,7 +120,13 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
         )}
         {(item.images || []).length > 0 && !compact && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            {item.images.map((im, i) => <img key={i} src={im.dataUrl} alt={im.label} title={im.label} style={{ maxWidth: 220, maxHeight: 150, borderRadius: 6, border: '1px solid #E2E8F0', objectFit: 'contain' }} />)}
+            {item.images.map((im, i) => (
+              <span key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                <img src={im.dataUrl} alt={im.label} title={im.label} style={{ maxWidth: 220, maxHeight: 150, borderRadius: 6, border: '1px solid #E2E8F0', objectFit: 'contain', display: 'block' }} />
+                {onEdit && <button type="button" onClick={(e) => { stop(e); onEdit('images'); }} title="그림 범위 조정 · 바꾸기 (문항 편집)" aria-label="그림 범위 조정"
+                  style={{ position: 'absolute', top: 4, right: 4, padding: '2px 6px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: 'var(--neo-font-size-xs)' }}>✂️</button>}
+              </span>
+            ))}
           </div>
         )}
 

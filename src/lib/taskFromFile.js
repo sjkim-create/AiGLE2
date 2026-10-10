@@ -288,8 +288,29 @@ export const cropImage = (pages, img) => {
   out.width = sw; out.height = sh;
   out.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
   const dataUrl = canvasToJpeg(out);
-  return { label: img.label || '그림', dataUrl, bytes: Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75) };
+  // page·box를 남겨 두어야 나중에 원본 쪽 위에서 범위를 다시 잡을 수 있다 (그림 범위 조정)
+  return { label: img.label || '그림', dataUrl, bytes: Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75), page: page.no, box: [y0, x0, y1, x1], origin: 'ai' };
 };
+
+/** 원본 쪽 이미지 보관용 — 그림 범위 조정·새로 자르기에 쓴다 (프로토: 브라우저 저장소 / 상용: 원본 파일 스토리지) */
+export const pageImagesOf = (pages) => pages.map((p) => ({ no: p.no, dataUrl: canvasToJpeg(p.canvas, 0.8), width: p.canvas.width, height: p.canvas.height }));
+
+/** 보관한 쪽 이미지에서 다시 자르기 — box: [ymin, xmin, ymax, xmax] (0~1000) */
+export const cropFromPageImage = (pageImage, box, label = '그림') => new Promise((resolve, reject) => {
+  const im = new Image();
+  im.onload = () => {
+    const [y0, x0, y1, x1] = box;
+    const sx = Math.round((x0 / 1000) * im.width); const sy = Math.round((y0 / 1000) * im.height);
+    const sw = Math.max(1, Math.round(((x1 - x0) / 1000) * im.width)); const sh = Math.max(1, Math.round(((y1 - y0) / 1000) * im.height));
+    const out = document.createElement('canvas'); out.width = sw; out.height = sh;
+    const ctx = out.getContext('2d'); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, sw, sh);
+    ctx.drawImage(im, sx, sy, sw, sh, 0, 0, sw, sh);
+    const dataUrl = canvasToJpeg(out);
+    resolve({ label, dataUrl, bytes: Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75), page: pageImage.no, box, origin: 'teacher' });
+  };
+  im.onerror = () => reject(new Error('쪽 이미지를 열 수 없습니다.'));
+  im.src = pageImage.dataUrl;
+});
 
 // ───────────────────── 5. 채점 기준 → 자율 평가 기준표 ─────────────────────
 const DEFAULT_SCORES = { 2: [5, 2], 3: [5, 3, 1], 4: [4, 3, 2, 1], 5: [5, 4, 3, 2, 1] };
@@ -392,6 +413,7 @@ export const generateTaskFromFile = async (file, onStep = () => {}, { analyze = 
     passage: String(ai.passage || '').trim(),
     questions,
     sourceFile: { name: file.name, size: file.size, pages: totalPages },
+    pageImages: pageImagesOf(pages), // 그림 범위 조정·새로 자르기용 원본 쪽
   };
   const order = { error: 0, warn: 1, info: 2 };
   issues.sort((a, b) => order[a.level] - order[b.level]);
