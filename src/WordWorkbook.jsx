@@ -68,6 +68,8 @@ export const wordIssues = (words, mode) => {
 // dictLang — 받아쓰기 언어(국어 · 영어): 입력 예시 · 양식 이름
 export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotice, ai = null, dictLang = '국어' }) => {
   const [dragOn, setDragOn] = React.useState(false);
+  const [sel, setSel] = React.useState(() => new Set()); // [v1.40] 선택 삭제할 낱말 id
+  const [removed, setRemoved] = React.useState(null);     // 방금 지운 목록 — 되돌리기
   const [words, setWords] = React.useState(initialWords || []);
   const latest = React.useRef(words); latest.current = words;
   const saveRef = React.useRef(onSave); saveRef.current = onSave;
@@ -108,7 +110,14 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
       onNotice?.(err?.message || '엑셀 파일을 읽을 수 없습니다.');
     } finally { if (fileRef.current) fileRef.current.value = ''; }
   };
-  const grid = '40px 1fr 1fr 44px';
+  const grid = '28px 40px 1fr 1fr 44px';
+  const allOn = words.length > 0 && words.every((w) => sel.has(w.id));
+  const toggle = (id) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const removeSelected = () => {
+    const n = words.filter((w) => sel.has(w.id)).length;
+    setRemoved({ before: words, n });
+    onChange(words.filter((w) => !sel.has(w.id)), true); setSel(new Set());
+  };
   return (
     <div onBlurCapture={(e) => { if (e.target.tagName === 'INPUT' && e.target.type !== 'file') onCommit?.(); }} style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -116,11 +125,31 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
         {issues.map((m) => <span key={m} style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ {m}</span>)}
       </div>
       {!dict && ai && <WordAIPanel ai={ai} existing={words} onAdd={(added) => { onChange([...kept(), ...added], true); onNotice?.(`AI가 만든 낱말 ${added.length}개를 추가했습니다. 뜻과 수준을 확인해 주세요.`); }} />}
+      {/* 선택 삭제 — 머리 체크로 전체 선택 */}
+      {(sel.size > 0 || removed) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: sel.size ? '#FEF2F2' : '#F8FAFC', borderRadius: 10, padding: '8px 10px', fontSize: 'var(--neo-font-size-sm)' }}>
+          {sel.size > 0 ? (
+            <>
+              <b style={{ color: '#B91C1C' }}>{sel.size}개 선택</b>
+              <button type="button" onClick={() => setSel(new Set())} style={smallBtn()}>선택 해제</button>
+              <button type="button" onClick={removeSelected} style={{ ...smallBtn(true), marginLeft: 'auto', padding: '6px 12px' }}>🗑 선택 삭제 ({sel.size})</button>
+            </>
+          ) : (
+            <>
+              <span>🗑 낱말 {removed.n}개를 지웠습니다.</span>
+              <button type="button" onClick={() => { onChange(removed.before, true); setRemoved(null); }} style={{ ...smallBtn(), marginLeft: 'auto' }}>↶ 되돌리기</button>
+              <button type="button" onClick={() => setRemoved(null)} aria-label="알림 닫기" style={smallBtn()}>✕</button>
+            </>
+          )}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
+        <input type="checkbox" aria-label="낱말 모두 선택" checked={allOn} disabled={!words.length} onChange={() => setSel(allOn ? new Set() : new Set(words.map((w) => w.id)))} />
         <span>번호</span><span>{dict ? '불러 줄 낱말·문장 (정답)' : '영어 낱말'}</span><span>{dict ? '메모 (선택)' : '한글 뜻 (여러 개는 쉼표로)'}</span><span />
       </div>
       {words.map((w, i) => (
-        <div key={w.id} style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center' }}>
+        <div key={w.id} style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center', ...(sel.has(w.id) ? { background: '#FEF2F2', borderRadius: 8 } : {}) }}>
+          <input type="checkbox" aria-label={`${i + 1}번 선택`} checked={sel.has(w.id)} onChange={() => toggle(w.id)} />
           <span style={{ fontWeight: 900, color: '#2A75F3', display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>{i + 1}{w.ai && <span title={`AI가 만든 낱말${w.standard ? ` · 근거 ${w.standard}` : ''} — 확인해 주세요`} style={{ fontSize: 9, fontWeight: 800, color: '#7C3AED' }}>AI</span>}</span>
           <input value={w.word} onChange={(e) => set(i, { word: e.target.value })} aria-label={`${i + 1}번 낱말`} placeholder={dict ? (dictLang === '영어' ? '예: How are you?' : '예: 무릎을 꿇다') : '예: apple'}
             style={{ ...input, border: `1px solid ${w.word.trim() ? '#CBD5E1' : '#FCA5A5'}` }} />
