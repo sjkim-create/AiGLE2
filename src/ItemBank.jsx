@@ -393,7 +393,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                       </div>
                     </WorkbookInfoCard>
                   )}
-                  {wbStep === 2 && <WordEditor words={words} mode={wb.mode} onNotice={setToast} onChange={(next, commit) => { setW({ words: next }); if (commit) save({ ...wb, words: next }); }} onCommit={() => save(wb)} />}
+                  {wbStep === 2 && <WordEditor key={wb.id} words={words} mode={wb.mode} onNotice={setToast} onSave={(next) => save({ ...wb, words: next })} />}
                   {wbStep === 3 && (
                     <>
                       <WordLayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualW}</WordLayoutOptions>

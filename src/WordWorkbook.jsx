@@ -59,9 +59,24 @@ export const wordIssues = (words, mode) => {
 };
 
 // ② 낱말 입력 — 입력만(번호 · 영어 · 한글 · ✕). 순서 · 빈칸은 ③ 문제집 배치에서 (v1.29)
-//   onChange(next, commit): 글자 입력은 화면에만(commit=false), 줄 추가·빼기·붙여넣기·엑셀은 바로 저장(commit=true). 입력 칸을 벗어나면 저장(onCommit)
+//   저장 — 편집기가 낱말 목록을 직접 들고 있다(밖에서 다시 불러온 값이 입력 중인 글자를 덮지 않게, v1.32).
+//   줄 추가·빼기·붙여넣기·엑셀은 바로 onSave, 글자 입력은 0.5초 쉬면 · 칸을 벗어나면 · 화면을 떠나면 onSave
 //   엑셀 — [⬇️ 양식 내려받기] A열 영어 낱말 · B열 한글 뜻 / [📤 엑셀 올리기] 2행부터 읽어 끝에 덧붙인다
-export const WordEditor = ({ words, mode: rawMode, onChange, onCommit, onNotice }) => {
+export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotice }) => {
+  const [words, setWords] = React.useState(initialWords || []);
+  const latest = React.useRef(words); latest.current = words;
+  const saveRef = React.useRef(onSave); saveRef.current = onSave;
+  const timer = React.useRef(null);
+  const dirty = React.useRef(false);
+  const flush = () => { clearTimeout(timer.current); if (dirty.current) { dirty.current = false; saveRef.current?.(latest.current); } };
+  React.useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // commit=true — 바로 저장 / false — 글자 입력: 0.5초 뒤 저장
+  const onChange = (next, commit) => {
+    setWords(next); latest.current = next; dirty.current = true;
+    clearTimeout(timer.current);
+    if (commit) flush(); else timer.current = setTimeout(flush, 500);
+  };
+  const onCommit = flush;
   const mode = normMode(rawMode);
   const M = WORD_MODES[mode];
   const dict = mode === 'dictation';
