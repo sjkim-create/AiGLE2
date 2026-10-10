@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import TaskRegistration from './TaskRegistration';
-import { REGISTER_GROUPS, FORM_LISTS } from './registerMenu'; // 새 과제 등록 메뉴 (형태 × 방식)
+import { LEGACY_REGISTER, FORM_LISTS } from './registerMenu'; // 새 과제 등록 메뉴 (형태 × 방식)
 
 // 사이드바 카운트 뱃지가 동일한 소스를 참조하도록 모듈 스코프로 노출
 export const BASE_TASKS = [
@@ -58,7 +58,7 @@ export const BASE_TASKS = [
 // form — 'essay' | 'answer' : 왼쪽 메뉴 「서·논술형 과제」·「정답형 과제」 목록 (TSK-15 v1.4). 없으면 전체(기존 과제 관리)
 const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [], form = null }) => {
     const formList = FORM_LISTS.find((f) => f.form === form) || null;
-    const groups = formList ? [{ ...formList.group, more: undefined }] : REGISTER_GROUPS;
+    const groups = formList ? [{ ...formList.group, more: undefined, title: null }] : [{ title: null, items: LEGACY_REGISTER, hover: '#EFF6FF', border: '#BFDBFE' }];
     const [viewMode, setViewMode] = useState('card'); // 'card' | 'list'
     const [statusFilter, setStatusFilter] = useState('전체'); // '전체' | '작성중' | '배포됨'
     const [formFilterSel, setFormFilter] = useState('전체'); // [TSK-15] '전체' | 'essay' | 'answer'
@@ -278,9 +278,9 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                             </div>
                             <div style={{ padding: '8px' }}>
                                 {/* [TSK-15] 과제 형태별로 묶는다 — 서·논술형 과제 / 정답형 과제 (객관식·기타) */}
-                                {groups.map((g) => (
-                                    <div key={g.title} style={{ marginBottom: 4 }}>
-                                        <div style={{ padding: '8px 10px 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 900, color: g.color }}>{g.title} <span style={{ color: '#94A3B8', fontWeight: 600 }}>{g.sub}</span></div>
+                                {groups.map((g, gi) => (
+                                    <div key={gi} style={{ marginBottom: 4 }}>
+                                        {g.title && <div style={{ padding: '8px 10px 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 900, color: g.color }}>{g.title} <span style={{ color: '#94A3B8', fontWeight: 600 }}>{g.sub}</span></div>}
                                         {g.items.map((m) => (
                                             <button key={m.mode} role="menuitem" onClick={() => handleRegisterMethod(m.mode)}
                                                 style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', background: 'transparent', border: '1px solid transparent', borderRadius: '10px', cursor: 'pointer', fontFamily: 'inherit' }}

@@ -149,16 +149,9 @@ const Sidebar = ({
                                     <div key={f.sub}
                                         className={`nav-sub-item ${activeSubMenu === f.sub || (onRegisterScreen && !historyActive && listOrigin === f.sub) ? 'active' : ''}`}
                                         onClick={() => setActiveSubMenu(f.sub)}>
-                                        ⊙ {f.sub} <span className="badge">{formCounts?.[f.form] ?? 0}</span>
+                                        ⊙ {f.sub} {f.form === 'essay' && <span className="badge">{formCounts?.essay ?? 0}</span>}
                                     </div>
                                 ))}
-                                {/* [QBK-01] 문제 은행 — 정답형 문항 저장소 (스마트 과제 등록 › 정답형) */}
-                                <div
-                                    className={`nav-sub-item ${activeSubMenu === '문제 은행' ? 'active' : ''}`}
-                                    onClick={() => setActiveSubMenu('문제 은행')}
-                                >
-                                    ⊙ 문제 은행
-                                </div>
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '공유된 과제' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('공유된 과제')}

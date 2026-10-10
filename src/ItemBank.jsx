@@ -33,7 +33,9 @@ const btn = (primary, disabled, danger) => ({
 });
 
 // [QBK-01 v1.3] 정답형 문항 가져오기는 문제 은행 안에서 한다 (view: list | import). 서·논술 과제의 문항은 들어오지 않는다
-const ItemBank = ({ initialView = 'list' }) => {
+// [TSK-15 v1.5] 왼쪽 메뉴 「정답형 과제」 = 이 목록. registerItems가 있으면 [+ 새 과제 등록] → 정답형 직접 등록 · 스마트 등록
+const ItemBank = ({ initialView = 'list', title = '문제 은행', registerItems = null, onRegister }) => {
+  const [regOpen, setRegOpen] = useState(false);
   const [view, setView] = useState(initialView);
   const [items, setItems] = useState(null);
   const [passages, setPassages] = useState([]);
@@ -176,9 +178,9 @@ const ItemBank = ({ initialView = 'list' }) => {
       {view === 'import' ? (
         <>
           <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={() => setView('list')} style={{ ...btn(false), padding: '8px 14px' }}>← 문제 은행</button>
+            <button onClick={() => setView('list')} style={{ ...btn(false), padding: '8px 14px' }}>← {title}</button>
             <div>
-              <Crumb path={['과제 관리', '문제 은행']} />
+              <Crumb path={['과제 관리', title]} />
               <div className="page-title">📥 자료에서 문항 가져오기</div>
             </div>
           </header>
@@ -190,13 +192,30 @@ const ItemBank = ({ initialView = 'list' }) => {
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <Crumb path={['과제 관리']} />
-          <div className="page-title">문제 은행</div>
+          <div className="page-title">{registerItems ? '✅ ' : ''}{title}</div>
         </div>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>
-        <button onClick={() => setView('import')} style={{ ...btn(true), marginLeft: 'auto' }}>📥 자료에서 문항 가져오기</button>
+        <button onClick={() => setView('import')} style={{ ...btn(!registerItems), marginLeft: 'auto' }}>📥 자료에서 문항 가져오기</button>
+        {registerItems && (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setRegOpen((v) => !v)} aria-haspopup="true" aria-expanded={regOpen} style={btn(true)}>+ 새 과제 등록 ▾</button>
+            {regOpen && (
+              <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 50, width: 320, background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, boxShadow: '0 16px 40px rgba(15,23,42,0.18)', padding: 6 }}>
+                {registerItems.map((m) => (
+                  <button key={m.mode} role="menuitem" onClick={() => { setRegOpen(false); onRegister?.(m.mode); }}
+                    style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 10, padding: '10px 12px', border: 'none', background: 'transparent', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#EFF6FF'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                    <span style={{ fontSize: '1.3rem' }}>{m.icon}</span>
+                    <span><b style={{ display: 'block', fontSize: 'var(--neo-font-size-base)' }}>{m.label}</b><span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{m.desc}</span></span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </header>
       <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', margin: '-4px 0 10px' }}>
-        정답형 문항 저장소입니다. <b>서·논술 과제의 문항은 포함되지 않으며</b> 과제 관리에서 관리합니다.
+        정답형 문항·문제집 목록입니다. <b>서·논술형 과제의 문항은 포함되지 않으며</b> 서·논술형 과제에서 관리합니다.
       </div>
 
       <div role="tablist" style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid #E2E8F0' }}>

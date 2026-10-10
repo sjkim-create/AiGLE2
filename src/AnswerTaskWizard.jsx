@@ -48,7 +48,7 @@ const BankPicker = ({ takenIds, onAdd }) => {
   const byId = useMemo(() => Object.fromEntries((items || []).map((i) => [i.id, i])), [items]);
   const pById = useMemo(() => Object.fromEntries(passages.map((p) => [p.id, p])), [passages]);
   if (items === null) return <div style={{ color: '#94A3B8', padding: 20 }}>불러오는 중…</div>;
-  if (!items.length) return <IssueList issues={[{ level: 'info', field: '문제 은행', message: '문제 은행에 정답형 문항이 없습니다. 「자료에서 가져오기」나 「직접 작성」으로 문항을 담아 주세요.' }]} />;
+  if (!items.length) return <IssueList issues={[{ level: 'info', field: '문제 은행', message: '문제 은행에 정답형 문항이 없습니다. 「직접 작성」으로 담거나 「정답형 스마트 등록」으로 자료에서 가져와 주세요.' }]} />;
   const visible = items.filter((i) => (type === 'all' || i.itemType === type) && (!q.trim() || `${i.stem} ${(i.choices || []).map((c) => c.text).join(' ')}`.includes(q.trim())));
   const chosen = visible.filter((i) => sel[i.id] && !takenIds.has(i.id));
   const addWorkbook = (wb) => onAdd(wb.itemIds.map((id) => byId[id]).filter((i) => i && !takenIds.has(i.id)), pById);

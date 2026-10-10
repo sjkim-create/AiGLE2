@@ -17,6 +17,14 @@ export const REGISTER_GROUPS = [
 ];
 
 // [TSK-15 v1.4] 왼쪽 메뉴 「과제 관리」 아래 형태별 과제 목록 — 등록은 각 목록의 [+ 새 과제 등록]에서 직접/스마트로 분기
+// [TSK-15 v1.5] 과제 관리(기존) [+ 새 과제 등록] — 정리 전과 같은 3가지
+export const LEGACY_REGISTER = [
+  { mode: 'direct', icon: '📝', label: '직접 입력', desc: '문제 텍스트·이미지를 시스템 내에서 직접 작성합니다.' },
+  { mode: 'direct2', icon: '🧩', label: '직접 입력 2', desc: '탭 단계형 입력 — 문항 → 자동/자율 채점 기준 → 등급 환산까지 단계별로 작성합니다.' },
+  { mode: 'upload', icon: '📷', label: '파일 업로드', desc: '기존 종이 양식(PDF/이미지)을 업로드하여 그대로 학생 문답지로 사용합니다.' },
+];
+
+// 서·논술형 과제 = 과제 관리 목록과 같은 화면(서·논술형만) · 정답형 과제 = 문제 은행 목록 (v1.5 — 문제 은행 메뉴 삭제)
 export const FORM_LISTS = [
   { sub: '서·논술형 과제', form: 'essay', icon: '📝', group: REGISTER_GROUPS[0] },
   { sub: '정답형 과제', form: 'answer', icon: '✅', group: REGISTER_GROUPS[1] },
