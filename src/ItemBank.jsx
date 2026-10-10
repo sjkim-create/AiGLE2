@@ -16,7 +16,7 @@ import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
 import { WorkbookInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
-import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordLayoutOptions, WordSheet, wordIssues, normMode } from './WordWorkbook';
+import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordOrderTools, WordLayoutOptions, WordSheet, wordIssues, normMode, blankOf } from './WordWorkbook';
 
 const Crumb = ({ path }) => (
   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
@@ -393,11 +393,14 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                       </div>
                     </WorkbookInfoCard>
                   )}
-                  {wbStep === 2 && <WordEditor words={words} mode={wb.mode} onChange={(next, commit) => { setW({ words: next }); if (commit) save({ ...wb, words: next }); }} onCommit={() => save(wb)} />}
+                  {wbStep === 2 && <WordEditor words={words} mode={wb.mode} onNotice={setToast} onChange={(next, commit) => { setW({ words: next }); if (commit) save({ ...wb, words: next }); }} onCommit={() => save(wb)} />}
                   {wbStep === 3 && (
                     <>
                       <WordLayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualW}</WordLayoutOptions>
-                      <WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize={wbActual} />
+                      <WordOrderTools words={words} mode={wb.mode} onChange={(next) => save({ ...wb, words: next })} />
+                      <WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize={wbActual}
+                        editMode onOrder={(next) => save({ ...wb, words: next })}
+                        onToggleBlank={(id) => save({ ...wb, words: words.map((w) => (w.id === id ? { ...w, blank: blankOf(w, wb.mode) === 'word' ? 'meaning' : 'word' } : w)) })} />
                     </>
                   )}
                 </>

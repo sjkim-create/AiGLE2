@@ -10,6 +10,7 @@
 import React from 'react';
 import { newId } from './lib/itemBank';
 import { PAPERS } from './WorkbookLayout';
+import { readXlsxRows, makeXlsxBlob, downloadBlob } from './lib/xlsxLite';
 
 // [v1.28] 출제 방식 — 낱말 시험(입력은 늘 영어 → 한글, 빈칸은 낱말마다 영어/한글) / 받아쓰기
 //   舊 meaning(영→한) · spelling(한→영)은 낱말 시험으로 읽는다 (spelling이었으면 빈칸 기본값이 영어)
@@ -50,79 +51,100 @@ export const wordIssues = (words, mode) => {
   return msgs;
 };
 
-// ② 낱말 입력 — onChange(next, commit): 글자 입력은 화면에만(commit=false), 줄 추가·빼기·순서·붙여넣기는 바로 저장(commit=true). 입력 칸을 벗어나면 저장(onCommit)
-export const WordEditor = ({ words, mode: rawMode, onChange, onCommit }) => {
+// ② 낱말 입력 — 입력만(번호 · 영어 · 한글 · ✕). 순서 · 빈칸은 ③ 문제집 배치에서 (v1.29)
+//   onChange(next, commit): 글자 입력은 화면에만(commit=false), 줄 추가·빼기·붙여넣기·엑셀은 바로 저장(commit=true). 입력 칸을 벗어나면 저장(onCommit)
+//   엑셀 — [⬇️ 양식 내려받기] A열 영어 낱말 · B열 한글 뜻 / [📤 엑셀 올리기] 2행부터 읽어 끝에 덧붙인다
+export const WordEditor = ({ words, mode: rawMode, onChange, onCommit, onNotice }) => {
   const mode = normMode(rawMode);
   const M = WORD_MODES[mode];
-  const vocab = mode === 'vocab';
-  // 빈칸 · 순서 한꺼번에 — 번갈아(1번 영어 빈칸, 2번 한글 빈칸 …) · 무작위 · 모두 한글 · 모두 영어 · 순서 섞기
-  const setBlanks = (fn) => onChange(words.map((w, i) => ({ ...w, blank: fn(w, i) })), true);
-  const shuffle = () => { const n = [...words]; for (let i = n.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [n[i], n[j]] = [n[j], n[i]]; } onChange(n, true); };
+  const dict = mode === 'dictation';
   const [paste, setPaste] = React.useState('');
+  const fileRef = React.useRef(null);
   const set = (i, patch) => onChange(words.map((w, j) => (j === i ? { ...w, ...patch } : w)));
-  const move = (i, d) => { const j = i + d; if (j < 0 || j >= words.length) return; const n = [...words]; [n[i], n[j]] = [n[j], n[i]]; onChange(n, true); };
   const issues = wordIssues(words, mode);
+  const kept = () => words.filter((w) => w.word.trim() || w.meaning.trim());
+  const downloadTemplate = () => {
+    const rows = dict ? [['불러 줄 낱말·문장', '메모'], ['무릎', ''], ['읽고 찾기', '']] : [['영어 낱말', '한글 뜻'], ['apple', '사과'], ['run', '달리다, 뛰다']];
+    downloadBlob(makeXlsxBlob(rows, { sheetName: '낱말', widths: [24, 32] }), dict ? '받아쓰기_양식.xlsx' : '낱말_양식.xlsx');
+  };
+  const upload = async (file) => {
+    if (!file) return;
+    try {
+      const rows = await readXlsxRows(file);
+      const added = rows.slice(1).map((r) => ({ id: newId('w'), word: String(r.A ?? '').trim(), meaning: String(r.B ?? '').trim(), blank: 'meaning' })).filter((w) => w.word || w.meaning);
+      if (!added.length) { onNotice?.('엑셀 2행부터 A열(영어 낱말) · B열(한글 뜻)에 낱말이 없습니다. 양식을 내려받아 확인해 주세요.'); return; }
+      onChange([...kept(), ...added], true);
+      const noMeaning = dict ? 0 : added.filter((w) => w.word && !w.meaning).length;
+      onNotice?.(`엑셀에서 낱말 ${added.length}개를 추가했습니다.${noMeaning ? ` 뜻이 비어 있는 낱말 ${noMeaning}개가 있습니다.` : ''}`);
+    } catch (err) {
+      onNotice?.(err?.message || '엑셀 파일을 읽을 수 없습니다.');
+    } finally { if (fileRef.current) fileRef.current.value = ''; }
+  };
+  const grid = '40px 1fr 1fr 44px';
   return (
-    <div onBlurCapture={(e) => { if (e.target.tagName === 'INPUT') onCommit?.(); }} style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div onBlurCapture={(e) => { if (e.target.tagName === 'INPUT' && e.target.type !== 'file') onCommit?.(); }} style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <b style={{ fontSize: 'var(--neo-font-size-sm)' }}>{M.icon} {M.label} · 낱말 {words.length}개</b>
         {issues.map((m) => <span key={m} style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ {m}</span>)}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button type="button" onClick={downloadTemplate} style={{ ...smallBtn(), padding: '6px 12px' }}>⬇️ 양식 내려받기</button>
+          <button type="button" onClick={() => fileRef.current?.click()} style={{ ...smallBtn(), padding: '6px 12px', border: '1px solid #2A75F3', color: '#1D4ED8' }}>📤 엑셀 올리기</button>
+          <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="엑셀 파일 선택" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
+        </span>
       </div>
-      {words.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', background: '#F8FAFC', borderRadius: 10, padding: '8px 10px' }}>
-          <span style={optLabel}>순서</span>
-          <button type="button" onClick={shuffle} style={smallBtn()}>🔀 순서 섞기</button>
-          {vocab && (
-            <>
-              <span style={{ ...optLabel, marginLeft: 8 }}>빈칸</span>
-              <button type="button" onClick={() => setBlanks((w, i) => (i % 2 === 0 ? 'word' : 'meaning'))} title="1번 영어 빈칸, 2번 한글 빈칸 … 번갈아" style={smallBtn()}>↔ 번갈아</button>
-              <button type="button" onClick={() => setBlanks(() => (Math.random() < 0.5 ? 'word' : 'meaning'))} style={smallBtn()}>🎲 무작위</button>
-              <button type="button" onClick={() => setBlanks(() => 'meaning')} style={smallBtn()}>모두 한글 빈칸</button>
-              <button type="button" onClick={() => setBlanks(() => 'word')} style={smallBtn()}>모두 영어 빈칸</button>
-            </>
-          )}
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: vocab ? '40px 1fr 1fr 110px 120px' : '40px 1fr 1fr 120px', gap: 6, alignItems: 'center', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
-        <span>번호</span><span>{mode === 'dictation' ? '불러 줄 낱말·문장 (정답)' : '영어 낱말'}</span><span>{mode === 'dictation' ? '메모 (선택)' : '한글 뜻 (여러 개는 쉼표로)'}</span>{vocab && <span>빈칸</span>}<span />
+      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
+        엑셀: A열 {dict ? '불러 줄 낱말·문장' : '영어 낱말'} · B열 {dict ? '메모' : '한글 뜻'}, 1행은 머리글 — 2행부터 읽어 목록 끝에 덧붙입니다. 순서와 빈칸은 「문제집 배치」에서 정합니다.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
+        <span>번호</span><span>{dict ? '불러 줄 낱말·문장 (정답)' : '영어 낱말'}</span><span>{dict ? '메모 (선택)' : '한글 뜻 (여러 개는 쉼표로)'}</span><span />
       </div>
       {words.map((w, i) => (
-        <div key={w.id} style={{ display: 'grid', gridTemplateColumns: vocab ? '40px 1fr 1fr 110px 120px' : '40px 1fr 1fr 120px', gap: 6, alignItems: 'center' }}>
+        <div key={w.id} style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center' }}>
           <span style={{ fontWeight: 900, color: '#2A75F3' }}>{i + 1}</span>
-          <input value={w.word} onChange={(e) => set(i, { word: e.target.value })} aria-label={`${i + 1}번 낱말`} placeholder={mode === 'dictation' ? '예: 무릎을 꿇다' : '예: apple'}
+          <input value={w.word} onChange={(e) => set(i, { word: e.target.value })} aria-label={`${i + 1}번 낱말`} placeholder={dict ? '예: 무릎을 꿇다' : '예: apple'}
             style={{ ...input, border: `1px solid ${w.word.trim() ? '#CBD5E1' : '#FCA5A5'}` }} />
-          <input value={w.meaning} onChange={(e) => set(i, { meaning: e.target.value })} aria-label={`${i + 1}번 뜻`} placeholder={mode === 'dictation' ? '' : '예: 사과'}
-            style={{ ...input, border: `1px solid ${mode !== 'dictation' && w.word.trim() && !w.meaning.trim() ? '#FCA5A5' : '#CBD5E1'}` }} />
-          {vocab && (
-            <span style={{ display: 'flex', gap: 2 }} role="radiogroup" aria-label={`${i + 1}번 빈칸`}>
-              {['word', 'meaning'].map((k) => {
-                const on = blankOf(w, rawMode) === k;
-                return <button key={k} type="button" role="radio" aria-checked={on} onClick={() => onChange(words.map((x, j) => (j === i ? { ...x, blank: k } : x)), true)}
-                  style={{ ...smallBtn(), ...(on ? { background: '#2A75F3', color: 'white', border: '1px solid #2A75F3' } : {}) }}>{BLANK_LABEL[k]}</button>;
-              })}
-            </span>
-          )}
-          <span style={{ display: 'flex', gap: 4 }}>
-            <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`${i + 1}번 위로`} style={smallBtn()}>↑</button>
-            <button type="button" onClick={() => move(i, 1)} disabled={i === words.length - 1} aria-label={`${i + 1}번 아래로`} style={smallBtn()}>↓</button>
-            <button type="button" onClick={() => onChange(words.filter((_, j) => j !== i), true)} aria-label={`${i + 1}번 빼기`} style={smallBtn(true)}>✕</button>
-          </span>
+          <input value={w.meaning} onChange={(e) => set(i, { meaning: e.target.value })} aria-label={`${i + 1}번 뜻`} placeholder={dict ? '' : '예: 사과'}
+            style={{ ...input, border: `1px solid ${!dict && w.word.trim() && !w.meaning.trim() ? '#FCA5A5' : '#CBD5E1'}` }} />
+          <button type="button" onClick={() => onChange(words.filter((_, j) => j !== i), true)} aria-label={`${i + 1}번 빼기`} style={smallBtn(true)}>✕</button>
         </div>
       ))}
       <div>
         <button type="button" onClick={() => onChange([...words, { id: newId('w'), word: '', meaning: '', blank: 'meaning' }], true)} style={{ ...smallBtn(), padding: '6px 12px' }}>+ 한 줄 추가</button>
       </div>
       <div style={{ borderTop: '1px dashed #E2E8F0', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={optLabel}>여러 개 붙여넣기 — 한 줄에 하나{mode === 'dictation' ? '' : ' · 「낱말 [Tab] 뜻」 (엑셀 두 열 복사) 또는 「낱말 | 뜻」'}</span>
+        <span style={optLabel}>여러 개 붙여넣기 — 한 줄에 하나{dict ? '' : ' · 「낱말 [Tab] 뜻」 (엑셀 두 열 복사) 또는 「낱말 | 뜻」'}</span>
         <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4} aria-label="낱말 붙여넣기"
-          placeholder={mode === 'dictation' ? '무릎\n넓다\n읽고 찾기' : 'apple\t사과\nrun | 달리다, 뛰다'} style={{ ...input, fontFamily: 'monospace' }} />
+          placeholder={dict ? '무릎\n넓다\n읽고 찾기' : 'apple\t사과\nrun | 달리다, 뛰다'} style={{ ...input, fontFamily: 'monospace' }} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button type="button" disabled={!paste.trim()} onClick={() => { onChange([...words.filter((w) => w.word.trim() || w.meaning.trim()), ...parseWordPaste(paste, mode)], true); setPaste(''); }}
+          <button type="button" disabled={!paste.trim()} onClick={() => { onChange([...kept(), ...parseWordPaste(paste, mode)], true); setPaste(''); }}
             style={{ ...smallBtn(), padding: '6px 12px', background: paste.trim() ? '#2A75F3' : '#E2E8F0', color: paste.trim() ? 'white' : '#94A3B8', border: '1px solid transparent', cursor: paste.trim() ? 'pointer' : 'not-allowed' }}>
             붙여넣은 {parseWordPaste(paste, mode).length}개 추가
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ③ 문제집 배치 — 순서 · 빈칸 한꺼번에 (낱말 시험만 빈칸) · 시험지 위에서는 끌어서 순서, 눌러서 빈칸 바꾸기
+export const WordOrderTools = ({ words, mode: rawMode, onChange }) => {
+  const vocab = normMode(rawMode) === 'vocab';
+  const setBlanks = (fn) => onChange(words.map((w, i) => ({ ...w, blank: fn(w, i) })));
+  const shuffle = () => { const n = [...words]; for (let i = n.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [n[i], n[j]] = [n[j], n[i]]; } onChange(n); };
+  return (
+    <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '10px 16px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <span style={optLabel}>순서</span>
+      <button type="button" onClick={shuffle} style={smallBtn()}>🔀 순서 섞기</button>
+      {vocab && (
+        <>
+          <span style={{ ...optLabel, marginLeft: 10 }}>빈칸</span>
+          <button type="button" onClick={() => setBlanks((w, i) => (i % 2 === 0 ? 'word' : 'meaning'))} title="1번 영어 빈칸, 2번 한글 빈칸 … 번갈아" style={smallBtn()}>↔ 번갈아</button>
+          <button type="button" onClick={() => setBlanks(() => (Math.random() < 0.5 ? 'word' : 'meaning'))} style={smallBtn()}>🎲 무작위</button>
+          <button type="button" onClick={() => setBlanks(() => 'meaning')} style={smallBtn()}>모두 한글 빈칸</button>
+          <button type="button" onClick={() => setBlanks(() => 'word')} style={smallBtn()}>모두 영어 빈칸</button>
+        </>
+      )}
+      <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>시험지에서 낱말을 끌면 순서{vocab ? ', 누르면 빈칸(영어↔한글)' : ''}이 바뀝니다</span>
     </div>
   );
 };
@@ -152,8 +174,34 @@ export const WordLayoutOptions = ({ layout, onChange, children }) => {
 };
 
 // ③ 문제집 배치 — 번호 · (보여 줄 것) · 답 칸. 단을 위에서부터 채우고 넘치면 다음 단 · 다음 쪽
-export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, actualSize = false }) => {
+// editMode — 낱말을 끌어 다른 낱말 위에 놓으면 그 번호 자리로(onOrder), 누르면 빈칸 영어↔한글(onToggleBlank, 낱말 시험만)
+export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, actualSize = false, editMode = false, onOrder, onToggleBlank }) => {
   const mode = normMode(rawMode);
+  const [dragId, setDragId] = React.useState(null);
+  const [overId, setOverId] = React.useState(null);
+  const ids = words.map((w) => w.id);
+  const dropTo = (targetId) => {
+    if (!dragId || dragId === targetId) return;
+    const from = ids.indexOf(dragId); const to = ids.indexOf(targetId);
+    const n = words.filter((w) => w.id !== dragId);
+    const at = n.findIndex((w) => w.id === targetId) + (to > from ? 1 : 0); // 아래로 끌면 대상 뒤, 위로 끌면 대상 앞 = 대상 번호 자리
+    n.splice(at, 0, words[from]);
+    onOrder?.(n);
+  };
+  const rowEdit = (w, no) => (editMode ? {
+    draggable: true,
+    onDragStart: (ev) => { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', w.id); setDragId(w.id); },
+    onDragEnd: () => { setDragId(null); setOverId(null); },
+    onDragOver: (ev) => { if (!dragId) return; ev.preventDefault(); if (overId !== w.id) setOverId(w.id); },
+    onDrop: (ev) => { ev.preventDefault(); dropTo(w.id); setDragId(null); setOverId(null); },
+    onClick: () => { if (mode === 'vocab') onToggleBlank?.(w.id); },
+    title: mode === 'vocab' ? `${no}번 — 끌어서 순서 · 누르면 빈칸 ${blankOf(w, rawMode) === 'word' ? '한글' : '영어'}으로` : `${no}번 — 끌어서 순서`,
+    'data-edit-row': true,
+  } : {});
+  const rowEditStyle = (w) => (editMode ? {
+    cursor: 'grab', outline: overId === w.id && dragId !== w.id ? '2px solid #2A75F3' : '1px dashed #93C5FD', outlineOffset: 1,
+    background: overId === w.id && dragId !== w.id ? 'rgba(42,117,243,0.08)' : undefined, opacity: dragId === w.id ? 0.4 : 1,
+  } : {});
   const L = { ...DEFAULT_WORD_LAYOUT, ...(layout || {}) };
   const M = WORD_MODES[mode];
   const paper = PAPERS[L.paper] || PAPERS.A4;
@@ -220,14 +268,14 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
                 <div key={ci} style={{ width: colW, flex: '0 0 auto', ...(L.style === 'table' && (pg.cols[ci] || []).length ? { border: '1px solid #334155', borderBottom: 'none', alignSelf: 'flex-start' } : {}) }}>
                   {(pg.cols[ci] || []).map(({ w, no }) => (L.style === 'table' ? (
                     // 표 — 번호 | 보여 줄 것 | 답 칸
-                    <div key={w.id} data-word-row style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box' }}>
+                    <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box', ...rowEditStyle(w) }}>
                       <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{no}</b>
                       {hasShown && <span style={{ flex: '0 1 45%', display: 'flex', alignItems: 'center', padding: '0 6px', borderRight: '1px solid #334155', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shownOf(w)}</span>}
                       <span style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 6px', minWidth: 40, ...answerStyle }}>{L.answerKey ? answerOf(w) : ''}</span>
                     </div>
                   ) : (
                     // 밑줄 — 번호 · 보여 줄 것 · 답 줄
-                    <div key={w.id} data-word-row style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 4, boxSizing: 'border-box' }}>
+                    <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 4, boxSizing: 'border-box', ...rowEditStyle(w) }}>
                       <b style={{ minWidth: 26 }}>{no}.</b>
                       {hasShown && <span style={{ flex: '0 1 45%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shownOf(w)}</span>}
                       <span style={{ flex: 1, borderBottom: '1px solid #334155', minWidth: 40, paddingLeft: 4, ...answerStyle }}>{L.answerKey ? answerOf(w) : ' '}</span>
