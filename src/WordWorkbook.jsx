@@ -65,7 +65,9 @@ export const wordIssues = (words, mode) => {
 //   줄 추가·빼기·붙여넣기·엑셀은 바로 onSave, 글자 입력은 0.5초 쉬면 · 칸을 벗어나면 · 화면을 떠나면 onSave
 //   엑셀 — [⬇️ 양식 내려받기] A열 영어 낱말 · B열 한글 뜻 / [📤 엑셀 올리기] 2행부터 읽어 끝에 덧붙인다
 // ai — { cur, codes } : 기본 정보에서 고른 성취기준으로 [✨ AI로 낱말 만들기] (낱말 시험만)
-export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotice, ai = null }) => {
+// dictLang — 받아쓰기 언어(국어 · 영어): 입력 예시 · 양식 이름
+export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotice, ai = null, dictLang = '국어' }) => {
+  const [dragOn, setDragOn] = React.useState(false);
   const [words, setWords] = React.useState(initialWords || []);
   const latest = React.useRef(words); latest.current = words;
   const saveRef = React.useRef(onSave); saveRef.current = onSave;
@@ -89,8 +91,9 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
   const issues = wordIssues(words, mode);
   const kept = () => words.filter((w) => w.word.trim() || w.meaning.trim());
   const downloadTemplate = () => {
-    const rows = dict ? [['불러 줄 낱말·문장', '메모'], ['무릎', ''], ['읽고 찾기', '']] : [['영어 낱말', '한글 뜻'], ['apple', '사과'], ['run', '달리다, 뛰다']];
-    downloadBlob(makeXlsxBlob(rows, { sheetName: '낱말', widths: [24, 32] }), dict ? '받아쓰기_양식.xlsx' : '낱말_양식.xlsx');
+    const engDict = dict && dictLang === '영어';
+    const rows = dict ? [['불러 줄 낱말·문장', '메모'], ...(engDict ? [['apple', ''], ['How are you?', '']] : [['무릎', ''], ['읽고 찾기', '']])] : [['영어 낱말', '한글 뜻'], ['apple', '사과'], ['run', '달리다, 뛰다']];
+    downloadBlob(makeXlsxBlob(rows, { sheetName: '낱말', widths: [24, 32] }), dict ? `받아쓰기_${dictLang}_양식.xlsx` : '낱말_양식.xlsx');
   };
   const upload = async (file) => {
     if (!file) return;
@@ -109,25 +112,17 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
   return (
     <div onBlurCapture={(e) => { if (e.target.tagName === 'INPUT' && e.target.type !== 'file') onCommit?.(); }} style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <b style={{ fontSize: 'var(--neo-font-size-sm)' }}>{M.icon} {M.label} · 낱말 {words.length}개</b>
+        <b style={{ fontSize: 'var(--neo-font-size-sm)' }}>{M.icon} {M.label}{dict ? ` · ${dictLang}` : ''} · 낱말 {words.length}개</b>
         {issues.map((m) => <span key={m} style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ {m}</span>)}
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button type="button" onClick={downloadTemplate} style={{ ...smallBtn(), padding: '6px 12px' }}>⬇️ 양식 내려받기</button>
-          <button type="button" onClick={() => fileRef.current?.click()} style={{ ...smallBtn(), padding: '6px 12px', border: '1px solid #2A75F3', color: '#1D4ED8' }}>📤 엑셀 올리기</button>
-          <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="엑셀 파일 선택" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
-        </span>
       </div>
       {!dict && ai && <WordAIPanel ai={ai} existing={words} onAdd={(added) => { onChange([...kept(), ...added], true); onNotice?.(`AI가 만든 낱말 ${added.length}개를 추가했습니다. 뜻과 수준을 확인해 주세요.`); }} />}
-      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-        엑셀: A열 {dict ? '불러 줄 낱말·문장' : '영어 낱말'} · B열 {dict ? '메모' : '한글 뜻'}, 1행은 머리글 — 2행부터 읽어 목록 끝에 덧붙입니다. 순서와 빈칸은 「문제집 배치」에서 정합니다.
-      </div>
       <div style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
         <span>번호</span><span>{dict ? '불러 줄 낱말·문장 (정답)' : '영어 낱말'}</span><span>{dict ? '메모 (선택)' : '한글 뜻 (여러 개는 쉼표로)'}</span><span />
       </div>
       {words.map((w, i) => (
         <div key={w.id} style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center' }}>
           <span style={{ fontWeight: 900, color: '#2A75F3', display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>{i + 1}{w.ai && <span title={`AI가 만든 낱말${w.standard ? ` · 근거 ${w.standard}` : ''} — 확인해 주세요`} style={{ fontSize: 9, fontWeight: 800, color: '#7C3AED' }}>AI</span>}</span>
-          <input value={w.word} onChange={(e) => set(i, { word: e.target.value })} aria-label={`${i + 1}번 낱말`} placeholder={dict ? '예: 무릎을 꿇다' : '예: apple'}
+          <input value={w.word} onChange={(e) => set(i, { word: e.target.value })} aria-label={`${i + 1}번 낱말`} placeholder={dict ? (dictLang === '영어' ? '예: How are you?' : '예: 무릎을 꿇다') : '예: apple'}
             style={{ ...input, border: `1px solid ${w.word.trim() ? '#CBD5E1' : '#FCA5A5'}` }} />
           <input value={w.meaning} onChange={(e) => set(i, { meaning: e.target.value })} aria-label={`${i + 1}번 뜻`} placeholder={dict ? '' : '예: 사과'}
             style={{ ...input, border: `1px solid ${!dict && w.word.trim() && !w.meaning.trim() ? '#FCA5A5' : '#CBD5E1'}` }} />
@@ -137,10 +132,24 @@ export const WordEditor = ({ words: initialWords, mode: rawMode, onSave, onNotic
       <div>
         <button type="button" onClick={() => onChange([...words, { id: newId('w'), word: '', meaning: '' }], true)} style={{ ...smallBtn(), padding: '6px 12px' }}>+ 한 줄 추가</button>
       </div>
-      <div style={{ borderTop: '1px dashed #E2E8F0', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ borderTop: '1px dashed #E2E8F0', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* [v1.37] 엑셀 — 양식 내려받기 · 올리기(버튼 또는 파일을 끌어 놓기) */}
+        <div onDragOver={(e) => { e.preventDefault(); if (!dragOn) setDragOn(true); }} onDragLeave={() => setDragOn(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOn(false); upload(e.dataTransfer.files?.[0]); }}
+          aria-label="엑셀 파일을 끌어 놓는 곳"
+          style={{ border: `2px dashed ${dragOn ? '#2A75F3' : '#CBD5E1'}`, background: dragOn ? '#EFF6FF' : '#F8FAFC', borderRadius: 12, padding: '14px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '1.3rem' }}>📊</span>
+          <span style={{ flex: 1, minWidth: 220, fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
+            <b>엑셀 파일을 여기로 끌어 놓거나</b> [📤 엑셀 올리기]를 누르세요.
+            <span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>A열 {dict ? '불러 줄 낱말·문장' : '영어 낱말'} · B열 {dict ? '메모' : '한글 뜻'}, 1행은 머리글 — 2행부터 읽어 목록 끝에 덧붙입니다.</span>
+          </span>
+          <button type="button" onClick={downloadTemplate} style={{ ...smallBtn(), padding: '6px 12px' }}>⬇️ 양식 내려받기</button>
+          <button type="button" onClick={() => fileRef.current?.click()} style={{ ...smallBtn(), padding: '6px 12px', border: '1px solid #2A75F3', color: '#1D4ED8' }}>📤 엑셀 올리기</button>
+          <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="엑셀 파일 선택" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} />
+        </div>
         <span style={optLabel}>여러 개 붙여넣기 — 한 줄에 하나{dict ? '' : ' · 「낱말 [Tab] 뜻」 (엑셀 두 열 복사) 또는 「낱말 | 뜻」'}</span>
         <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4} aria-label="낱말 붙여넣기"
-          placeholder={dict ? '무릎\n넓다\n읽고 찾기' : 'apple\t사과\nrun | 달리다, 뛰다'} style={{ ...input, fontFamily: 'monospace' }} />
+          placeholder={dict ? (dictLang === '영어' ? 'apple\nHow are you?\nI like it.' : '무릎\n넓다\n읽고 찾기') : 'apple\t사과\nrun | 달리다, 뛰다'} style={{ ...input, fontFamily: 'monospace' }} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button type="button" disabled={!paste.trim()} onClick={() => { onChange([...kept(), ...parseWordPaste(paste, mode)], true); setPaste(''); }}
             style={{ ...smallBtn(), padding: '6px 12px', background: paste.trim() ? '#2A75F3' : '#E2E8F0', color: paste.trim() ? 'white' : '#94A3B8', border: '1px solid transparent', cursor: paste.trim() ? 'pointer' : 'not-allowed' }}>
