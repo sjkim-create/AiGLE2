@@ -181,12 +181,15 @@ export const listSources = async () => {
   return reqDone(db.transaction('sources').objectStore('sources').getAll());
 };
 
+/** 문항 저장 — 저장 시각을 붙여 저장하고, 저장된 문항을 돌려준다 (화면 사본을 이것으로 맞춰야 「고친 내용 있음」이 풀린다) */
 export const putItem = async (item) => {
   const db = await openDb();
   const tx = db.transaction('items', 'readwrite');
-  tx.objectStore('items').put({ ...item, updatedAt: new Date().toISOString() });
+  const saved = { ...item, updatedAt: new Date().toISOString() };
+  tx.objectStore('items').put(saved);
   await txDone(tx);
   window.dispatchEvent(new CustomEvent('aigle:item-bank-changed'));
+  return saved;
 };
 
 export const deleteItems = async (ids) => {

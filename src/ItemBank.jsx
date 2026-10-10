@@ -85,7 +85,9 @@ const ItemBank = ({ onGoRegister }) => {
   const allOn = visible.length > 0 && visible.every((i) => selected[i.id]);
 
   const opened = all.find((i) => i.id === openId);
-  const dirty = draft && opened && JSON.stringify(draft) !== JSON.stringify(opened);
+  // 고친 내용 있음 — 저장 시각·상태처럼 저장할 때 자동으로 붙는 값은 비교하지 않는다
+  const comparable = (it) => { const { updatedAt, status, ...rest } = it || {}; return JSON.stringify(rest); };
+  const dirty = !!(draft && opened && comparable(draft) !== comparable(opened));
   // [QBK-01 v1.2] 목록 | 상세 나란히 — 다른 문항을 누르면 상세가 닫히지 않고 그 문항으로 바뀐다
   //   고친 내용이 있으면 이동 전에 저장 여부를 묻는다 (pendingOpen)
   const [pendingOpen, setPendingOpen] = useState(null);
@@ -107,7 +109,8 @@ const ItemBank = ({ onGoRegister }) => {
   }, []);
 
   const saveDraft = async () => {
-    await putItem({ ...draft, status: isReady(draft) ? 'ready' : 'needs_review' });
+    const saved = await putItem({ ...draft, status: isReady(draft) ? 'ready' : 'needs_review' });
+    setDraft(saved); // 화면 사본을 저장본과 맞춘다
     setToast(`${draft.number}번 문항을 저장했습니다.`);
   };
   const doDelete = async () => {
