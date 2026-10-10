@@ -2,7 +2,7 @@
 
 > 관련 PRD: product-docs `TSK-14 스마트 과제 등록` · `QBK-01 문제 은행`
 > 프로토 구현: `src/lib/itemBank.js` (브라우저 IndexedDB `aigle-item-bank` — 아래 테이블과 같은 구조의 문서 저장)
-> 작성: 2026-10-02 (v1.1 — 문제집·기초학력·양자택일형·단원 단위 성취기준 반영) · 상태: **초안** (상용 정답형 JSON 형식 미확보 — §6)
+> 작성: 2026-10-02 (v1.1 — 문제집·기초학력·양자택일형·단원 단위 성취기준 반영 · v1.2 2026-10-10 — 원본 쪽 이미지 보관·그림 위치(page·box·origin)) · 상태: **초안** (상용 정답형 JSON 형식 미확보 — §6)
 > AI 판단 기준·요청 문구: `AI_추출_설계기준.md`
 
 ## 1. 범위
@@ -41,6 +41,7 @@ item N ─── 1 교육과정 카탈로그 (school_level / grade / curriculum 
 | track | enum | O | `curriculum`(교과) · `basic`(기초학력) — AI 판단, 교사 변경 가능 |
 | skill | varchar(100) | - | 기초학력 학습 기능명 (예: 복잡한 받침 단어 읽기) |
 | exam_scope | json | - | 시험 범위 {units:[자료 표기 단원명], standardCodes:[]} — 지필평가 계획서 단위 |
+| page_images | json | - | (v1.2) 원본 쪽 이미지 `[{no, uri, width, height}]` — 그림 범위 다시 잡기용. 상용은 스토리지 URI, 프로토는 JPEG data URL |
 | ai_model | varchar(50) | - | 분석에 쓴 모델 (비용·품질 추적) |
 | uploaded_at | datetime | O | |
 
@@ -80,7 +81,7 @@ item N ─── 1 교육과정 카탈로그 (school_level / grade / curriculum 
 | explanation | text | - | 해설 |
 | points | decimal(5,2) | - | 배점 (자료에 있을 때). 과제 배치에서 덮어쓸 수 있음 |
 | passage_id | FK | - | item_passage |
-| images | json | - | `[{uri, label, bytes}]` — 상용은 스토리지 URI, 프로토는 data URL |
+| images | json | - | `[{uri, label, bytes, page, box, origin}]` — 상용은 스토리지 URI, 프로토는 data URL. (v1.2) `page`: 원본 쪽 번호 · `box`: `[ymin,xmin,ymax,xmax]` 쪽 크기 대비 0~1000 · `origin`: `ai`(AI가 자름) / `teacher`(교사가 자름) / `upload`(교사가 올림) |
 | school_level_code · grade_id · curriculum_id · subject_id | FK | - | 교육과정 카탈로그 (상용 「아이글_과제 생성 정보」 ID와 동일) |
 | unit_area_id | FK | - | **단원**(카탈로그 핵심평가영역) — 교과 문항의 성취기준은 이 단원 단위 |
 | unit_label | varchar(200) | - | 자료에 적힌 단원 표기 그대로 (교과서 단원명) |
