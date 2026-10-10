@@ -33,7 +33,8 @@ const btn = (primary, disabled, danger) => ({
 
 // 서·논술 과제의 문항은 들어오지 않는다. 문항은 정답형 직접 등록·스마트 등록(TSK-15)으로 쌓인다 (QBK-01 v1.7 — 자료에서 문항 가져오기 삭제)
 // [TSK-15 v1.5] 왼쪽 메뉴 「정답형 과제」 = 이 목록. registerItems가 있으면 [+ 새 과제 등록] → 정답형 직접 등록 · 스마트 등록
-const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister }) => {
+// onMakeTask({ items, passages, title }) — [📐 과제 배치하기]: 고른 문항·문제집으로 정답형 과제를 만든다 (배치 단계부터, TSK-15 v1.7)
+const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, onMakeTask }) => {
   const [regOpen, setRegOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [passages, setPassages] = useState([]);
@@ -91,6 +92,12 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister })
   const typeCounts = ITEM_TYPE_KEYS.reduce((acc, k) => ({ ...acc, [k]: base.filter((i) => i.itemType === k).length }), {});
   const visible = base.filter((i) => type === 'all' || i.itemType === type);
   const chosenIds = Object.keys(selected).filter((id) => selected[id] && all.some((i) => i.id === id));
+  // 과제 배치하기 — 문항과 그 공통 지문을 넘긴다
+  const makeTask = (its, wbTitle) => {
+    if (!its.length || !onMakeTask) return;
+    const ps = [...new Set(its.map((i) => i.passageId).filter(Boolean))].map((id) => passageById[id]).filter(Boolean);
+    onMakeTask({ items: its, passages: ps, title: wbTitle });
+  };
   const allOn = visible.length > 0 && visible.every((i) => selected[i.id]);
 
   const opened = all.find((i) => i.id === openId);
@@ -271,7 +278,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister })
           <span style={{ flex: 1 }} />
           <button onClick={() => setConfirmDelete(chosenIds)} style={btn(false, false, true)}>🗑 삭제</button>
           <button onClick={() => setWbOpen(true)} style={btn(false)}>📚 문제집에 담기</button>
-          <button disabled title="다음 단계에서 만듭니다 — 고른 문항을 평가 문항으로 배치하고 Ncode 시험지로 출력해 채점" style={btn(true, true)}>📐 과제 배치하기 (준비 중)</button>
+          <button disabled={!onMakeTask} onClick={() => makeTask(all.filter((i) => selected[i.id]), '')} title="고른 문항으로 정답형 과제(시험지)를 만듭니다 — 배치 단계부터" style={btn(true, !onMakeTask)}>📐 과제 배치하기</button>
         </div>
       )}
       </>}
@@ -318,7 +325,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister })
                 {Object.entries(WORKBOOK_PURPOSES).map(([k, pp]) => <option key={k} value={k}>{pp.icon} {pp.label}</option>)}
               </select>
               <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
-              <button disabled title="다음 단계에서 만듭니다 — 이 문제집을 평가 문항으로 배치하고 Ncode 시험지로 출력해 채점" style={btn(true, true)}>📐 과제 배치하기 (준비 중)</button>
+              <button disabled={!onMakeTask || !its.length} onClick={() => makeTask(its, wb.title)} title="이 문제집의 문항·순서로 정답형 과제(시험지)를 만듭니다 — 배치 단계부터" style={btn(true, !onMakeTask || !its.length)}>📐 이 문제집으로 과제 만들기</button>
             </div>
             <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', padding: '0 4px' }}>문항 {its.length}개 · 순서는 ↑↓로 바꿉니다. 문항을 빼도 문제 은행에서 지워지지는 않습니다.</div>
             {its.map((it, idx) => (

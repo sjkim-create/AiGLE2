@@ -15,15 +15,9 @@ import ItemEditForm, { ItemEditDialog } from './ItemEditForm';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
 import { IssueList } from './TaskFileGenerate';
 import { buildAnswerTask } from './lib/taskSchema';
-import { ITEM_TYPES, ITEM_TYPE_KEYS, WORKBOOK_PURPOSES, hasAnswer,
-  listItems, listPassages, listWorkbooks, listSources, saveExtraction, putItem } from './lib/itemBank';
+import { ITEM_TYPES, hasAnswer, listSources, saveExtraction, putItem } from './lib/itemBank';
 
 const STEPS = ['문항 모으기', '배치', '기본 정보·저장'];
-const SOURCES = {
-  direct: { icon: '✍️', label: '직접 작성' },
-  file: { icon: '📥', label: '자료에서 가져오기' },
-  bank: { icon: '🗂️', label: '문제 은행에서 고르기' },
-};
 const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '20px 22px', boxSizing: 'border-box' };
 const btn = (primary, disabled) => ({
   padding: '9px 16px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
@@ -31,64 +25,22 @@ const btn = (primary, disabled) => ({
 });
 const input = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' };
 const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 4, display: 'block' };
-const chipBtn = (on) => ({ padding: '6px 12px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', color: on ? '#1D4ED8' : '#475569' });
 const Crumb = ({ path }) => <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>;
 
 // 직접 작성은 ItemEditForm(create) — 문항 편집과 같은 화면
 
-// ───────────── 문제 은행·문제집에서 고르기 ─────────────
-const BankPicker = ({ takenIds, onAdd }) => {
-  const [items, setItems] = useState(null);
-  const [passages, setPassages] = useState([]);
-  const [workbooks, setWorkbooks] = useState([]);
-  const [type, setType] = useState('all');
-  const [q, setQ] = useState('');
-  const [sel, setSel] = useState({});
-  useEffect(() => { Promise.all([listItems(), listPassages(), listWorkbooks()]).then(([a, b, c]) => { setItems(a); setPassages(b); setWorkbooks(c); }).catch(() => setItems([])); }, []);
-  const byId = useMemo(() => Object.fromEntries((items || []).map((i) => [i.id, i])), [items]);
-  const pById = useMemo(() => Object.fromEntries(passages.map((p) => [p.id, p])), [passages]);
-  if (items === null) return <div style={{ color: '#94A3B8', padding: 20 }}>불러오는 중…</div>;
-  if (!items.length) return <IssueList issues={[{ level: 'info', field: '문제 은행', message: '문제 은행에 정답형 문항이 없습니다. 「직접 작성」으로 담거나 「정답형 스마트 등록」으로 자료에서 가져와 주세요.' }]} />;
-  const visible = items.filter((i) => (type === 'all' || i.itemType === type) && (!q.trim() || `${i.stem} ${(i.choices || []).map((c) => c.text).join(' ')}`.includes(q.trim())));
-  const chosen = visible.filter((i) => sel[i.id] && !takenIds.has(i.id));
-  const addWorkbook = (wb) => onAdd(wb.itemIds.map((id) => byId[id]).filter((i) => i && !takenIds.has(i.id)), pById);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {workbooks.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={label}>문제집 통째로 담기</span>
-          {workbooks.map((w) => <button key={w.id} type="button" onClick={() => addWorkbook(w)} style={chipBtn(false)}>{WORKBOOK_PURPOSES[w.purpose]?.icon} {w.title} · {w.itemIds.length}</button>)}
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button type="button" style={chipBtn(type === 'all')} onClick={() => setType('all')}>전체 {items.length}</button>
-        {ITEM_TYPE_KEYS.filter((k) => items.some((i) => i.itemType === k)).map((k) => <button key={k} type="button" style={chipBtn(type === k)} onClick={() => setType(k)}>{ITEM_TYPES[k].icon} {ITEM_TYPES[k].label}</button>)}
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="발문·보기 검색" style={{ ...input, flex: 1, minWidth: 160, width: 'auto' }} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
-        {visible.map((it) => (
-          <div key={it.id} style={{ opacity: takenIds.has(it.id) ? 0.5 : 1 }} title={takenIds.has(it.id) ? '이미 담은 문항' : ''}>
-            <ItemCard item={it} passage={pById[it.passageId]} compact selectable checked={!!sel[it.id] || takenIds.has(it.id)}
-              onToggle={() => !takenIds.has(it.id) && setSel((s) => ({ ...s, [it.id]: !s[it.id] }))} />
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={() => { onAdd(chosen, pById); setSel({}); }} disabled={!chosen.length} style={btn(true, !chosen.length)}>고른 {chosen.length}개 담기</button>
-      </div>
-    </div>
-  );
-};
-
 // ───────────── 마법사 ─────────────
-const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuardChange }) => {
+// initialSource — 'direct'(직접 작성) · 'file'(스마트 — 자료) · 'bank'(정답형 과제 목록의 [📐 과제 배치하기] — initial 문항으로 배치부터)
+// [v1.7] 「문제 은행에서 고르기」 탭 삭제 — 문항·문제집 고르기는 정답형 과제 목록에서만 한다
+const AnswerTaskWizard = ({ initialSource = 'direct', initial = null, onBack, onAdd, onLeaveGuardChange }) => {
   const smart = initialSource === 'file';
-  const [step, setStep] = useState(1);
-  const [tab, setTab] = useState(initialSource);
-  const [entries, setEntries] = useState([]);      // [{ item, points, fromBank, fromFile }]
-  const [passages, setPassages] = useState({});    // id → passage
+  const fromList = initialSource === 'bank';
+  const [step, setStep] = useState(fromList && initial?.items?.length ? 2 : 1);
+  const tab = smart ? 'file' : 'direct';
+  const [entries, setEntries] = useState(() => (initial?.items || []).map((item) => ({ item, points: item.points ?? 1, fromBank: true })));      // [{ item, points, fromBank, fromFile }]
+  const [passages, setPassages] = useState(() => Object.fromEntries((initial?.passages || []).map((p) => [p.id, p])));    // id → passage
   const [pending, setPending] = useState({ sources: [], passages: [] }); // 자료에서 가져온 것 — 문제 은행 저장용
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(initial?.title || '');
   const [saveToBank, setSaveToBank] = useState(true);
   const [done, setDone] = useState(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -154,7 +106,7 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
         <button onClick={back} style={btn(false)}>← 과제 목록</button>
         <div>
           <Crumb path={['과제 관리', '과제 목록', '새 과제 등록']} />
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{smart ? '✨ 정답형 스마트 등록' : '✍️ 정답형 직접 등록'}</h1>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{smart ? '✨ 정답형 스마트 등록' : fromList ? '📐 정답형 과제 배치하기' : '✍️ 정답형 직접 등록'}</h1>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {STEPS.map((l, i) => {
@@ -184,16 +136,14 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
               {step === 1 && (
                 <>
                   <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    {/* 직접 등록 = 직접 작성 · 문제 은행 / 스마트 등록 = 자료에서 가져오기만 */}
-                    {smart ? <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569' }}>📥 자료에서 가져오기</span>
-                      : Object.entries(SOURCES).filter(([k]) => k !== 'file').map(([k, s]) => <button key={k} type="button" onClick={() => setTab(k)} style={chipBtn(tab === k)}>{s.icon} {s.label}</button>)}
+                    {/* 직접 등록 = 직접 작성 / 스마트 등록 = 자료에서 가져오기 (문제 은행 문항은 정답형 과제 목록의 [📐 과제 배치하기]) */}
+                    <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569' }}>{smart ? '📥 자료에서 가져오기' : '✍️ 직접 작성'}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800 }}>담은 문항 {entries.length}개</span>
                     <button onClick={() => setStep(2)} disabled={!entries.length} style={btn(true, !entries.length)}>다음: 배치 →</button>
                   </div>
                   <div style={card}>
                     {tab === 'direct' && <ItemEditForm mode="create" onSubmit={(item) => add([item])} />}
-                    {tab === 'file' && <ItemExtractWizard onPick={onPicked} onBack={() => setTab('direct')} />}
-                    {tab === 'bank' && <BankPicker takenIds={takenIds} onAdd={(items, pById) => { setPassages((p) => ({ ...p, ...Object.fromEntries(items.filter((i) => i.passageId && pById[i.passageId]).map((i) => [i.passageId, pById[i.passageId]])) })); add(items, { fromBank: true }); }} />}
+                    {tab === 'file' && <ItemExtractWizard onPick={onPicked} onBack={back} />}
                   </div>
                 </>
               )}

@@ -11,7 +11,8 @@ import NumberTagPreviewModal from './NumberTagPreviewModal';
 
 // initialEditTask — 과제 상세의 [✏️ 직접 입력 2에서 수정]으로 들어오면 그 과제를 채워서 연다
 // onModeChange — 왼쪽 메뉴 강조를 지금 화면에 맞춘다 (스마트 등록 → 직접 등록 화면에서 수정 등)
-const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank, initialEditTask = null, onModeChange }) => {
+// initialPick — 정답형 과제 목록 [📐 과제 배치하기]로 고른 { items, passages, title }
+const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank, initialEditTask = null, onModeChange, initialPick = null }) => {
   const [editData, setEditData] = useState(() => (initialEditTask ? taskToDirectInputData(initialEditTask) : null));
   // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (✨ 스마트 과제 등록 — TSK-14) / 'generate-answer' (스마트 과제 등록을 정답형으로 바로 시작 — 문제 은행에서 진입)
   // [v3.6] initialMode prop으로 TaskManagement 슬라이딩 패널에서 선택된 모드로 바로 진입 가능
@@ -361,7 +362,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
   // ✅ 정답형 과제 (TSK-15) — 직접 입력 / ✨ 스마트(자료) / 문제 은행에서 고르기
   if (registrationMode === 'answer-direct' || registrationMode === 'answer-smart' || registrationMode === 'answer-bank') {
     const src = { 'answer-direct': 'direct', 'answer-smart': 'file', 'answer-bank': 'bank' }[registrationMode];
-    return <AnswerTaskWizard initialSource={src} onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
+    return <AnswerTaskWizard initialSource={src} initial={src === 'bank' ? initialPick : null} onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
   }
 
   // ✨ 스마트 과제 등록 (TSK-14) — 서·논술형(바로 과제) / 정답형(→ TSK-15 스마트)
