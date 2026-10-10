@@ -9,6 +9,7 @@
 import React from 'react';
 import ItemCard from './ItemCard';
 import { ITEM_TYPES, hasAnswer } from './lib/itemBank';
+import { loadCatalog } from './lib/taskFromFile';
 
 const btn = (primary, disabled) => ({
   padding: '9px 16px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
@@ -120,7 +121,40 @@ export const GRADE_OPTIONS = {
   중학교: ['공통', '1-3학년', '1학년', '2학년', '3학년'],
   고등학교: ['공통', '1학년', '2학년', '3학년'],
 };
+// [v1.25] 교과 · 과목은 교육과정 DB(카탈로그)에 등록된 목록에서 고른다
+//   학교급 · 학년 → DB 학년군(초 1-2 · 3-4 · 5-6 / 중 1-3 / 고 1-3 · 2-3) → 그 학년군의 교과 → 그 교과의 과목
+//   「공통」 또는 DB에 없는 학년(중 1학년 등)은 그 학교급의 모든 학년군에서 찾는다
+const LEVEL_CODE = { 초등학교: 'ELEMENTARY', 중학교: 'MIDDLE', 고등학교: 'HIGH' };
+export const catalogOptions = (cat, schoolLevelName, gradeLabel, curriculumName) => {
+  if (!cat || !LEVEL_CODE[schoolLevelName]) return { curricula: [], subjects: [] };
+  const gradesOfLevel = Object.entries(cat.grades).filter(([, g]) => g.level === LEVEL_CODE[schoolLevelName]);
+  const exact = gradesOfLevel.filter(([, g]) => g.name === gradeLabel);
+  const gradeIds = (exact.length ? exact : gradesOfLevel).map(([id]) => Number(id));
+  const curs = Object.entries(cat.curricula).filter(([, c]) => gradeIds.includes(Number(c.gradeId)));
+  const curricula = [...new Set(curs.map(([, c]) => c.name))];
+  const curIds = curs.filter(([, c]) => c.name === curriculumName).map(([id]) => Number(id));
+  const subjects = [...new Set(Object.values(cat.subjects).filter((sb) => curIds.includes(Number(sb.curriculumId))).map((sb) => sb.name.replace(/\s+/g, ' ').trim()))];
+  return { curricula, subjects };
+};
+
 export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle, onTitleBlur, curriculum, onCurriculum, onCurriculumSave }) => {
+  const [cat, setCat] = React.useState(null);
+  React.useEffect(() => { loadCatalog().then(setCat).catch(() => {}); }, []);
+  const opts = catalogOptions(cat, curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName);
+  const withCurrent = (list, v) => [...new Set([...list, v].filter(Boolean))];
+  const fitCurriculum = (patch) => {
+    const next = { ...curriculum, ...patch };
+    if (!cat) return patch;
+    const o = catalogOptions(cat, next.schoolLevelName, next.gradeLabel, next.curriculumName);
+    const curOk = o.curricula.includes(next.curriculumName);
+    const subOk = curOk && o.subjects.includes(next.subjectName);
+    return { ...patch, curriculumName: curOk ? next.curriculumName : '', subjectName: subOk ? next.subjectName : '' };
+  };
+  // 교과를 바꾸면 맞지 않는 과목은 비우고, 과목이 하나뿐이면 바로 고른다
+  const pickCurriculum = (name) => {
+    const sub = catalogOptions(cat, curriculum.schoolLevelName, curriculum.gradeLabel, name).subjects;
+    set({ curriculumName: name, subjectName: sub.includes(curriculum.subjectName) ? curriculum.subjectName : (sub.length === 1 ? sub[0] : '') }, true);
+  };
   const set = (patch, saveNow) => { const next = { ...curriculum, ...patch }; onCurriculum(next); if (saveNow) onCurriculumSave?.(next); };
   const grades = [...new Set([...(GRADE_OPTIONS[curriculum.schoolLevelName] || ['공통']), curriculum.gradeLabel].filter(Boolean))];
   const row = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(160px, 1fr))', gap: 10 };
@@ -135,19 +169,29 @@ export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle,
           style={{ ...input, borderColor: title.trim() ? '#CBD5E1' : '#FCA5A5' }} /></div>
       <div style={row}>
         <div><span style={label}>학교급</span>
-          <select value={curriculum.schoolLevelName || ''} onChange={(e) => set({ schoolLevelName: e.target.value, gradeLabel: (GRADE_OPTIONS[e.target.value] || []).includes(curriculum.gradeLabel) ? curriculum.gradeLabel : '' }, true)} aria-label="학교급" style={input}>
+          <select value={curriculum.schoolLevelName || ''} onChange={(e) => set(fitCurriculum({ schoolLevelName: e.target.value, gradeLabel: (GRADE_OPTIONS[e.target.value] || []).includes(curriculum.gradeLabel) ? curriculum.gradeLabel : '' }), true)} aria-label="학교급" style={input}>
             <option value="">선택</option>
             {[...new Set([...SCHOOL_LEVELS, curriculum.schoolLevelName].filter(Boolean))].map((x) => <option key={x}>{x}</option>)}
           </select></div>
         <div><span style={label}>학년</span>
-          <select value={curriculum.gradeLabel || ''} onChange={(e) => set({ gradeLabel: e.target.value }, true)} aria-label="학년" style={input}>
+          <select value={curriculum.gradeLabel || ''} onChange={(e) => set(fitCurriculum({ gradeLabel: e.target.value }), true)} aria-label="학년" style={input}>
             <option value="">선택</option>
             {grades.map((g) => <option key={g}>{g}</option>)}
           </select></div>
       </div>
       <div style={row}>
-        <div><span style={label}>교과</span><input value={curriculum.curriculumName || ''} onChange={(e) => set({ curriculumName: e.target.value })} onBlur={() => onCurriculumSave?.(curriculum)} placeholder="예: 국어" aria-label="교과" style={input} /></div>
-        <div><span style={label}>과목</span><input value={curriculum.subjectName || ''} onChange={(e) => set({ subjectName: e.target.value })} onBlur={() => onCurriculumSave?.(curriculum)} placeholder="예: 국어" aria-label="과목" style={input} /></div>
+        <div><span style={label}>교과</span>
+          <select value={curriculum.curriculumName || ''} onChange={(e) => pickCurriculum(e.target.value)} disabled={!curriculum.schoolLevelName} aria-label="교과"
+            title={!curriculum.schoolLevelName ? '학교급을 먼저 골라 주세요.' : ''} style={{ ...input, ...(!curriculum.schoolLevelName ? { background: '#F1F5F9', color: '#94A3B8' } : {}) }}>
+            <option value="">{curriculum.schoolLevelName ? '선택' : '학교급을 먼저 선택'}</option>
+            {withCurrent(opts.curricula, curriculum.curriculumName).map((x) => <option key={x}>{x}</option>)}
+          </select></div>
+        <div><span style={label}>과목</span>
+          <select value={curriculum.subjectName || ''} onChange={(e) => set({ subjectName: e.target.value }, true)} disabled={!curriculum.curriculumName} aria-label="과목"
+            title={!curriculum.curriculumName ? '교과를 먼저 골라 주세요.' : ''} style={{ ...input, ...(!curriculum.curriculumName ? { background: '#F1F5F9', color: '#94A3B8' } : {}) }}>
+            <option value="">{curriculum.curriculumName ? '선택' : '교과를 먼저 선택'}</option>
+            {withCurrent(opts.subjects, curriculum.subjectName).map((x) => <option key={x}>{x}</option>)}
+          </select></div>
       </div>
     </div>
   );
