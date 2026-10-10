@@ -171,8 +171,7 @@ function Setting() {
   // [1주차] 상세보기 — source 분기 라우팅 대상
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
   const [listOrigin, setListOrigin] = useState('과제 관리'); // 등록 화면을 연 목록 — 등록을 마치면 그 목록으로
-  const [regNonce, setRegNonce] = useState(0);
-  const [answerPick, setAnswerPick] = useState(null); // 정답형 과제 목록에서 고른 문항 → 과제 배치하기    // 같은 등록 화면에 있어도 메뉴를 누르면 새로 연다
+  const [regNonce, setRegNonce] = useState(0);    // 같은 등록 화면에 있어도 메뉴를 누르면 새로 연다
   const [curRegMode, setCurRegMode] = useState(null); // 지금 열린 등록 방식 (왼쪽 메뉴 강조)
   const [editTask, setEditTask] = useState(null); // [✏️ 직접 입력 2에서 수정]으로 연 서·논술 과제
   /* [TSK v3.8] 과제 삭제 — 목록·상세 어디서든 같은 확인창을 거친다. 삭제된 id는 목록에서 걷어낸다(프로토타입 로컬 상태) */
@@ -758,7 +757,6 @@ function Setting() {
             <TaskRegistration
               key={editTask?.n || `reg-${regNonce}`}
               onModeChange={setCurRegMode}
-              initialPick={answerPick}
               initialEditTask={editTask?.task || null}
               onBack={() => { setLeaveGuard(null); setEditTask(null); setActiveSubMenu(listOrigin); }}
               showToast={showToast}
@@ -771,7 +769,7 @@ function Setting() {
             /* [TSK-15 v1.5] 정답형 과제 = 문제 은행 목록 · 등록은 정답형 직접 등록 / 스마트 등록 */
             <ItemBank key={itemBankEntry.n} title="정답형 과제" registerItems={REGISTER_GROUPS[1].items}
               onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin('정답형 과제'); setActiveSubMenu('과제 등록'); }}
-              onMakeTask={(pick) => { setEditTask(null); setAnswerPick(pick); setTaskRegistrationMode('answer-bank'); setRegNonce((n) => n + 1); setListOrigin('정답형 과제'); setActiveSubMenu('과제 등록'); }} />
+              onSaveTask={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
               onNavigateToTaskManagement={() => setActiveSubMenu('과제 관리')}

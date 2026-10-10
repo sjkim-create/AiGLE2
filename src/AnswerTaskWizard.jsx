@@ -9,38 +9,35 @@
  * 서·논술 과제와 그 문항은 다루지 않는다. Ncode 시험지 출력·채점은 다음 단계.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import ItemCard from './ItemCard';
 import ItemExtractWizard from './ItemExtractWizard';
 import ItemEditForm, { ItemEditDialog } from './ItemEditForm';
+import { BasicInfoCard, ArrangeRows, topCurriculum } from './AnswerArrange';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
-import { IssueList } from './TaskFileGenerate';
 import { buildAnswerTask } from './lib/taskSchema';
-import { ITEM_TYPES, hasAnswer, listSources, saveExtraction, putItem } from './lib/itemBank';
+import { hasAnswer, listSources, saveExtraction, putItem } from './lib/itemBank';
 
-const STEPS = ['문항 모으기', '배치', '기본 정보·저장'];
+const STEPS = ['문항 모으기', '배치·기본 정보'];
 const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '20px 22px', boxSizing: 'border-box' };
 const btn = (primary, disabled) => ({
   padding: '9px 16px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
   border: primary ? '1px solid #2A75F3' : '1px solid #E2E8F0', background: primary ? '#2A75F3' : 'white', color: primary ? 'white' : '#475569', whiteSpace: 'nowrap',
 });
-const input = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' };
-const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 4, display: 'block' };
 const Crumb = ({ path }) => <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>;
 
 // 직접 작성은 ItemEditForm(create) — 문항 편집과 같은 화면
 
 // ───────────── 마법사 ─────────────
-// initialSource — 'direct'(직접 작성) · 'file'(스마트 — 자료) · 'bank'(정답형 과제 목록의 [📐 과제 배치하기] — initial 문항으로 배치부터)
-// [v1.7] 「문제 은행에서 고르기」 탭 삭제 — 문항·문제집 고르기는 정답형 과제 목록에서만 한다
-const AnswerTaskWizard = ({ initialSource = 'direct', initial = null, onBack, onAdd, onLeaveGuardChange }) => {
+// initialSource — 'direct'(직접 작성) · 'file'(스마트 — 자료)
+// [v1.7] 문항·문제집 고르기는 정답형 과제 목록(문제집 상세)에서 한다 · [v1.8] 배치와 기본 정보를 한 화면에서
+const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuardChange }) => {
   const smart = initialSource === 'file';
-  const fromList = initialSource === 'bank';
-  const [step, setStep] = useState(fromList && initial?.items?.length ? 2 : 1);
+  const [step, setStep] = useState(1);
   const tab = smart ? 'file' : 'direct';
-  const [entries, setEntries] = useState(() => (initial?.items || []).map((item) => ({ item, points: item.points ?? 1, fromBank: true })));      // [{ item, points, fromBank, fromFile }]
-  const [passages, setPassages] = useState(() => Object.fromEntries((initial?.passages || []).map((p) => [p.id, p])));    // id → passage
+  const [entries, setEntries] = useState([]);      // [{ item, points, fromFile }]
+  const [passages, setPassages] = useState({});    // id → passage
   const [pending, setPending] = useState({ sources: [], passages: [] }); // 자료에서 가져온 것 — 문제 은행 저장용
-  const [title, setTitle] = useState(initial?.title || '');
+  const [title, setTitle] = useState('');
+  const [curriculumEdit, setCurriculumEdit] = useState(null); // 교사가 고친 교육과정 (없으면 담은 문항의 기본값)
   const [saveToBank, setSaveToBank] = useState(true);
   const [done, setDone] = useState(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -62,17 +59,8 @@ const AnswerTaskWizard = ({ initialSource = 'direct', initial = null, onBack, on
   useEffect(() => () => onLeaveGuardChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
   const back = () => (dirty ? setLeaveOpen(true) : onBack && onBack());
 
-  // 교육과정 — 담은 문항에서 가장 많은 값
-  const curriculum = useMemo(() => {
-    const counts = {};
-    entries.forEach((e) => { const c = e.item.curriculum || {}; const k = [c.schoolLevelName, c.gradeLabel, c.curriculumName, c.subjectName].join('|'); if (c.subjectName || c.schoolLevelName) counts[k] = (counts[k] || 0) + 1; });
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-    if (!top) return {};
-    const [schoolLevelName, gradeLabel, curriculumName, subjectName] = top[0].split('|');
-    return { schoolLevelName, gradeLabel, curriculumName, subjectName };
-  }, [entries]);
-  const total = entries.reduce((s, e) => s + (Number(e.points) || 0), 0);
-  const noAnswer = entries.filter((e) => !hasAnswer(e.item)).length;
+  // 교육과정 — 담은 문항에서 가장 많은 값이 기본, 교사가 배치 화면에서 고칠 수 있다
+  const curriculum = useMemo(() => curriculumEdit || topCurriculum(entries.map((e) => e.item)), [curriculumEdit, entries]);
   const newCount = entries.filter((e) => !e.fromBank).length;
 
   const onPicked = ({ items, passages: ps, source }) => {
@@ -98,7 +86,6 @@ const AnswerTaskWizard = ({ initialSource = 'direct', initial = null, onBack, on
     setDone(task);
   };
 
-  const move = (i, d) => setEntries((es) => { const j = i + d; if (j < 0 || j >= es.length) return es; const n = [...es]; [n[i], n[j]] = [n[j], n[i]]; return n; });
 
   return (
     <div style={{ minHeight: '100vh', background: '#F4F7FB', display: 'flex', flexDirection: 'column' }}>
@@ -106,7 +93,7 @@ const AnswerTaskWizard = ({ initialSource = 'direct', initial = null, onBack, on
         <button onClick={back} style={btn(false)}>← 과제 목록</button>
         <div>
           <Crumb path={['과제 관리', '과제 목록', '새 과제 등록']} />
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{smart ? '✨ 정답형 스마트 등록' : fromList ? '📐 정답형 과제 배치하기' : '✍️ 정답형 직접 등록'}</h1>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{smart ? '✨ 정답형 스마트 등록' : '✍️ 정답형 직접 등록'}</h1>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {STEPS.map((l, i) => {
@@ -148,60 +135,22 @@ const AnswerTaskWizard = ({ initialSource = 'direct', initial = null, onBack, on
                 </>
               )}
 
-              {/* STEP 2 — 배치 */}
+              {/* STEP 2 — 배치·기본 정보 (v1.8 — 기본 정보 단계를 따로 두지 않는다) */}
               {step === 2 && (
                 <>
-                  <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <BasicInfoCard title={title} onTitle={setTitle} curriculum={curriculum} onCurriculum={setCurriculumEdit} entries={entries}>
                     <button onClick={() => setStep(1)} style={btn(false)}>← 문항 더 모으기</button>
-                    <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800 }}>문항 {entries.length}개 · 총 {total}점</span>
-                    {noAnswer > 0 && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>정답 없는 문항 {noAnswer}개 — 저장은 되지만 채점 전에 정답이 필요합니다</span>}
-                    <button onClick={() => setStep(3)} disabled={!entries.length} style={{ ...btn(true, !entries.length), marginLeft: 'auto' }}>다음: 기본 정보 →</button>
-                  </div>
-                  {entries.map((e, i) => (
-                    <div key={e.item.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', paddingTop: 8, width: 64 }}>
-                        <span style={{ fontWeight: 900, color: '#2A75F3' }}>{i + 1}번</span>
-                        <input type="number" min={0} value={e.points} aria-label={`${i + 1}번 배점`}
-                          onChange={(ev) => setEntries((es) => es.map((x, j) => (j === i ? { ...x, points: ev.target.value === '' ? '' : Number(ev.target.value) } : x)))}
-                          style={{ ...input, width: 56, textAlign: 'center', padding: '4px' }} />
-                        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>점</span>
-                        <div style={{ display: 'flex', gap: 2 }}>
-                          <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="위로" style={{ ...btn(false, i === 0), padding: '2px 6px' }}>↑</button>
-                          <button onClick={() => move(i, 1)} disabled={i === entries.length - 1} aria-label="아래로" style={{ ...btn(false, i === entries.length - 1), padding: '2px 6px' }}>↓</button>
-                        </div>
-                        <button onClick={() => setEntries((es) => es.filter((_, j) => j !== i))} aria-label="빼기" style={{ ...btn(false), padding: '2px 8px' }}>✕</button>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <ItemCard item={{ ...e.item, number: String(i + 1) }} passage={passages[e.item.passageId]} editable onEdit={() => setEditIdx(i)}
-                          onChange={(x) => setEntries((es) => es.map((y, j) => (j === i ? { ...y, item: { ...x, number: e.item.number } } : y)))} />
-                      </div>
-                    </div>
-                  ))}
+                    {newCount > 0 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={saveToBank} onChange={(e) => setSaveToBank(e.target.checked)} />
+                        새 문항 {newCount}개 문제 은행에도 저장
+                      </label>
+                    )}
+                    <button onClick={save} disabled={!title.trim() || !entries.length} title={!title.trim() ? '과제명을 입력해 주세요.' : ''} style={btn(true, !title.trim() || !entries.length)}>과제 저장</button>
+                  </BasicInfoCard>
+                  <ArrangeRows entries={entries} onChange={setEntries} passages={passages} onEdit={(i) => setEditIdx(i)}
+                    onItemChange={(i, x) => setEntries((es) => es.map((y, j) => (j === i ? { ...y, item: x } : y)))} />
                 </>
-              )}
-
-              {/* STEP 3 — 기본 정보·저장 */}
-              {step === 3 && (
-                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div><span style={label}>과제명 *</span>
-                    <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} placeholder="예: 1학기 중간고사 과학" style={{ ...input, borderColor: title.trim() ? '#CBD5E1' : '#FCA5A5' }} /></div>
-                  <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.8 }}>
-                    <div><b>과제 형태</b> ✅ 정답형 (문제와 답안 칸이 한 장인 시험지)</div>
-                    <div><b>교육과정</b> {[curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (entries.every((e) => e.item.track === 'basic') ? '기초학력' : '미확인 — 문항에 교육과정이 없습니다')}</div>
-                    <div><b>문항</b> {entries.length}개 · 총 {total}점 · {[...new Set(entries.map((e) => ITEM_TYPES[e.item.itemType]?.label))].join(' · ')}</div>
-                  </div>
-                  {newCount > 0 && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={saveToBank} onChange={(e) => setSaveToBank(e.target.checked)} />
-                      새로 만든·가져온 문항 {newCount}개를 문제 은행에도 저장 (다른 시험지에 다시 쓰기)
-                    </label>
-                  )}
-                  {noAnswer > 0 && <IssueList issues={[{ level: 'warn', field: '정답', message: `정답 없는 문항 ${noAnswer}개가 있습니다. 저장은 되지만 채점 전에 정답을 넣어야 합니다.` }]} />}
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button onClick={() => setStep(2)} style={btn(false)}>← 배치</button>
-                    <button onClick={save} disabled={!title.trim() || !entries.length} style={btn(true, !title.trim() || !entries.length)}>과제 저장</button>
-                  </div>
-                </div>
               )}
             </>
           )}
