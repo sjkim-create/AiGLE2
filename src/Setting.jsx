@@ -84,6 +84,7 @@ const HASH_ROUTES = {
   '#/task-essay':           { menu: '과제 관리', sub: '서·논술형 과제' },
   '#/task-answer':          { menu: '과제 관리', sub: '정답형 과제' },
   '#/task-answer-workbooks': { menu: '과제 관리', sub: '정답형 문제집' },
+  '#/task-answer-words':    { menu: '과제 관리', sub: '정답형 낱말 문제집' },
   '#/shared-assignments':   { menu: '과제 관리', sub: '공유된 과제' },
   // [QBK-01] 문제 은행 — 스마트 과제 등록(정답형)으로 저장한 문항
   // [BRD-16] 게시판
@@ -753,7 +754,7 @@ function Setting() {
           /* [v4.7] 과제 관리 메뉴 — 과제 관리 / 과제 등록 / 과제 상세 / 공유된 과제 */
           selectedTaskDetail ? (
             <TaskDetail task={selectedTaskDetail} onBack={() => setSelectedTaskDetail(null)} onDelete={(task) => setTaskToDelete(task)}
-              onEdit={(task) => { setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setSelectedTaskDetail(null); setListOrigin(['서·논술형 과제', '정답형 과제', '정답형 문제집'].includes(activeSubMenu) ? activeSubMenu : '과제 관리'); setActiveSubMenu('과제 등록'); }} />
+              onEdit={(task) => { setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setSelectedTaskDetail(null); setListOrigin(activeSubMenu === '서·논술형 과제' || isAnswerSub(activeSubMenu) ? activeSubMenu : '과제 관리'); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '과제 등록' ? (
             <TaskRegistration
               key={editTask?.n || `reg-${regNonce}`}

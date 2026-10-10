@@ -188,10 +188,11 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <Crumb path={['과제 관리']} />
-          <div className="page-title">{registerItems ? '✅ ' : ''}{title}{onTabChange ? (tab === 'workbooks' ? ' › 📚 문제집' : ' › 🗂️ 문항') : ''}</div>
+          <div className="page-title">{registerItems ? '✅ ' : ''}{title}{onTabChange ? ({ workbooks: ' › 📚 문제집', words: ' › 🔤 낱말 문제집' }[tab] || ' › 🗂️ 문항') : ''}</div>
         </div>
-        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>
-        {registerItems && (
+        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.filter((w) => w.kind !== 'word').length}개 · 낱말 문제집 {workbooks.filter((w) => w.kind === 'word').length}개</span>
+        {/* 낱말 문제집 메뉴에는 [+ 새 과제 등록]을 두지 않는다 — 낱말 문제집은 2열의 [+ 🔤 낱말 문제집 만들기]로 (v1.34) */}
+        {registerItems && tab !== 'words' && (
           <div style={{ position: 'relative', marginLeft: 'auto' }}>
             <button onClick={() => setRegOpen((v) => !v)} aria-haspopup="true" aria-expanded={regOpen} style={btn(true)}>+ 새 과제 등록 ▾</button>
             {regOpen && (
@@ -287,56 +288,25 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
       </>}
 
       {/* 문제집 탭 */}
-      {tab === 'workbooks' && (() => {
+      {/* [TSK-15 v1.34] 문제집 · 낱말 문제집 — 2열: 목록(수정 중이면 단계) · 오른쪽: 상세. 첫 문제집이 기본 */}
+      {(tab === 'workbooks' || tab === 'words') && (() => {
         const itemById = Object.fromEntries(all.map((i) => [i.id, i]));
-        const wb = workbooks.find((w) => w.id === openWbId);
         const save = async (next) => { await putWorkbook(next); };
-        const move = (idx, d) => { const ids = [...wb.itemIds]; const j = idx + d; if (j < 0 || j >= ids.length) return; [ids[idx], ids[j]] = [ids[j], ids[idx]]; save({ ...wb, itemIds: ids }); };
         // [TSK-15 v1.26] 낱말 문제집 — 영어 단어 시험 · 받아쓰기. 교사가 직접 낱말을 입력한다
         const createWordWb = async () => {
           const id = newId('wb');
           await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'vocab', layout: { ...DEFAULT_WORD_LAYOUT } });
           setOpenWbId(id); setWbStep(1); setWbEditing(true); setWbRemoved(null);
+          try { localStorage.setItem('aigle:lastWb:words', id); } catch { /* 무시 */ }
         };
-        const wordBtn = <button onClick={createWordWb} style={{ ...btn(false), borderColor: '#2A75F3', color: '#1D4ED8' }}>+ 🔤 낱말 문제집 만들기</button>;
-        if (!wb) {
-          return workbooks.length === 0 ? (
-            <div className="task-empty-state">
-              <div className="empty-icon" aria-hidden="true">📚</div>
-              <p className="empty-title">아직 문제집이 없습니다.</p>
-              <p className="empty-sub">문항 탭에서 문항을 고르고 [📚 문제집에 담기]를 누르면 문제집이 만들어집니다. 영어 단어 시험 · 받아쓰기는 낱말 문제집으로 만듭니다.</p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}><button onClick={() => setTab('items')} style={btn(true)}>문항 고르러 가기</button>{wordBtn}</div>
-            </div>
-          ) : (
-            <>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>{wordBtn}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-              {workbooks.map((w) => {
-                if (w.kind === 'word') {
-                  const n = (w.words || []).filter((x) => x.word.trim()).length;
-                  return (
-                    <button key={w.id} onClick={() => { setOpenWbId(w.id); setWbStep(1); setWbEditing(false); setWbRemoved(null); }} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>🔤 낱말 문제집 · {WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
-                      <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B' }}>{w.title}</span>
-                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>낱말 {n}개 · {WORD_MODES[normMode(w.mode)].label}</span>
-                    </button>
-                  );
-                }
-                const its = w.itemIds.map((id) => itemById[id]).filter(Boolean);
-                const review = its.filter((i) => !isReady(i)).length;
-                return (
-                  <button key={w.id} onClick={() => { setOpenWbId(w.id); setWbStep(1); setWbEditing(false); setWbRemoved(null); }} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B' }}>{w.title}</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>문항 {its.length}개{review ? ` · 확인 필요 ${review}개` : ''}{w.itemIds.length > its.length ? ` · 삭제된 문항 ${w.itemIds.length - its.length}개` : ''}</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{[...new Set(its.map((i) => ITEM_TYPES[i.itemType]?.label))].join(' · ')}</span>
-                  </button>
-                );
-              })}
-            </div>
-            </>
-          );
-        }
+        // 이 메뉴의 문제집만 — 📚 문제집 = 문항 문제집, 🔤 낱말 문제집 = 낱말 문제집
+        const list = workbooks.filter((w) => (tab === 'words' ? w.kind === 'word' : w.kind !== 'word'));
+        const lastKey = `aigle:lastWb:${tab}`;
+        const lastId = (() => { try { return localStorage.getItem(lastKey); } catch { return null; } })();
+        // 넓은 화면은 첫 문제집(또는 마지막으로 본 문제집)이 기본, 좁은 화면은 목록부터
+        const wb = list.find((w) => w.id === openWbId) || (wide ? (list.find((w) => w.id === lastId) || list[0]) : null) || null;
+        const pick = (w) => { setOpenWbId(w.id); setWbStep(1); setWbEditing(false); setWbRemoved(null); try { localStorage.setItem(lastKey, w.id); } catch { /* 무시 */ } };
+        const renderDetail = (wb) => {
         if (wb.kind === 'word') {
           const words = wb.words || [];
           const wcur = wb.curriculum || {};
@@ -351,7 +321,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 문제집 목록</button>
+                {!wide && <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 목록</button>}
                 <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>🔤 {wb.title || '이름 없는 낱말 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{wShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
                 {wbEditing ? (
                   <button onClick={() => { save(wb); setWbEditing(false); }} style={btn(true)}>✅ 수정 끝내기</button>
@@ -372,7 +342,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
               )}
               {wbEditing && (
                 <>
-                  <StepChips steps={['기본 정보', '낱말 입력', '문제집 배치']} step={wbStep} onStep={setWbStep} />
+                  {!wide && <StepChips steps={['기본 정보', '낱말 입력', '문제집 배치']} step={wbStep} onStep={setWbStep} />}
                   {wbStep === 1 && (
                     <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES} onPurpose={(p) => save({ ...wb, purpose: p })}
                       title={wb.title} onTitle={(t) => setW({ title: t })} onTitleBlur={() => save(wb)}
@@ -433,7 +403,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 문제집 목록</button>
+              {!wide && <button onClick={() => setOpenWbId(null)} style={{ ...btn(false), padding: '6px 10px' }}>← 목록</button>}
               <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B', flex: 1, minWidth: 160 }}>📚 {wb.title || '이름 없는 문제집'}<span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#64748B' }}>{curShort}</span>{wbEditing && <span style={{ marginLeft: 8, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#1D4ED8', background: '#EFF6FF', borderRadius: 999, padding: '2px 8px' }}>수정 중</span>}</span>
               {wbEditing ? (
                 <>
@@ -463,7 +433,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
             {/* 수정 모드 — ① 기본 정보 ② 문제집 배치 (단계 칩으로 이동) */}
             {wbEditing && (
               <>
-                <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />
+                {!wide && <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />}
                 {wbStep === 1 && (
                   <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES}
                     onPurpose={(p) => save({ ...wb, purpose: p })}
@@ -491,6 +461,76 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                 scopeNote="문제 은행 원본이 바뀝니다 · 이미 저장한 과제는 그대로" onClose={() => setWbEditIdx(null)}
                 onSave={async (x) => { await putItem({ ...x, status: isReady(x) ? 'ready' : 'needs_review' }); setToast(`${wbEditIdx + 1}번 문항을 저장했습니다.`); }} />
             )}
+          </div>
+        );
+        };
+        const card = (w, on) => {
+          const its = w.kind === 'word' ? [] : w.itemIds.map((id) => itemById[id]).filter(Boolean);
+          const meta = w.kind === 'word'
+            ? `낱말 ${(w.words || []).filter((x) => x.word.trim()).length}개 · ${WORD_MODES[normMode(w.mode)].label}`
+            : `문항 ${its.length}개${its.filter((i) => !isReady(i)).length ? ` · 확인 필요 ${its.filter((i) => !isReady(i)).length}개` : ''}`;
+          return (
+            <button key={w.id} onClick={() => pick(w)} aria-current={on ? 'true' : undefined}
+              style={{ textAlign: 'left', background: 'white', border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, boxShadow: on ? '0 2px 8px rgba(42,117,243,0.12)' : 'none', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
+              <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: on ? '#1D4ED8' : '#1E293B' }}>{w.title || '이름 없음'}</span>
+              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{meta}</span>
+            </button>
+          );
+        };
+        const addBtn = tab === 'words'
+          ? <button onClick={createWordWb} style={{ ...btn(true), width: '100%' }}>+ 🔤 낱말 문제집 만들기</button>
+          : null;
+        const empty = tab === 'words' ? (
+          <div style={{ padding: '24px 12px', textAlign: 'center', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>아직 낱말 문제집이 없습니다. 영어 단어 시험 · 받아쓰기를 낱말 목록으로 만듭니다.</div>
+        ) : (
+          <div style={{ padding: '24px 12px', textAlign: 'center', color: '#64748B', fontSize: 'var(--neo-font-size-sm)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span>아직 문제집이 없습니다. 「문항」 메뉴에서 문항을 골라 [📚 문제집에 담기]를 누르면 문제집이 만들어집니다.</span>
+            <button onClick={() => setTab('items')} style={btn(true)}>문항 고르러 가기</button>
+          </div>
+        );
+        // 수정 중이면 2열 = 단계 메뉴 (서·논술형 직접 등록과 같은 모양)
+        const steps = wb?.kind === 'word' ? ['기본 정보', '낱말 입력', '문제집 배치'] : ['기본 정보', '문제집 배치'];
+        const stepCol = (
+          <nav aria-label="수정 단계" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {steps.map((l, i) => {
+              const n = i + 1; const now = n === wbStep; const done = n < wbStep;
+              return (
+                <button key={l} type="button" aria-current={now ? 'step' : undefined} onClick={() => setWbStep(n)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 14px', borderRadius: 10, textAlign: 'left', fontFamily: 'inherit', cursor: now ? 'default' : 'pointer',
+                    border: now ? '1.5px solid #2A75F3' : '1.5px solid transparent', background: now ? 'white' : '#E9EDF2', boxShadow: now ? '0 2px 8px rgba(42,117,243,0.12)' : 'none',
+                    color: now ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-base)', fontWeight: now ? 800 : 600 }}>
+                  <span aria-hidden="true" style={{ width: 26, height: 26, borderRadius: '50%', flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, background: done || now ? '#2A75F3' : '#CBD5E1', color: 'white' }}>{done ? '✓' : n}</span>
+                  {l}
+                </button>
+              );
+            })}
+          </nav>
+        );
+        if (!wide) {
+          // 좁은 화면 — 목록 → 상세
+          if (wb) return renderDetail(wb);
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {addBtn}
+              {list.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>{list.map((w) => card(w, false))}</div> : empty}
+            </div>
+          );
+        }
+        return (
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <aside aria-label={wbEditing ? '수정 단계' : (tab === 'words' ? '낱말 문제집 목록' : '문제집 목록')}
+              style={{ flex: '0 0 250px', position: 'sticky', top: 0, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 2 }}>
+              {wbEditing && wb ? stepCol : (
+                <>
+                  {addBtn}
+                  {list.length ? list.map((w) => card(w, wb && w.id === wb.id)) : empty}
+                </>
+              )}
+            </aside>
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+              {wb ? renderDetail(wb) : <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>{tab === 'words' ? '[+ 🔤 낱말 문제집 만들기]로 시작해 주세요.' : '문제집이 만들어지면 여기에 출력 모양으로 보입니다.'}</div>}
+            </div>
           </div>
         );
       })()}

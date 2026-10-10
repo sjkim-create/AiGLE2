@@ -43,6 +43,7 @@ export const SIDEBAR_REGISTER_HISTORY = [
 export const ANSWER_SUBS = [
   { sub: '정답형 과제', tab: 'items', icon: '🗂️', label: '문항' },
   { sub: '정답형 문제집', tab: 'workbooks', icon: '📚', label: '문제집' },
+  { sub: '정답형 낱말 문제집', tab: 'words', icon: '🔤', label: '낱말 문제집' }, // [TSK-15 v1.34]
 ];
 export const isAnswerSub = (sub) => ANSWER_SUBS.some((a) => a.sub === sub);
 export const answerTabOf = (sub) => ANSWER_SUBS.find((a) => a.sub === sub)?.tab || 'items';
