@@ -157,12 +157,18 @@ const Sidebar = ({
                                                 ⊙ {f.sub} {!isAnswer && <span className="badge">{formCounts?.essay ?? 0}</span>}{isAnswer && <span className="arrow" aria-hidden="true" style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)' }}>{answerOpen ? '▾' : '▸'}</span>}
                                             </div>
                                             {/* [TSK-15 v1.10] 정답형 과제 › 문항 · 문제집 */}
-                                            {answerOpen && ANSWER_SUBS.map((a) => (
-                                                <div key={a.sub} className={`nav-sub-item ${activeSubMenu === a.sub ? 'active' : ''}`}
-                                                    onClick={() => setActiveSubMenu(a.sub)} style={{ paddingLeft: 40 }}>
-                                                    {a.icon} {a.label}
+                                            {/* 정답형 과제의 하위 메뉴 — 부모(3.5rem)보다 안쪽으로 들이고 왼쪽 안내선 */}
+                                            {answerOpen && (
+                                                <div role="group" aria-label="정답형 과제 하위 메뉴" style={{ margin: '0 0 4px calc(3.5rem + 6px)', borderLeft: '2px solid #E2E8F0' }}>
+                                                    {ANSWER_SUBS.map((a) => (
+                                                        <div key={a.sub} className={`nav-sub-item ${activeSubMenu === a.sub ? 'active' : ''}`}
+                                                            onClick={() => setActiveSubMenu(a.sub)}
+                                                            style={{ padding: '0.5rem 1rem 0.5rem 0.9rem', fontSize: 'var(--neo-font-size-sm)', ...(activeSubMenu === a.sub ? { borderLeft: '2px solid var(--primary)', marginLeft: -2 } : {}) }}>
+                                                            {a.icon} {a.label}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
+                                            )}
                                         </React.Fragment>
                                     );
                                 })}
