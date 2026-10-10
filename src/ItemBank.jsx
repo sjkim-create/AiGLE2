@@ -14,7 +14,7 @@ import { loadCatalog } from './lib/taskFromFile';
 import { unitOptionsFor } from './lib/itemExtract';
 import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
-import { BasicInfoCard, ArrangeRows, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
+import { BasicInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
 
 const Crumb = ({ path }) => (
@@ -38,7 +38,10 @@ const btn = (primary, disabled, danger) => ({
 // initialTab · onTabChange — 왼쪽 메뉴 「정답형 과제 › 문항 / 문제집」과 탭을 맞춘다 (TSK-15 v1.10)
 const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, initialTab = 'items', onTabChange }) => {
   const [wbEditIdx, setWbEditIdx] = useState(null); // 문제집 상세에서 문항 편집 중
-  const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 순서 배치 · 3 문제집 배치
+  const [wbStep, setWbStep] = useState(1);          // 문제집 상세 단계 — 1 기본 정보 · 2 문제집 배치 (v1.18 — 순서 배치는 문제집 배치의 편집 모드로)
+  const [wbEdit, setWbEdit] = useState(false);      // 문제집 배치 편집 모드
+  const [wbActual, setWbActual] = useState(false);  // 100%로 보기
+  const [wbRemoved, setWbRemoved] = useState(null); // 방금 뺀 문항 — 되돌리기
   const [regOpen, setRegOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [passages, setPassages] = useState([]);
@@ -314,12 +317,11 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
           );
         }
         const its = wb.itemIds.map((id) => itemById[id]).filter(Boolean);
-        // [TSK-15 v1.14] 문제집 상세 — ① 기본 정보(이름·교육과정) ② 순서 배치 ③ 문제집 배치(지면). 모두 문제집에 바로 저장
+        // [TSK-15 v1.18] 문제집 상세 — ① 기본 정보(이름·교육과정) ② 문제집 배치(지면 · 편집 모드). 모두 문제집에 바로 저장
         //   과제로 저장(배포·채점)은 다음 단계에서 한다
         const entries = its.map((item) => ({ item, points: wb.points?.[item.id] ?? item.points ?? 1 }));
         const curriculum = wb.curriculum || topCurriculum(its);
         const setLocal = (patch) => setWorkbooks((ws) => ws.map((w) => (w.id === wb.id ? { ...w, ...patch } : w)));
-        const onRows = (next) => save({ ...wb, itemIds: [...next.map((e) => e.item.id), ...wb.itemIds.filter((id) => !itemById[id])], points: Object.fromEntries(next.map((e) => [e.item.id, e.points])) });
         const curText = [curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName, curriculum.subjectName].filter(Boolean).join(' · ') || (its.length && its.every((i) => i.track === 'basic') ? '기초학력' : '교육과정 미지정');
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -332,29 +334,39 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
               <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
             </div>
             {/* 단계 이동은 단계 칩으로만 (강제 없음) */}
-            <StepChips steps={['기본 정보', '순서 배치', '문제집 배치']} step={wbStep} onStep={setWbStep} />
+            <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />
             {wbStep === 1 && (
               <BasicInfoCard titleLabel="문제집 이름" title={wb.title} onTitle={(t) => setLocal({ title: t })} onTitleBlur={() => save(wb)}
                 curriculum={curriculum} onCurriculum={(c) => setLocal({ curriculum: c })} onCurriculumBlur={() => save(wb)} entries={entries} />
             )}
+            {/* [TSK-15 v1.18] ② 문제집 배치 — 순서 배치 단계를 합쳤다. [✏️ 편집 모드]에서 끌어다 놓기 · ↑↓ · 배점 · 수정 · 빼기 */}
             {wbStep === 2 && (
               <>
                 <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <ArrangeSummary entries={entries} />
+                  <ArrangeSummary entries={entries}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={wbActual} onChange={(e) => setWbActual(e.target.checked)} /> 100%로 보기
+                    </label>
+                    <button onClick={() => setWbEdit((v) => !v)} aria-pressed={wbEdit} style={{ ...btn(wbEdit), ...(wbEdit ? {} : { borderColor: '#2A75F3', color: '#1D4ED8' }) }}>{wbEdit ? '✅ 편집 끝내기' : '✏️ 편집 모드'}</button>
+                  </ArrangeSummary>
                   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
-                    {curText}
+                    {curText} · {wbEdit ? '⠿를 누른 채 끌어 원하는 문항 위/아래에 놓으면 순서가 바뀝니다. 공통 지문 문항은 묶음으로 움직이고, 묶음 안 순서는 ↑↓로 바꿉니다. 바꾼 내용은 문제집에 바로 저장됩니다.' : '[✏️ 편집 모드]에서 문항 순서 · 배점 · 수정 · 빼기를 합니다. 문항을 더 넣으려면 「문항」 메뉴에서 골라 [📚 문제집에 담기].'}
                   </div>
+                  {wbRemoved && wbRemoved.wbId === wb.id && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-sm)', background: '#FEF2F2', borderRadius: 8, padding: '6px 10px' }}>
+                      🗑 {wbRemoved.no}번 문항을 문제집에서 뺐습니다. (문제 은행에는 남아 있습니다)
+                      <button onClick={() => { save({ ...wb, itemIds: wbRemoved.itemIds, points: wbRemoved.points }); setWbRemoved(null); }} style={{ ...btn(false), padding: '4px 10px', marginLeft: 'auto' }}>↶ 되돌리기</button>
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', padding: '0 4px' }}>순서(↑↓) · 빼기(✕) · 배점 · 문항 편집은 이 문제집에 바로 저장됩니다. 문항을 고치면 문제 은행 원본이 바뀌고, 이미 저장한 과제는 그대로입니다. 문항을 더 넣으려면 문항 탭에서 골라 [📚 문제집에 담기].</div>
-                <ArrangeRows entries={entries} onChange={onRows} passages={passageById} removeLabel="문제집에서 빼기" onEdit={(i) => setWbEditIdx(i)}
-                  onItemChange={(i, x) => { putItem({ ...x, number: its[i].number, status: isReady(x) ? 'ready' : 'needs_review' }); }} />
-                {its.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 문항 탭에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
-              </>
-            )}
-            {wbStep === 3 && (
-              <>
                 <LayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })} />
-                <WorkbookSheet title={wb.title} curriculum={curriculum} entries={entries} passages={passageById} layout={wb.layout} />
+                <WorkbookSheet title={wb.title} curriculum={curriculum} entries={entries} passages={passageById} layout={wb.layout}
+                  editMode={wbEdit} actualSize={wbActual}
+                  onOrder={(ids) => save({ ...wb, itemIds: [...ids, ...wb.itemIds.filter((id) => !itemById[id])] })}
+                  onPoints={(id, v) => save({ ...wb, points: { ...(wb.points || {}), [id]: v } })}
+                  onEdit={(i) => setWbEditIdx(i)}
+                  onRemove={(id) => { setWbRemoved({ wbId: wb.id, no: wb.itemIds.filter((x) => itemById[x]).indexOf(id) + 1, itemIds: wb.itemIds, points: wb.points }); save({ ...wb, itemIds: wb.itemIds.filter((x) => x !== id) }); }} />
+                {its.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 「문항」 메뉴에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
               </>
             )}
             {wbEditIdx != null && its[wbEditIdx] && (

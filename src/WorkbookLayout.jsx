@@ -84,7 +84,40 @@ const passageRanges = (entries) => {
 const PAD_V = 48; const PAD_H = 44; const COL_GAP = 28; const FOOTER = 24;
 const SHEET_FONT = { fontFamily: '"Noto Serif KR", "Batang", serif', fontSize: 13, lineHeight: 1.6, color: '#0F172A' };
 
-export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layout }) => {
+// 편집 모드 (TSK-15 v1.18) — 문항을 끌어다 놓아 순서를 바꾸고(번호·쪽 나누기 자동), 도구 막대로 ↑↓ · 배점 · 수정 · 빼기
+//   공통 지문을 함께 쓰는 문항은 묶음으로 움직인다. 묶음 안에서는 ↑↓로 순서를 바꾼다. 마우스 끌기만 지원(터치 제외)
+//   editMode · onOrder(ids) · onPoints(id, 점수) · onEdit(index) · onRemove(id) · actualSize(100%로 보기)
+const unitOf = (entries, id) => {
+  const it = entries.find((e) => e.item.id === id)?.item;
+  return it?.passageId ? entries.filter((e) => e.item.passageId === it.passageId).map((e) => e.item.id) : [id];
+};
+export const reorderByDrop = (entries, dragId, targetId, before) => {
+  const ids = entries.map((e) => e.item.id);
+  const unit = unitOf(entries, dragId);
+  if (unit.includes(targetId)) return ids;
+  const rest = ids.filter((x) => !unit.includes(x));
+  const tUnit = unitOf(entries, targetId);
+  const anchor = before ? tUnit[0] : tUnit[tUnit.length - 1];
+  const at = rest.indexOf(anchor) + (before ? 0 : 1);
+  return [...rest.slice(0, at), ...unit, ...rest.slice(at)];
+};
+export const moveByStep = (entries, id, d) => {
+  const ids = entries.map((e) => e.item.id);
+  const i = ids.indexOf(id); const j = i + d;
+  if (j < 0 || j >= ids.length) return ids;
+  const pid = entries[i].item.passageId;
+  if (pid && entries[j].item.passageId === pid) { const n = [...ids]; [n[i], n[j]] = [n[j], n[i]]; return n; } // 묶음 안
+  const unit = unitOf(entries, id);
+  const neighbor = unitOf(entries, ids[d < 0 ? ids.indexOf(unit[0]) - 1 : ids.indexOf(unit[unit.length - 1]) + 1]);
+  return reorderByDrop(entries, unit[0], d < 0 ? neighbor[0] : neighbor[neighbor.length - 1], d < 0);
+};
+const scrollParentOf = (el) => { let p = el?.parentElement; while (p) { const o = getComputedStyle(p).overflowY; if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p; p = p.parentElement; } return document.scrollingElement; };
+const tb = { padding: '1px 6px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'Pretendard, sans-serif', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: '#334155' };
+
+export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layout, editMode = false, onOrder, onPoints, onEdit, onRemove, actualSize = false }) => {
+  const [armed, setArmed] = React.useState(null);   // ⠿를 누른 문항 — 그 문항만 끌 수 있다
+  const [dragId, setDragId] = React.useState(null);
+  const [over, setOver] = React.useState(null);     // { key, before }
   const L = { ...DEFAULT_LAYOUT, ...(layout || {}) };
   const paper = PAPERS[L.paper] || PAPERS.A4;
   const pageW = Math.round(paper.w * MM); const pageH = Math.round(paper.h * MM);
@@ -127,8 +160,22 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
         </>
       ) });
     }
-    blocks.push({ key: it.id, no: i + 1, gapAfter: gap, node: (
+    blocks.push({ key: it.id, no: i + 1, idx: i, gapAfter: gap, node: (
       <>
+        {editMode && (
+          <div data-edit-toolbar style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, padding: '2px 4px', background: '#EFF6FF', borderRadius: 6, fontFamily: 'Pretendard, sans-serif' }}>
+            <span role="button" aria-label={`${i + 1}번 끌어서 옮기기`} title="끌어서 옮기기" onMouseDown={() => setArmed(it.id)} onMouseUp={() => setArmed(null)}
+              style={{ ...tb, cursor: 'grab', background: '#DBEAFE' }}>⠿ {i + 1}번</span>
+            <button type="button" onClick={() => onOrder?.(moveByStep(entries, it.id, -1))} disabled={i === 0} aria-label={`${i + 1}번 위로`} style={tb}>↑</button>
+            <button type="button" onClick={() => onOrder?.(moveByStep(entries, it.id, 1))} disabled={i === entries.length - 1} aria-label={`${i + 1}번 아래로`} style={tb}>↓</button>
+            <input type="number" min={0} value={e.points} aria-label={`${i + 1}번 배점`} onChange={(ev) => onPoints?.(it.id, ev.target.value === '' ? '' : Number(ev.target.value))}
+              style={{ width: 44, padding: '1px 4px', border: '1px solid #CBD5E1', borderRadius: 6, fontSize: 11, textAlign: 'center' }} />
+            <span style={{ fontSize: 11, color: '#475569' }}>점</span>
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={() => onEdit?.(i)} aria-label={`${i + 1}번 수정`} style={tb}>✏️ 수정</button>
+            <button type="button" onClick={() => onRemove?.(it.id)} aria-label={`${i + 1}번 빼기`} style={{ ...tb, color: '#B91C1C', borderColor: '#FCA5A5' }}>🗑 빼기</button>
+          </div>
+        )}
         <div><b>{i + 1}.</b> {it.stem || '(발문 없음)'}{L.showPoints && <span style={{ fontSize: 11, color: '#475569' }}> [{Number(e.points) || 0}점]</span>}</div>
         {it.material && <div style={{ border: '1px solid #94A3B8', padding: '4px 10px', margin: '4px 0', whiteSpace: 'pre-wrap', fontSize: 12 }}><b>&lt;보기&gt;</b> {it.material}</div>}
         {(it.images || []).map((im, k) => <img key={k} src={im.dataUrl} alt={im.label || ''} style={{ maxWidth: '100%', maxHeight: 180, display: 'block', margin: '4px 0' }} />)}
@@ -142,7 +189,7 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
   const headerRef = React.useRef(null);
   const [heights, setHeights] = React.useState(null);
   const [tick, setTick] = React.useState(0);
-  const sig = `${L.paper}|${L.columns}|${L.spacing}|${L.showPoints}|${L.nameBox}|${title}|${curText}|${blocks.map((b) => b.key).join(',')}|${entries.map((e) => `${e.points}:${e.item.updatedAt || ''}:${e.item.itemType}`).join(',')}`;
+  const sig = `${editMode}|${L.paper}|${L.columns}|${L.spacing}|${L.showPoints}|${L.nameBox}|${title}|${curText}|${blocks.map((b) => b.key).join(',')}|${entries.map((e) => `${e.points}:${e.item.updatedAt || ''}:${e.item.itemType}`).join(',')}`;
   React.useLayoutEffect(() => {
     if (!measureRef.current) return;
     const hs = [...measureRef.current.children].map((el) => el.getBoundingClientRect().height);
@@ -182,12 +229,38 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
     ro.observe(boxRef.current);
     return () => ro.disconnect();
   }, []);
-  const zoom = boxW ? Math.min(1, boxW / pageW) : 1;
+  const zoom = actualSize ? 1 : (boxW ? Math.min(1, boxW / pageW) : 1);
+  // 끌어다 놓기 — 놓을 자리(문항 위/아래)를 파란 선으로 보이고, 놓으면 순서를 바꾼다
+  const blockDnd = (b) => {
+    if (!editMode) return {};
+    const targetId = b.no ? b.key : entries.find((e) => `p-${e.item.passageId}` === b.key)?.item.id; // 지문 위 = 그 묶음 앞
+    return {
+      draggable: !!b.no && armed === b.key,
+      onDragStart: (ev) => { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.key); setDragId(b.key); },
+      onDragEnd: () => { setDragId(null); setOver(null); setArmed(null); },
+      onDragOver: (ev) => {
+        if (!dragId) return;
+        ev.preventDefault();
+        const r = ev.currentTarget.getBoundingClientRect();
+        const before = b.no ? ev.clientY < r.top + r.height / 2 : true;
+        if (!over || over.key !== b.key || over.before !== before) setOver({ key: b.key, before });
+        const sp = scrollParentOf(ev.currentTarget); const sr = sp === document.scrollingElement ? { top: 0, bottom: innerHeight } : sp.getBoundingClientRect();
+        if (ev.clientY < sr.top + 60) sp.scrollBy(0, -24); else if (ev.clientY > sr.bottom - 60) sp.scrollBy(0, 24);
+      },
+      onDrop: (ev) => {
+        ev.preventDefault();
+        if (dragId && targetId) onOrder?.(reorderByDrop(entries, dragId, targetId, b.no ? (over?.before ?? true) : true));
+        setDragId(null); setOver(null); setArmed(null);
+      },
+    };
+  };
+  const dropLine = (b) => (over && over.key === b.key && dragId && dragId !== b.key
+    ? { boxShadow: over.before ? 'inset 0 3px 0 #2A75F3' : 'inset 0 -3px 0 #2A75F3' } : {});
   const availOf = (first) => (heights ? pageH - PAD_V * 2 - FOOTER - (first ? heights.header : 0) : 0);
   const perPage = pages.map((pg) => pg.cols.flat().filter((b) => b.no).length);
 
   return (
-    <div ref={boxRef} style={{ background: '#E2E8F0', padding: 16, borderRadius: 12, overflow: 'hidden', position: 'relative' }}>
+    <div ref={boxRef} style={{ background: '#E2E8F0', padding: 16, borderRadius: 12, overflow: actualSize ? 'auto' : 'hidden', position: 'relative' }}>
       {/* 잴 때만 쓰는 상자 */}
       <div aria-hidden="true" style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none', left: -10000, top: 0, ...SHEET_FONT }}>
         <div ref={headerRef} style={{ width: pageW - PAD_H * 2 }}>{header}</div>
@@ -210,7 +283,8 @@ export const WorkbookSheet = ({ title, curriculum, entries, passages = {}, layou
                   {ci > 0 && <div style={{ position: 'absolute', left: -COL_GAP / 2, top: 0, bottom: 0, borderLeft: '1px solid #CBD5E1' }} />}
                   {(pg.cols[ci] || []).map((b, bi) => (
                     // 넓게: 문항이 단 높이를 나눠 갖고(1/2씩) 남는 아래쪽이 풀이 공간
-                    <div key={b.key} style={{ display: 'flow-root', marginTop: bi > 0 ? pg.cols[ci][bi - 1].gapAfter : 0, ...(L.spacing === 'wide' && b.no ? { flex: '1 1 0', minHeight: 0 } : {}) }}>{b.node}</div>
+                    <div key={b.key} data-block={b.key} {...blockDnd(b)} style={{ display: 'flow-root', marginTop: bi > 0 ? pg.cols[ci][bi - 1].gapAfter : 0, ...(L.spacing === 'wide' && b.no ? { flex: '1 1 0', minHeight: 0 } : {}),
+                      ...(editMode ? { outline: b.no ? '1px dashed #93C5FD' : '1px dotted #CBD5E1', outlineOffset: 3, borderRadius: 4, opacity: dragId && unitOf(entries, dragId).includes(b.key) ? 0.4 : 1 } : {}), ...dropLine(b) }}>{b.node}</div>
                   ))}
                 </div>
               ))}
