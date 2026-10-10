@@ -400,7 +400,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                       <WordOrderTools words={words} mode={wb.mode} onChange={(next) => save({ ...wb, words: next })} />
                       <WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize={wbActual}
                         editMode onOrder={(next) => save({ ...wb, words: next })}
-                        onToggleBlank={(id) => save({ ...wb, words: words.map((w) => (w.id === id ? { ...w, blank: blankOf(w, wb.mode) === 'word' ? 'meaning' : 'word' } : w)) })} />
+                        onToggleBlank={(id) => save({ ...wb, words: words.map((w, i) => (w.id === id ? { ...w, blank: blankOf(w, wb.mode, i) === 'word' ? 'meaning' : 'word' } : w)) })} />
                     </>
                   )}
                 </>

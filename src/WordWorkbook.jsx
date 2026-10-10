@@ -20,7 +20,8 @@ export const WORD_MODES = {
 };
 export const normMode = (m) => (m === 'dictation' ? 'dictation' : 'vocab');
 // 빈칸 — 'meaning'(한글 뜻을 쓴다, 영어가 보임) · 'word'(영어를 쓴다, 한글 뜻이 보임)
-export const blankOf = (w, rawMode) => w.blank || (rawMode === 'spelling' ? 'word' : 'meaning');
+//   정하지 않은 낱말은 번호로 번갈아 — 1번 영어 빈칸(한글이 보임), 2번 한글 빈칸(영어가 보임) … (v1.30 — 기본이 모두 한글 빈칸이라 영어만 보이던 문제)
+export const blankOf = (w, rawMode, index = 0) => w.blank || (rawMode === 'spelling' ? 'word' : (index % 2 === 0 ? 'word' : 'meaning'));
 export const BLANK_LABEL = { meaning: '한글', word: '영어' };
 export const DEFAULT_WORD_LAYOUT = { paper: 'A4', columns: 2, spacing: 'normal', style: 'line', nameBox: true, answerKey: false };
 // 줄 간격 — 넓게는 舊 56px의 2배 (v1.27)
@@ -39,7 +40,7 @@ const optLabel = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: 
 export const parseWordPaste = (text, mode) => String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
   if (mode === 'dictation') return { id: newId('w'), word: line, meaning: '' };
   const m = line.split(/\t|\s*\|\s*|\s+=\s+|\s*:\s+/);
-  return { id: newId('w'), word: (m[0] || '').trim(), meaning: m.slice(1).join(', ').trim(), blank: 'meaning' };
+  return { id: newId('w'), word: (m[0] || '').trim(), meaning: m.slice(1).join(', ').trim() };
 });
 
 export const wordIssues = (words, mode) => {
@@ -71,7 +72,7 @@ export const WordEditor = ({ words, mode: rawMode, onChange, onCommit, onNotice 
     if (!file) return;
     try {
       const rows = await readXlsxRows(file);
-      const added = rows.slice(1).map((r) => ({ id: newId('w'), word: String(r.A ?? '').trim(), meaning: String(r.B ?? '').trim(), blank: 'meaning' })).filter((w) => w.word || w.meaning);
+      const added = rows.slice(1).map((r) => ({ id: newId('w'), word: String(r.A ?? '').trim(), meaning: String(r.B ?? '').trim() })).filter((w) => w.word || w.meaning);
       if (!added.length) { onNotice?.('엑셀 2행부터 A열(영어 낱말) · B열(한글 뜻)에 낱말이 없습니다. 양식을 내려받아 확인해 주세요.'); return; }
       onChange([...kept(), ...added], true);
       const noMeaning = dict ? 0 : added.filter((w) => w.word && !w.meaning).length;
@@ -109,7 +110,7 @@ export const WordEditor = ({ words, mode: rawMode, onChange, onCommit, onNotice 
         </div>
       ))}
       <div>
-        <button type="button" onClick={() => onChange([...words, { id: newId('w'), word: '', meaning: '', blank: 'meaning' }], true)} style={{ ...smallBtn(), padding: '6px 12px' }}>+ 한 줄 추가</button>
+        <button type="button" onClick={() => onChange([...words, { id: newId('w'), word: '', meaning: '' }], true)} style={{ ...smallBtn(), padding: '6px 12px' }}>+ 한 줄 추가</button>
       </div>
       <div style={{ borderTop: '1px dashed #E2E8F0', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={optLabel}>여러 개 붙여넣기 — 한 줄에 하나{dict ? '' : ' · 「낱말 [Tab] 뜻」 (엑셀 두 열 복사) 또는 「낱말 | 뜻」'}</span>
@@ -195,7 +196,7 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
     onDragOver: (ev) => { if (!dragId) return; ev.preventDefault(); if (overId !== w.id) setOverId(w.id); },
     onDrop: (ev) => { ev.preventDefault(); dropTo(w.id); setDragId(null); setOverId(null); },
     onClick: () => { if (mode === 'vocab') onToggleBlank?.(w.id); },
-    title: mode === 'vocab' ? `${no}번 — 끌어서 순서 · 누르면 빈칸 ${blankOf(w, rawMode) === 'word' ? '한글' : '영어'}으로` : `${no}번 — 끌어서 순서`,
+    title: mode === 'vocab' ? `${no}번 — 끌어서 순서 · 누르면 빈칸 ${blankOf(w, rawMode, words.indexOf(w)) === 'word' ? '한글' : '영어'}으로` : `${no}번 — 끌어서 순서`,
     'data-edit-row': true,
   } : {});
   const rowEditStyle = (w) => (editMode ? {
@@ -232,15 +233,17 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
   const zoom = actualSize ? 1 : (boxW ? Math.min(1, boxW / pageW) : 1);
   const curText = [curriculum?.schoolLevelName, curriculum?.gradeLabel, curriculum?.curriculumName, curriculum?.subjectName].filter(Boolean).join(' · ');
   // 낱말 시험 — 빈칸 쪽이 답, 다른 쪽이 보임 / 받아쓰기 — 낱말이 답, 보이는 것 없음
-  const answerOf = (w) => (mode === 'dictation' ? w.word : blankOf(w, rawMode) === 'word' ? w.word : w.meaning);
+  const idxOf = (w) => words.indexOf(w);
+  const answerOf = (w) => (mode === 'dictation' ? w.word : blankOf(w, rawMode, idxOf(w)) === 'word' ? w.word : w.meaning);
   // 정답 보기(교사용) — 줄여 보여도 읽히게 굵고 진하게
   const answerStyle = { color: '#DC2626', fontSize: 15, fontWeight: 800, fontFamily: 'Pretendard, sans-serif', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
-  const shownOf = (w) => (mode === 'dictation' ? '' : blankOf(w, rawMode) === 'word' ? w.meaning : w.word);
+  const shownOf = (w) => (mode === 'dictation' ? '' : blankOf(w, rawMode, idxOf(w)) === 'word' ? w.meaning : w.word);
+  const blankCount = mode === 'vocab' ? list.reduce((a, w) => { a[blankOf(w, rawMode, idxOf(w))] += 1; return a; }, { word: 0, meaning: 0 }) : null;
   const hasShown = mode !== 'dictation';
   return (
     <div ref={boxRef} style={{ background: '#E2E8F0', padding: 16, borderRadius: 12, overflow: actualSize ? 'auto' : 'hidden' }}>
       <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569', fontWeight: 700, textAlign: 'center', marginBottom: 10 }}>
-        {paper.label} · {L.columns}단 · {Math.max(1, pages.length)}쪽 — {M.icon} {M.label} · 낱말 {list.length}개{L.answerKey ? ' · 정답 보기(교사용)' : ''}
+        {paper.label} · {L.columns}단 · {Math.max(1, pages.length)}쪽 — {M.icon} {M.label} · 낱말 {list.length}개{blankCount ? ` · 빈칸 영어 ${blankCount.word} · 한글 ${blankCount.meaning}` : ''}{L.answerKey ? ' · 정답 보기(교사용)' : ''}
       </div>
       <div aria-label="낱말 문제집 지면 미리 보기" data-pages={pages.length} style={{ zoom, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
         {(pages.length ? pages : [{ cols: [], first: true }]).map((pg, pi, arr) => (
@@ -270,14 +273,14 @@ export const WordSheet = ({ title, curriculum, words, mode: rawMode, layout, act
                     // 표 — 번호 | 보여 줄 것 | 답 칸
                     <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'stretch', borderBottom: '1px solid #334155', boxSizing: 'border-box', ...rowEditStyle(w) }}>
                       <b style={{ width: 34, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #334155', background: '#F8FAFC' }}>{no}</b>
-                      {hasShown && <span style={{ flex: '0 1 45%', display: 'flex', alignItems: 'center', padding: '0 6px', borderRight: '1px solid #334155', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shownOf(w)}</span>}
+                      {hasShown && <span style={{ flex: '0 1 50%', display: 'flex', alignItems: 'center', padding: '0 6px', borderRight: '1px solid #334155', overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: shownOf(w).length > 6 ? 12 : 13 }}>{shownOf(w)}</span>}
                       <span style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 6px', minWidth: 40, ...answerStyle }}>{L.answerKey ? answerOf(w) : ''}</span>
                     </div>
                   ) : (
                     // 밑줄 — 번호 · 보여 줄 것 · 답 줄
                     <div key={w.id} data-word-row {...rowEdit(w, no)} style={{ height: rowH, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 4, boxSizing: 'border-box', ...rowEditStyle(w) }}>
                       <b style={{ minWidth: 26 }}>{no}.</b>
-                      {hasShown && <span style={{ flex: '0 1 45%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{shownOf(w)}</span>}
+                      {hasShown && <span style={{ flex: '0 1 50%', overflow: 'hidden', wordBreak: 'keep-all', lineHeight: 1.2, fontSize: shownOf(w).length > 6 ? 12 : 13 }}>{shownOf(w)}</span>}
                       <span style={{ flex: 1, borderBottom: '1px solid #334155', minWidth: 40, paddingLeft: 4, ...answerStyle }}>{L.answerKey ? answerOf(w) : ' '}</span>
                     </div>
                   )))}
