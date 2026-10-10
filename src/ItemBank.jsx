@@ -347,32 +347,18 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                   {wbStep === 1 && (
                     <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES} onPurpose={(p) => save({ ...wb, purpose: p })}
                       title={wb.title} onTitle={(t) => setW({ title: t })} onTitleBlur={() => save(wb)}
-                      curriculum={wcur} onCurriculum={(c) => setW({ curriculum: c })} onCurriculumSave={(c) => save({ ...wb, curriculum: c })}>
+                      curriculum={wcur} onCurriculum={(c) => setW({ curriculum: c })} onCurriculumSave={(c) => save({ ...wb, curriculum: c })}
+                      allowedCurricula={normMode(wb.mode) === 'dictation' ? ['국어', '영어'] : null}>
                       <div><span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 6, display: 'block' }}>출제 방식</span>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="radiogroup" aria-label="출제 방식">
                           {Object.entries(WORD_MODES).map(([k, m]) => (
-                            <button key={k} type="button" role="radio" aria-checked={normMode(wb.mode) === k} onClick={() => { const lang = wb.dictLang || (wcur.curriculumName === '영어' ? '영어' : '국어'); save({ ...wb, mode: k, ...(k === 'vocab' ? { curriculum: { ...wcur, curriculumName: '영어', subjectName: '영어' } } : { dictLang: lang, curriculum: { ...wcur, curriculumName: lang, subjectName: lang } }) }); }} // [v1.36] 낱말 시험 → 영어 · [v1.37] 받아쓰기 → 고른 언어
+                            <button key={k} type="button" role="radio" aria-checked={normMode(wb.mode) === k} onClick={() => { const lang = ['국어', '영어'].includes(wcur.curriculumName) ? wcur.curriculumName : '국어'; save({ ...wb, mode: k, ...(k === 'vocab' ? { curriculum: { ...wcur, curriculumName: '영어', subjectName: '영어' } } : { curriculum: { ...wcur, curriculumName: lang, subjectName: lang } }) }); }} // [v1.36] 낱말 시험 → 영어 · [v1.38] 받아쓰기 → 지금 교과가 국어/영어면 그대로, 아니면 국어
                               style={{ padding: '8px 12px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${normMode(wb.mode) === k ? '#2A75F3' : '#E2E8F0'}`, background: normMode(wb.mode) === k ? '#EFF6FF' : 'white', color: normMode(wb.mode) === k ? '#1D4ED8' : '#475569' }}>
                               {m.icon} {m.label}
                             </button>
                           ))}
                         </div>
-                        {/* [v1.37] 받아쓰기 — 언어(국어 · 영어)를 고르면 교과 · 과목도 같이. 낱말 시험 설명 문구는 삭제 */}
-                        {normMode(wb.mode) === 'dictation' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>받아쓰기 언어</span>
-                            <span role="radiogroup" aria-label="받아쓰기 언어" style={{ display: 'flex', gap: 6 }}>
-                              {['국어', '영어'].map((lang) => {
-                                const on = (wb.dictLang || (wcur.curriculumName === '영어' ? '영어' : '국어')) === lang;
-                                return (
-                                  <button key={lang} type="button" role="radio" aria-checked={on} onClick={() => save({ ...wb, dictLang: lang, curriculum: { ...wcur, curriculumName: lang, subjectName: lang } })}
-                                    style={{ padding: '6px 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white', color: on ? '#1D4ED8' : '#475569' }}>{lang}</button>
-                                );
-                              })}
-                            </span>
-                            <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>시험지에는 번호와 빈칸만 나오고, 교사가 불러 줍니다.</span>
-                          </div>
-                        )}
+                        {/* [v1.38] 받아쓰기 언어 선택 삭제 — 교과(국어 · 영어)로 정한다 */}
                       </div>
                       {/* [v1.36] 낱말 시험 — 핵심평가영역 · 성취기준 (AI 낱말 만들기 근거) */}
                       {normMode(wb.mode) === 'vocab' && (
@@ -382,7 +368,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                       )}
                     </WorkbookInfoCard>
                   )}
-                  {wbStep === 2 && <WordEditor key={wb.id} words={words} mode={wb.mode} dictLang={wb.dictLang || (wcur.curriculumName === '영어' ? '영어' : '국어')} onNotice={setToast} onSave={(next) => save({ ...wb, words: next })} ai={{ cur: wcur, codes: wb.standards?.codes || [] }} />}
+                  {wbStep === 2 && <WordEditor key={wb.id} words={words} mode={wb.mode} dictLang={wcur.curriculumName === '영어' ? '영어' : '국어'} onNotice={setToast} onSave={(next) => save({ ...wb, words: next })} ai={{ cur: wcur, codes: wb.standards?.codes || [] }} />}
                   {wbStep === 3 && (
                     <>
                       <WordLayoutOptions layout={wb.layout} onChange={(l) => save({ ...wb, layout: l })}>{actualW}</WordLayoutOptions>

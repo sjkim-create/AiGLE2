@@ -137,7 +137,8 @@ export const catalogOptions = (cat, schoolLevelName, gradeLabel, curriculumName)
   return { curricula, subjects };
 };
 
-export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle, onTitleBlur, curriculum, onCurriculum, onCurriculumSave, children }) => {
+// allowedCurricula — 교과를 이 목록으로만 고르게 (받아쓰기 = 국어 · 영어)
+export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle, onTitleBlur, curriculum, onCurriculum, onCurriculumSave, children, allowedCurricula = null }) => {
   const [cat, setCat] = React.useState(null);
   React.useEffect(() => { loadCatalog().then(setCat).catch(() => {}); }, []);
   const opts = catalogOptions(cat, curriculum.schoolLevelName, curriculum.gradeLabel, curriculum.curriculumName);
@@ -184,7 +185,7 @@ export const WorkbookInfoCard = ({ purpose, purposes, onPurpose, title, onTitle,
           <select value={curriculum.curriculumName || ''} onChange={(e) => pickCurriculum(e.target.value)} disabled={!curriculum.schoolLevelName} aria-label="교과"
             title={!curriculum.schoolLevelName ? '학교급을 먼저 골라 주세요.' : ''} style={{ ...input, ...(!curriculum.schoolLevelName ? { background: '#F1F5F9', color: '#94A3B8' } : {}) }}>
             <option value="">{curriculum.schoolLevelName ? '선택' : '학교급을 먼저 선택'}</option>
-            {withCurrent(opts.curricula, curriculum.curriculumName).map((x) => <option key={x}>{x}</option>)}
+            {withCurrent(allowedCurricula ? opts.curricula.filter((x) => allowedCurricula.includes(x)) : opts.curricula, curriculum.curriculumName).map((x) => <option key={x}>{x}</option>)}
           </select></div>
         <div><span style={label}>과목</span>
           <select value={curriculum.subjectName || ''} onChange={(e) => set({ subjectName: e.target.value }, true)} disabled={!curriculum.curriculumName} aria-label="과목"
