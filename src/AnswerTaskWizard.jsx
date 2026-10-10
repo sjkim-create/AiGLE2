@@ -154,7 +154,7 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
         <button onClick={back} style={btn(false)}>← 과제 목록</button>
         <div>
           <Crumb path={['과제 관리', '과제 목록', '새 과제 등록']} />
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{smart ? '✨ 스마트 과제 등록 · ✅ 정답형' : '✅ 정답형 과제 만들기'}</h1>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{smart ? '✨ 정답형 스마트 등록' : '✍️ 정답형 직접 등록'}</h1>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {STEPS.map((l, i) => {
@@ -184,7 +184,9 @@ const AnswerTaskWizard = ({ initialSource = 'direct', onBack, onAdd, onLeaveGuar
               {step === 1 && (
                 <>
                   <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    {Object.entries(SOURCES).map(([k, s]) => <button key={k} type="button" onClick={() => setTab(k)} style={chipBtn(tab === k)}>{s.icon} {s.label}</button>)}
+                    {/* 직접 등록 = 직접 작성 · 문제 은행 / 스마트 등록 = 자료에서 가져오기만 */}
+                    {smart ? <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569' }}>📥 자료에서 가져오기</span>
+                      : Object.entries(SOURCES).filter(([k]) => k !== 'file').map(([k, s]) => <button key={k} type="button" onClick={() => setTab(k)} style={chipBtn(tab === k)}>{s.icon} {s.label}</button>)}
                     <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800 }}>담은 문항 {entries.length}개</span>
                     <button onClick={() => setStep(2)} disabled={!entries.length} style={btn(true, !entries.length)}>다음: 배치 →</button>
                   </div>

@@ -178,7 +178,7 @@ const TaskFileGenerate = ({ onBack, onAdd, embedded = false, onEditTask }) => {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 22, flexWrap: 'wrap' }}>
               <button onClick={reset} style={btn(false)}>다른 파일로 생성</button>
               <button onClick={() => downloadAssignmentJson(result.draft)} style={btn(false)} title="상용 아이글 과제 생성의 「JSON 가져오기」에 올리는 파일">⬇️ JSON 내려받기</button>
-              {onEditTask && <button onClick={() => onEditTask(result.task)} style={btn(false)} title="지문·문항·채점 기준·모범답안(그림 범위 포함)을 고칩니다">✏️ 직접 입력 2에서 수정</button>}
+              {onEditTask && <button onClick={() => onEditTask(result.task)} style={btn(false)} title="지문·문항·채점 기준·모범답안(그림 범위 포함)을 고칩니다">✏️ 직접 등록 화면에서 수정</button>}
               <button onClick={onBack} style={btn(true)}>과제 목록으로</button>
             </div>
           </div>

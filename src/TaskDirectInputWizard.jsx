@@ -828,7 +828,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
       {/* 헤더 + Step indicator (고정) */}
       <div style={{ flexShrink: 0, background: 'white', borderBottom: '1px solid #E2E8F0' }}>
         <header style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>직접 입력 2 — {initialData ? '과제 수정' : '과제 등록'}</h1>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{initialData ? '✏️ 서·논술형 과제 수정' : '✍️ 서·논술형 직접 등록'}</h1>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={handleExitNoSave} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer' }}>나가기</button>
             <CropDialog open={!!cropTarget} pages={pageImages} initial={cropTarget?.initial} title={cropTarget?.index === -1 ? '자료에서 그림 자르기' : '그림 범위 조정'}

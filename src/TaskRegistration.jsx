@@ -3,6 +3,7 @@ import './index.css';
 import TaskFileUploadWizard from './TaskFileUploadWizard';
 import TaskDirectInputWizard from './TaskDirectInputWizard';
 import SmartTaskRegistration from './SmartTaskRegistration';
+import { REGISTER_GROUPS } from './registerMenu';
 import { taskToDirectInputData } from './lib/taskSchema';
 import AnswerTaskWizard from './AnswerTaskWizard';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
@@ -312,76 +313,38 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
         </header>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
           <div style={{ maxWidth: '760px', width: '100%' }}>
-            <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, textAlign: 'center', marginBottom: '8px' }}>등록 방식을 선택해 주세요</h2>
-            <p style={{ fontSize: 'var(--neo-font-size-base)', color: '#64748B', textAlign: 'center', marginBottom: '32px' }}>
-              과제를 어떤 방식으로 만드시겠습니까?
+            <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, textAlign: 'center', marginBottom: '8px' }}>어떤 과제를 어떻게 만드시겠어요?</h2>
+            <p style={{ fontSize: 'var(--neo-font-size-base)', color: '#64748B', textAlign: 'center', marginBottom: '28px' }}>
+              직접 등록은 화면에서 하나씩 작성하고, 스마트 등록은 자료(PDF·이미지)를 올리면 AI가 모든 단계를 채웁니다.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-              <button
-                onClick={() => setRegistrationMode('direct')}
-                style={{
-                  background: 'white', border: '2px solid #E2E8F0', borderRadius: '16px',
-                  padding: '32px 24px', textAlign: 'center', cursor: 'pointer',
-                  transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2A75F3'; e.currentTarget.style.background = '#EFF6FF'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}
-              >
-                <span style={{ fontSize: '3rem' }}>📝</span>
-                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>직접 입력</span>
-                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
-                  문제 텍스트·이미지를 시스템 내에서 직접 작성합니다.
-                </span>
-              </button>
-              <button
-                onClick={() => setRegistrationMode('direct2')}
-                style={{
-                  background: 'white', border: '2px solid #E2E8F0', borderRadius: '16px',
-                  padding: '32px 24px', textAlign: 'center', cursor: 'pointer',
-                  transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7C3AED'; e.currentTarget.style.background = '#F5F3FF'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}
-              >
-                <span style={{ fontSize: '3rem' }}>🧩</span>
-                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>직접 입력 2</span>
-                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
-                  탭 단계형 입력. 문항 → 자동/자율 평가 채점 기준 → 등급 환산까지 단계별로 작성합니다.
-                </span>
-              </button>
-              <button
-                onClick={() => setRegistrationMode('upload')}
-                style={{
-                  background: 'white', border: '2px solid #E2E8F0', borderRadius: '16px',
-                  padding: '32px 24px', textAlign: 'center', cursor: 'pointer',
-                  transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#10B981'; e.currentTarget.style.background = '#F0FDF4'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}
-              >
-                <span style={{ fontSize: '3rem' }}>📷</span>
-                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>파일 업로드</span>
-                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
-                  기존 종이 양식(PDF/이미지)을 업로드하여 그대로 학생 문답지로 사용합니다.
-                </span>
-              </button>
-              <button
-                onClick={() => setRegistrationMode('generate')}
-                style={{
-                  background: 'white', border: '2px solid #E2E8F0', borderRadius: '16px',
-                  padding: '32px 24px', textAlign: 'center', cursor: 'pointer',
-                  transition: 'all 0.15s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#F59E0B'; e.currentTarget.style.background = '#FFFBEB'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}
-              >
-                <span style={{ fontSize: '3rem' }}>✨</span>
-                <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>스마트 과제 등록</span>
-                <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
-                  평가 자료(PDF/이미지)를 올리면 AI가 읽어 서·논술 과제를 바로 만듭니다. 정답형 과제는 문제 은행의 문항으로 만듭니다.
-                </span>
-              </button>
-            </div>
+            {REGISTER_GROUPS.map((g) => (
+              <div key={g.title} style={{ marginBottom: 22 }}>
+                <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: g.color, marginBottom: 8 }}>{g.title} <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: 'var(--neo-font-size-sm)' }}>{g.sub}</span></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+                  {g.items.map((m) => (
+                    <button key={m.mode} onClick={() => setRegistrationMode(m.mode)}
+                      style={{ background: 'white', border: '2px solid #E2E8F0', borderRadius: 16, padding: '20px', textAlign: 'left', cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'flex-start', fontFamily: 'inherit' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = g.color; e.currentTarget.style.background = g.hover; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = 'white'; }}>
+                      <span style={{ fontSize: '2rem', lineHeight: 1 }}>{m.icon}</span>
+                      <span>
+                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: '#1E293B' }}>{m.label}</span>
+                        <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5, marginTop: 4 }}>{m.desc}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {g.more && (
+                  <div style={{ marginTop: 8, fontSize: 'var(--neo-font-size-sm)', color: '#64748B', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span>다른 등록 방식 (기존):</span>
+                    {g.more.map((m) => (
+                      <button key={m.mode} onClick={() => setRegistrationMode(m.mode)} title={m.desc}
+                        style={{ border: 'none', background: 'transparent', color: '#475569', textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', padding: 0 }}>{m.icon} {m.label}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>

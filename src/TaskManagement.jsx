@@ -5,6 +5,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import TaskRegistration from './TaskRegistration';
+import { REGISTER_GROUPS } from './registerMenu'; // 새 과제 등록 메뉴 (형태 × 방식)
 
 // 사이드바 카운트 뱃지가 동일한 소스를 참조하도록 모듈 스코프로 노출
 export const BASE_TASKS = [
@@ -53,19 +54,6 @@ export const BASE_TASKS = [
 // onAddTask: wizard에서 task 객체를 직접 부모로 전달할 때 호출 (영속화용)
 // onOpenDetail: 상세보기 분기 라우팅 (source에 따라 detail 컴포넌트 선택)
 // [TSK-15] 새 과제 등록 — 과제 형태별 입구
-const REGISTER_GROUPS = [
-    { title: '📝 서·논술형 과제', sub: '문항별 답안지 · 루브릭 채점', color: '#6D28D9', hover: '#F5F3FF', border: '#DDD6FE', items: [
-        { mode: 'direct', icon: '📝', label: '직접 입력', desc: '문제 텍스트·이미지를 시스템 내에서 직접 작성합니다.' },
-        { mode: 'direct2', icon: '🧩', label: '직접 입력 2', desc: '탭 단계형 입력 — 문항 → 채점 기준 → 등급 환산까지 단계별로 작성합니다.' },
-        { mode: 'upload', icon: '📷', label: '파일 업로드', desc: '기존 종이 양식(PDF/이미지)을 업로드하여 그대로 학생 문답지로 사용합니다.' },
-        { mode: 'generate', icon: '✨', label: '스마트 과제 등록', desc: '평가 자료를 올리면 AI가 문항·모범답안·채점 기준까지 채워 서·논술 과제를 만듭니다.' },
-    ] },
-    { title: '✅ 정답형 과제', sub: '객관식·진위·단답 등 · 한 장 시험지 · 정답 대조 채점', color: '#1D4ED8', hover: '#EFF6FF', border: '#BFDBFE', items: [
-        { mode: 'answer-direct', icon: '✍️', label: '직접 입력', desc: '문항 유형(선다형·양자택일형·진위형·연결형·단답형·완성형·서술형)을 골라 직접 작성합니다.' },
-        { mode: 'answer-smart', icon: '✨', label: '스마트 과제 등록', desc: '시험지·교재를 올리면 AI가 문항 분류·정답·배점·과제명까지 채웁니다. 확인만 하면 됩니다.' },
-        { mode: 'answer-bank', icon: '🗂️', label: '문제 은행에서 고르기', desc: '문제 은행의 문항·문제집을 골라 시험지를 만듭니다.' },
-    ] },
-];
 
 const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [] }) => {
     const [viewMode, setViewMode] = useState('card'); // 'card' | 'list'
@@ -78,6 +66,7 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
 
     // [v3.6] 등록 방식 선택 — 버튼 아래 슬라이딩 패널
     const [registerMenuOpen, setRegisterMenuOpen] = useState(false);
+    const [moreOpen, setMoreOpen] = useState(false); // 기존 등록 방식 펼침
     const registerMenuRef = useRef(null);
 
     useEffect(() => {
@@ -301,6 +290,21 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                                 <span style={{ color: '#94A3B8', alignSelf: 'center' }}>›</span>
                                             </button>
                                         ))}
+                                        {g.more && (
+                                            <div style={{ padding: '0 12px 4px' }}>
+                                                <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen}
+                                                    style={{ border: 'none', background: 'transparent', padding: '4px 0', color: '#64748B', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                                    다른 등록 방식 (기존) {moreOpen ? '▴' : '▾'}
+                                                </button>
+                                                {moreOpen && g.more.map((m) => (
+                                                    <button key={m.mode} role="menuitem" onClick={() => handleRegisterMethod(m.mode)} title={m.desc}
+                                                        style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', color: '#475569', fontSize: 'var(--neo-font-size-sm)' }}
+                                                        onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                                                        <span>{m.icon}</span><b style={{ fontWeight: 700 }}>{m.label}</b>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

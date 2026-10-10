@@ -28,11 +28,11 @@ const HeaderBar = ({ task, onBack, onDelete, onEdit }) => (
     <h1 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: 0, color: '#1E293B' }}>{task.title || '제목 없음'}</h1>
     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: task.status === '배포됨' ? '#D1FAE5' : '#FEF3C7', color: task.status === '배포됨' ? '#047857' : '#92400E' }}>{task.status}</span>
     <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: SOURCE_BADGE[task.source]?.bg || '#F1F5F9', color: SOURCE_BADGE[task.source]?.color || '#475569' }}>
-      {task.source === 'direct_input' && task.detail?.fromFile ? '📄 파일로 생성 · ✏️ 직접 입력 2 수정' : (SOURCE_BADGE[task.source]?.label || '기존 등록')}
+      {task.source === 'direct_input' && task.detail?.fromFile ? '✨ 스마트 등록 · ✏️ 수정됨' : (SOURCE_BADGE[task.source]?.label || '기존 등록')}
     </span>
     {onEdit && (
-      <button onClick={() => onEdit(task)} title="지문·문항·성취기준·채점 기준·모범답안(그림 포함)을 직접 입력 2 화면에서 고칩니다"
-        style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, border: '1px solid #2A75F3', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 800, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✏️ 직접 입력 2에서 수정</button>
+      <button onClick={() => onEdit(task)} title="지문·문항·성취기준·채점 기준·모범답안(그림 포함)을 서·논술형 직접 등록 화면에서 고칩니다"
+        style={{ marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, border: '1px solid #2A75F3', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 800, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit' }}>✏️ 직접 등록 화면에서 수정</button>
     )}
     {/* [TSK v3.8] 과제 삭제 — 상세에서도 지울 수 있다. 확인창은 상위가 띄운다 */}
     {onDelete && (

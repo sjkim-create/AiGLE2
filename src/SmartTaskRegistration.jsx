@@ -41,9 +41,9 @@ const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, onE
         <button onClick={onBack} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #E2E8F0', background: 'white', cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', fontFamily: 'inherit' }}>← 과제 목록</button>
         <div>
           <Crumb path={['과제 관리', '과제 목록', '새 과제 등록']} />
-          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>✨ 스마트 과제 등록</h1>
+          <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>{kind === 'essay' ? '✨ 서·논술형 스마트 등록' : '✨ 스마트 과제 등록'}</h1>
         </div>
-        {kind && (
+        {kind && !initialKind && (
           <>
             <span style={{ padding: '4px 12px', borderRadius: 999, background: KINDS[kind].bg, color: KINDS[kind].color, fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>{KINDS[kind].icon} {KINDS[kind].title}</span>
             <button onClick={() => setKind(null)} title="진행 중인 내용은 사라집니다"

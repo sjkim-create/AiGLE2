@@ -125,7 +125,7 @@ const ItemExtractWizard = ({ onBack, onGoItemBank, onPick }) => {
         <div style={card}>
           <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: '0 0 6px' }}>평가 자료를 올려 주세요</h2>
           <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', margin: '0 0 18px', lineHeight: 1.6 }}>
-            시험지·문제집·평가지를 올리면 AI가 문항을 찾아 <b>유형별로 분류</b>하고 정답·배점·<b>단원</b>을 정리합니다. 성취기준은 단원에 따라 정해집니다. 확인한 뒤 고른 문항만 <b>문제 은행</b>에 저장합니다.
+            시험지·문제집·평가지를 올리면 AI가 문항을 찾아 <b>유형별로 분류</b>하고 정답·배점·<b>단원</b>을 정리합니다. 성취기준은 단원에 따라 정해집니다. {onPick ? <>확인한 뒤 고른 문항으로 <b>시험지를 배치</b>합니다.</> : <>확인한 뒤 고른 문항만 <b>문제 은행</b>에 저장합니다.</>}
           </p>
           {!available && <div style={{ marginBottom: 14 }}><IssueList issues={[{ level: 'error', field: 'AI 분석', message: 'AI 분석을 쓸 수 없는 환경입니다 (Gemini API 키 없음). 로컬 개발 환경에서만 동작합니다.' }]} /></div>}
           <div role="button" tabIndex={0}
