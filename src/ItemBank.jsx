@@ -16,6 +16,7 @@ import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
 import { WorkbookInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
+import WorkbookDeploy from './WorkbookDeploy';
 import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordOrderTools, WordLayoutOptions, WordSheet, WordStandardsPicker, wordIssues, normMode, blankOf } from './WordWorkbook';
 
 const Crumb = ({ path }) => (
@@ -343,7 +344,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
               )}
               {wbEditing && (
                 <>
-                  {!wide && <StepChips steps={['기본 정보', '낱말 입력', '문제집 배치']} step={wbStep} onStep={setWbStep} />}
+                  {!wide && <StepChips steps={['기본 정보', '낱말 입력', '문제집 배치', '그룹 배포·출력']} step={wbStep} onStep={setWbStep} />}
                   {wbStep === 1 && (
                     <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES} onPurpose={(p) => save({ ...wb, purpose: p })}
                       title={wb.title} onTitle={(t) => setW({ title: t })} onTitleBlur={() => save(wb)}
@@ -377,6 +378,10 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                         editMode onOrder={(next) => save({ ...wb, words: next })}
                         onToggleBlank={(id) => save({ ...wb, words: words.map((w, i) => (w.id === id ? { ...w, blank: blankOf(w, wb.mode, i) === 'word' ? 'meaning' : 'word' } : w)) })} />
                     </>
+                  )}
+                  {wbStep === 4 && (
+                    <WorkbookDeploy wb={wb} onSave={save} paper={wb.layout?.paper || 'A4'} onNotice={setToast}
+                      sheet={<WordSheet title={wb.title} curriculum={wcur} words={words} mode={wb.mode} layout={wb.layout} actualSize />} />
                   )}
                 </>
               )}
@@ -438,7 +443,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
             {/* 수정 모드 — ① 기본 정보 ② 문제집 배치 (단계 칩으로 이동) */}
             {wbEditing && (
               <>
-                {!wide && <StepChips steps={['기본 정보', '문제집 배치']} step={wbStep} onStep={setWbStep} />}
+                {!wide && <StepChips steps={['기본 정보', '문제집 배치', '그룹 배포·출력']} step={wbStep} onStep={setWbStep} />}
                 {wbStep === 1 && (
                   <WorkbookInfoCard purpose={wb.purpose} purposes={WORKBOOK_PURPOSES}
                     onPurpose={(p) => save({ ...wb, purpose: p })}
@@ -458,6 +463,10 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                     <WorkbookSheet {...sheetProps} editMode />
                     {its.length === 0 && <div style={{ padding: 16, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 「문항」 메뉴에서 골라 [📚 문제집에 담기]로 넣어 주세요.</div>}
                   </>
+                )}
+                {wbStep === 3 && (
+                  <WorkbookDeploy wb={wb} onSave={save} paper={wb.layout?.paper || 'A4'} onNotice={setToast}
+                    sheet={<WorkbookSheet {...sheetProps} editMode={false} actualSize />} />
                 )}
               </>
             )}
@@ -495,7 +504,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
           </div>
         );
         // 수정 중이면 2열 = 단계 메뉴 (서·논술형 직접 등록과 같은 모양)
-        const steps = wb?.kind === 'word' ? ['기본 정보', '낱말 입력', '문제집 배치'] : ['기본 정보', '문제집 배치'];
+        const steps = wb?.kind === 'word' ? ['기본 정보', '낱말 입력', '문제집 배치', '그룹 배포·출력'] : ['기본 정보', '문제집 배치', '그룹 배포·출력']; // [v1.41] 그룹 배포·출력
         const stepCol = (
           <nav aria-label="수정 단계" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {steps.map((l, i) => {
