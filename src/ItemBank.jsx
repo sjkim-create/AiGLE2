@@ -16,7 +16,7 @@ import { IssueList } from './TaskFileGenerate';
 import { ItemEditDialog } from './ItemEditForm';
 import { WorkbookInfoCard, ArrangeSummary, StepChips, topCurriculum } from './AnswerArrange';
 import { WorkbookSheet, LayoutOptions } from './WorkbookLayout';
-import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordLayoutOptions, WordSheet, wordIssues } from './WordWorkbook';
+import { WORD_MODES, DEFAULT_WORD_LAYOUT, WordEditor, WordLayoutOptions, WordSheet, wordIssues, normMode } from './WordWorkbook';
 
 const Crumb = ({ path }) => (
   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 700, marginBottom: 2 }}>{path.join(' › ')}</div>
@@ -295,7 +295,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
         // [TSK-15 v1.26] 낱말 문제집 — 영어 단어 시험 · 받아쓰기. 교사가 직접 낱말을 입력한다
         const createWordWb = async () => {
           const id = newId('wb');
-          await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'meaning', layout: { ...DEFAULT_WORD_LAYOUT } });
+          await putWorkbook({ id, kind: 'word', title: '새 낱말 문제집', purpose: 'practice', itemIds: [], words: [], mode: 'vocab', layout: { ...DEFAULT_WORD_LAYOUT } });
           setOpenWbId(id); setWbStep(1); setWbEditing(true); setWbRemoved(null);
         };
         const wordBtn = <button onClick={createWordWb} style={{ ...btn(false), borderColor: '#2A75F3', color: '#1D4ED8' }}>+ 🔤 낱말 문제집 만들기</button>;
@@ -318,7 +318,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                     <button key={w.id} onClick={() => { setOpenWbId(w.id); setWbStep(1); setWbEditing(false); setWbRemoved(null); }} style={{ textAlign: 'left', background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>🔤 낱말 문제집 · {WORKBOOK_PURPOSES[w.purpose]?.icon} {WORKBOOK_PURPOSES[w.purpose]?.label}</span>
                       <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: '#1E293B' }}>{w.title}</span>
-                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>낱말 {n}개 · {WORD_MODES[w.mode]?.label}</span>
+                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>낱말 {n}개 · {WORD_MODES[normMode(w.mode)].label}</span>
                     </button>
                   );
                 }
@@ -357,7 +357,7 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                   <button onClick={() => { save(wb); setWbEditing(false); }} style={btn(true)}>✅ 수정 끝내기</button>
                 ) : (
                   <>
-                    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORD_MODES[wb.mode]?.icon} {WORD_MODES[wb.mode]?.label}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>{WORD_MODES[normMode(wb.mode)].icon} {WORD_MODES[normMode(wb.mode)].label}</span>
                     <button onClick={() => { setWbEditing(true); setWbStep(1); }} style={{ ...btn(false), borderColor: '#2A75F3', color: '#1D4ED8' }}>✏️ 수정</button>
                     <button onClick={() => setConfirmWbDelete(wb)} style={btn(false, false, true)}>🗑 문제집 삭제</button>
                   </>
@@ -380,16 +380,15 @@ const ItemBank = ({ title = '문제 은행', registerItems = null, onRegister, i
                       <div><span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', marginBottom: 6, display: 'block' }}>출제 방식</span>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="radiogroup" aria-label="출제 방식">
                           {Object.entries(WORD_MODES).map(([k, m]) => (
-                            <button key={k} type="button" role="radio" aria-checked={wb.mode === k} onClick={() => save({ ...wb, mode: k })}
-                              style={{ padding: '8px 12px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${wb.mode === k ? '#2A75F3' : '#E2E8F0'}`, background: wb.mode === k ? '#EFF6FF' : 'white', color: wb.mode === k ? '#1D4ED8' : '#475569' }}>
+                            <button key={k} type="button" role="radio" aria-checked={normMode(wb.mode) === k} onClick={() => save({ ...wb, mode: k })}
+                              style={{ padding: '8px 12px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${normMode(wb.mode) === k ? '#2A75F3' : '#E2E8F0'}`, background: normMode(wb.mode) === k ? '#EFF6FF' : 'white', color: normMode(wb.mode) === k ? '#1D4ED8' : '#475569' }}>
                               {m.icon} {m.label}
                             </button>
                           ))}
                         </div>
                         <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 6 }}>
-                          {wb.mode === 'meaning' && '시험지에 영어 낱말이 보이고, 학생이 한글 뜻을 씁니다.'}
-                          {wb.mode === 'spelling' && '시험지에 한글 뜻이 보이고, 학생이 영어 낱말을 씁니다.'}
-                          {wb.mode === 'dictation' && '시험지에는 번호와 빈칸만 나옵니다. 교사가 낱말을 불러 주면 학생이 듣고 씁니다 (국어 · 영어 받아쓰기).'}
+                          {normMode(wb.mode) === 'vocab' && '영어 낱말과 한글 뜻을 입력합니다. 낱말마다 영어나 한글 중 하나를 빈칸으로 — 낱말 입력에서 번갈아 · 무작위로 정할 수 있습니다.'}
+                          {normMode(wb.mode) === 'dictation' && '시험지에는 번호와 빈칸만 나옵니다. 교사가 낱말을 불러 주면 학생이 듣고 씁니다 (국어 · 영어 받아쓰기).'}
                         </div>
                       </div>
                     </WorkbookInfoCard>
