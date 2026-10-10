@@ -6,7 +6,7 @@
  * 문제집 탭: 문항을 순서대로 엮은 문제집(시험 대비·기초학력·수업 연습)을 만들고 순서를 바꾼다.
  * 저장소: lib/itemBank (프로토 IndexedDB — 상용은 서버 DB)
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ITEM_TYPES, ITEM_TYPE_KEYS, TRACKS, WORKBOOK_PURPOSES, isReady, listItems, listPassages, listSources, putItem, deleteItems, listWorkbooks, putWorkbook, deleteWorkbook } from './lib/itemBank';
 import { BulkEditBar, WorkbookPicker } from './ItemBankParts';
 import ItemCard from './ItemCard';
@@ -84,10 +84,27 @@ const ItemBank = ({ onGoRegister }) => {
   const chosenIds = Object.keys(selected).filter((id) => selected[id] && all.some((i) => i.id === id));
   const allOn = visible.length > 0 && visible.every((i) => selected[i.id]);
 
-  const open = (it) => { setOpenId(it.id); setDraft(it); };
-  const close = () => { setOpenId(null); setDraft(null); };
   const opened = all.find((i) => i.id === openId);
   const dirty = draft && opened && JSON.stringify(draft) !== JSON.stringify(opened);
+  // [QBK-01 v1.2] 목록 | 상세 나란히 — 다른 문항을 누르면 상세가 닫히지 않고 그 문항으로 바뀐다
+  //   고친 내용이 있으면 이동 전에 저장 여부를 묻는다 (pendingOpen)
+  const [pendingOpen, setPendingOpen] = useState(null);
+  const show = (it) => { setOpenId(it.id); setDraft(it); };
+  const open = (it) => {
+    if (it.id === openId) return;
+    if (dirty) { setPendingOpen(it); return; }
+    show(it);
+  };
+  const close = () => { setOpenId(null); setDraft(null); };
+  // 넓은 화면이면 나란히, 좁으면(900px 미만) 오른쪽에서 나오는 패널
+  const rootRef = useRef(null);
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    if (!rootRef.current || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(([e]) => setWide(e.contentRect.width >= 900));
+    ro.observe(rootRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   const saveDraft = async () => {
     await putItem({ ...draft, status: isReady(draft) ? 'ready' : 'needs_review' });
@@ -102,8 +119,46 @@ const ItemBank = ({ onGoRegister }) => {
     setToast(`문항 ${ids.length}개를 삭제했습니다.`);
   };
 
+
+  // 상세 패널 내용 — 나란히(넓은 화면) / 오른쪽 패널(좁은 화면) 공용
+  const detailBody = opened && draft ? (
+          <>
+            <div style={{ padding: '14px 18px', background: 'white', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <strong style={{ fontSize: 'var(--neo-font-size-base)' }}>문항 상세</strong>
+              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{opened.source?.fileName}{opened.source?.page ? ` · ${opened.source.page}쪽` : ''}</span>
+              <button onClick={close} aria-label="닫기" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: '1.2rem', cursor: 'pointer', color: '#64748B' }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {passageById[draft.passageId] && (
+                <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 4 }}>📖 공통 지문 {passageById[draft.passageId].range}</div>{passageById[draft.passageId].text}
+                </div>
+              )}
+              <ItemCard item={draft} editable onChange={setDraft} unitOptions={catalog ? unitOptionsFor(catalog, draft.curriculum?.subjectId) : []} />
+              {draft.explanation && <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap' }}><b>해설</b><br />{draft.explanation}</div>}
+              <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.8 }}>
+                <div><b>교육과정</b> {[draft.curriculum?.schoolLevelName, draft.curriculum?.gradeLabel, draft.curriculum?.curriculumName, draft.curriculum?.subjectName].filter(Boolean).join(' · ') || '미확인'}</div>
+                <div><b>성격</b> {TRACKS[draft.track || 'curriculum'].label}{draft.track === 'basic' && draft.skill ? ` · ${draft.skill}` : ''}</div>
+                {draft.track !== 'basic' && <>
+                <div><b>단원</b> {draft.unit?.areaName || '미지정'}{draft.unit?.label && draft.unit.label !== draft.unit.areaName ? ` (자료 표기: ${draft.unit.label})` : ''}{draft.unit?.source === 'ai' ? ' · AI 추정' : draft.unit?.source === 'teacher' ? ' · 교사 확인' : ''}</div>
+                <div style={{ marginTop: 4 }}><b>단원 성취기준</b> {(draft.curriculum?.standards || []).length}개 — 문항마다 고르지 않고 단원에 따라 정해집니다</div>
+                {(draft.curriculum?.standards || []).map((s) => <div key={s.id} style={{ fontSize: 'var(--neo-font-size-xs)' }}>{s.code} {s.text}</div>)}
+                </>}
+                <div><b>계보</b> {draft.lineage?.parentId ? `파생 문항 (원본 ${draft.lineage.parentId})` : '원본 문항'}</div>
+              </div>
+              {(draft.issues || []).length > 0 && <IssueList issues={draft.issues} />}
+            </div>
+            <div style={{ padding: '12px 16px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => setConfirmDelete([opened.id])} style={btn(false, false, true)}>🗑 삭제</button>
+              <button disabled title="다음 단계에서 만듭니다 — 이 문항을 원본으로, 숫자·보기·표현을 바꾼 변형 문항을 AI로 만들고 원본과 연결" style={btn(false, true)}>🧬 파생 문항 만들기 (준비 중)</button>
+              <span style={{ flex: 1 }} />
+              <button onClick={saveDraft} disabled={!dirty} style={btn(true, !dirty)}>저장</button>
+            </div>
+          </>
+  ) : null;
+
   return (
-    <div className="task-management-container" style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
+    <div ref={rootRef} className="task-management-container" style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflowY: 'auto' }}>
       <header className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div className="page-title">문제 은행</div>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>정답형 문항 {all.length}개 · 문제집 {workbooks.length}개 · 자료 {sources.length}건</span>
@@ -119,6 +174,8 @@ const ItemBank = ({ onGoRegister }) => {
 
       {loadError && <div style={{ marginBottom: 12 }}><IssueList issues={[{ level: 'error', field: '문제 은행', message: `저장소를 열 수 없습니다. ${loadError}` }]} /></div>}
 
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
       {tab === 'items' && <>
       {/* 필터 */}
       <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 16px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -158,7 +215,7 @@ const ItemBank = ({ onGoRegister }) => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: chosenIds.length ? 72 : 0 }}>
             {visible.map((it) => (
-              <ItemCard key={it.id} item={it} passage={passageById[it.passageId]} compact selectable checked={!!selected[it.id]}
+              <ItemCard key={it.id} item={it} passage={passageById[it.passageId]} compact selectable checked={!!selected[it.id]} active={it.id === openId}
                 onToggle={() => setSelected((s) => ({ ...s, [it.id]: !s[it.id] }))} onOpen={() => open(it)} />
             ))}
             {visible.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>조건에 맞는 문항이 없습니다.</div>}
@@ -234,13 +291,47 @@ const ItemBank = ({ onGoRegister }) => {
                   <button onClick={() => move(idx, 1)} disabled={idx === its.length - 1} aria-label="아래로" style={{ ...btn(false, idx === its.length - 1), padding: '2px 8px' }}>↓</button>
                   <button onClick={() => save({ ...wb, itemIds: wb.itemIds.filter((x) => x !== it.id) })} aria-label="문제집에서 빼기" title="문제집에서 빼기" style={{ ...btn(false), padding: '2px 8px' }}>✕</button>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}><ItemCard item={it} passage={passageById[it.passageId]} compact onOpen={() => open(it)} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}><ItemCard item={it} passage={passageById[it.passageId]} compact active={it.id === openId} onOpen={() => open(it)} /></div>
               </div>
             ))}
             {its.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>문항이 없습니다. 문항 탭에서 골라 담아 주세요.</div>}
           </div>
         );
       })()}
+
+      </div>
+      {/* 상세 — 넓은 화면: 오른쪽 열에 고정, 목록을 눌러도 닫히지 않고 바뀐다 */}
+      {wide && detailBody && (
+        <aside role="region" aria-label="문항 상세"
+          style={{ flex: '0 0 min(520px, 46%)', position: 'sticky', top: 0, maxHeight: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
+          {detailBody}
+        </aside>
+      )}
+      </div>
+      {/* 상세 — 좁은 화면: 오른쪽에서 나오는 패널 */}
+      {!wide && detailBody && (
+        <div onClick={close} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 900 }}>
+          <aside onClick={(e) => e.stopPropagation()} role="dialog" aria-label="문항 상세"
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(560px, 100vw)', background: '#F8FAFC', boxShadow: '-12px 0 32px rgba(15,23,42,0.15)', display: 'flex', flexDirection: 'column' }}>
+            {detailBody}
+          </aside>
+        </div>
+      )}
+
+      {/* 고친 내용이 있는데 다른 문항을 누름 */}
+      {pendingOpen && (
+        <div onClick={() => setPendingOpen(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: '22px 24px', width: 440, maxWidth: '94vw' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>고친 내용을 저장할까요?</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.6 }}>{draft?.number}번 문항에 저장하지 않은 내용이 있습니다. 저장하지 않고 이동하면 고친 내용이 사라집니다.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button autoFocus onClick={() => setPendingOpen(null)} style={btn(false)}>취소</button>
+              <button onClick={() => { const it = pendingOpen; setPendingOpen(null); show(it); }} style={btn(false)}>저장하지 않고 이동</button>
+              <button onClick={async () => { const it = pendingOpen; setPendingOpen(null); await saveDraft(); show(it); }} style={btn(true)}>저장하고 이동</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <WorkbookPicker open={wbOpen} itemIds={chosenIds}
         defaultPurpose={all.filter((i) => chosenIds.includes(i.id)).every((i) => i.track === 'basic') ? 'basic' : 'exam'}
@@ -257,46 +348,6 @@ const ItemBank = ({ onGoRegister }) => {
               <button onClick={async () => { await deleteWorkbook(confirmWbDelete.id); setOpenWbId(null); setToast(`「${confirmWbDelete.title}」 문제집을 삭제했습니다.`); setConfirmWbDelete(null); }} style={{ ...btn(true), background: '#EF4444', borderColor: '#EF4444' }}>삭제</button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* 상세 패널 */}
-      {opened && draft && (
-        <div onClick={close} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 900 }}>
-          <aside onClick={(e) => e.stopPropagation()} role="dialog" aria-label="문항 상세"
-            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(560px, 100vw)', background: '#F8FAFC', boxShadow: '-12px 0 32px rgba(15,23,42,0.15)', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '14px 18px', background: 'white', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <strong style={{ fontSize: 'var(--neo-font-size-base)' }}>문항 상세</strong>
-              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{opened.source?.fileName}{opened.source?.page ? ` · ${opened.source.page}쪽` : ''}</span>
-              <button onClick={close} aria-label="닫기" style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: '1.2rem', cursor: 'pointer', color: '#64748B' }}>✕</button>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {passageById[draft.passageId] && (
-                <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 4 }}>📖 공통 지문 {passageById[draft.passageId].range}</div>{passageById[draft.passageId].text}
-                </div>
-              )}
-              <ItemCard item={draft} editable onChange={setDraft} unitOptions={catalog ? unitOptionsFor(catalog, draft.curriculum?.subjectId) : []} />
-              {draft.explanation && <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#334155', whiteSpace: 'pre-wrap' }}><b>해설</b><br />{draft.explanation}</div>}
-              <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', lineHeight: 1.8 }}>
-                <div><b>교육과정</b> {[draft.curriculum?.schoolLevelName, draft.curriculum?.gradeLabel, draft.curriculum?.curriculumName, draft.curriculum?.subjectName].filter(Boolean).join(' · ') || '미확인'}</div>
-                <div><b>성격</b> {TRACKS[draft.track || 'curriculum'].label}{draft.track === 'basic' && draft.skill ? ` · ${draft.skill}` : ''}</div>
-                {draft.track !== 'basic' && <>
-                <div><b>단원</b> {draft.unit?.areaName || '미지정'}{draft.unit?.label && draft.unit.label !== draft.unit.areaName ? ` (자료 표기: ${draft.unit.label})` : ''}{draft.unit?.source === 'ai' ? ' · AI 추정' : draft.unit?.source === 'teacher' ? ' · 교사 확인' : ''}</div>
-                <div style={{ marginTop: 4 }}><b>단원 성취기준</b> {(draft.curriculum?.standards || []).length}개 — 문항마다 고르지 않고 단원에 따라 정해집니다</div>
-                {(draft.curriculum?.standards || []).map((s) => <div key={s.id} style={{ fontSize: 'var(--neo-font-size-xs)' }}>{s.code} {s.text}</div>)}
-                </>}
-                <div><b>계보</b> {draft.lineage?.parentId ? `파생 문항 (원본 ${draft.lineage.parentId})` : '원본 문항'}</div>
-              </div>
-              {(draft.issues || []).length > 0 && <IssueList issues={draft.issues} />}
-            </div>
-            <div style={{ padding: '12px 16px', background: 'white', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button onClick={() => setConfirmDelete([opened.id])} style={btn(false, false, true)}>🗑 삭제</button>
-              <button disabled title="다음 단계에서 만듭니다 — 이 문항을 원본으로, 숫자·보기·표현을 바꾼 변형 문항을 AI로 만들고 원본과 연결" style={btn(false, true)}>🧬 파생 문항 만들기 (준비 중)</button>
-              <span style={{ flex: 1 }} />
-              <button onClick={saveDraft} disabled={!dirty} style={btn(true, !dirty)}>저장</button>
-            </div>
-          </aside>
         </div>
       )}
 

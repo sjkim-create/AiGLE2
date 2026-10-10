@@ -24,7 +24,8 @@ export const TypeBadge = ({ type }) => {
 };
 
 // dimUnchecked — 정답형 확인 단계처럼 「선택 안 함 = 저장에서 빠짐」일 때만 흐리게. 문제 은행 목록은 선택이 고르기일 뿐이라 흐리게 하지 않는다
-const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false }) => {
+// active — 문제 은행에서 지금 상세에 열린 문항 (파란 테두리)
+const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false, active = false }) => {
   const missing = !hasAnswer(item);
   const src = ANSWER_SOURCE[missing ? 'none' : item.answerSource] || ANSWER_SOURCE.none;
   const a = item.answer || {};
@@ -65,7 +66,8 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
       onClick={onOpen}
       style={{
         background: 'white', borderRadius: 12, padding: '14px 16px', cursor: onOpen ? 'pointer' : 'default',
-        border: `1px solid ${editable && missing ? '#FCA5A5' : checked === false ? '#E2E8F0' : '#CBD5E1'}`,
+        border: active ? '2px solid #2A75F3' : `1px solid ${editable && missing ? '#FCA5A5' : checked === false ? '#E2E8F0' : '#CBD5E1'}`,
+        boxShadow: active ? '0 0 0 3px #DBEAFE' : 'none',
         opacity: dimUnchecked && selectable && !checked ? 0.55 : 1, display: 'flex', gap: 12, alignItems: 'flex-start',
       }}
     >
