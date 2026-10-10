@@ -4,7 +4,8 @@
  * 대시보드, 학생, 과제 관리, 채점 관리, 게시판, Prompt Studio 메뉴와
  * 사용자 프로필 드롭다운, 환경설정 모드 전환 기능을 포함합니다.
  */
-import React from 'react';
+import React, { useState } from 'react';
+import { SIDEBAR_REGISTER, SIDEBAR_REGISTER_HISTORY } from './registerMenu';
 
 const Sidebar = ({
     activeMenu,
@@ -21,8 +22,17 @@ const Sidebar = ({
     taskCount,
     settingsBadgeCount = 0,  // [v4.6] 환경설정 「설정 필요」 배지 카운트 (0이면 미노출)
     incidentOpenCount = 0,   // [BRD-16] 장애신고 미처리 건수 (메일 발송 전)
-    onOpenIncident           // [BRD-16 v2.8] 좌측 하단 [🚨 이용불편 접수] — 어느 화면에서나 같은 모달을 연다
+    onOpenIncident,          // [BRD-16 v2.8] 좌측 하단 [🚨 이용불편 접수] — 어느 화면에서나 같은 모달을 연다
+    onRegister,              // [TSK-15 v1.3] 새 과제 등록 메뉴 — (mode) => 해당 등록 화면
+    registrationMode = null, // 지금 열린 등록 화면 (메뉴 강조용)
 }) => {
+  const [historyOpen, setHistoryOpen] = useState(false); // 이전 메뉴 (history) 펼침
+  const onRegisterScreen = activeSubMenu === '과제 등록';
+  // 같은 화면을 여는 메뉴가 둘(새 메뉴 · 이전 메뉴)일 수 있어, 마지막으로 누른 메뉴만 강조한다
+  const [clicked, setClicked] = useState(null); // { key, mode }
+  const activeKey = clicked && clicked.mode === registrationMode ? clicked.key : `new:${registrationMode}`;
+  const regActive = (key) => onRegisterScreen && activeKey === key;
+  const openReg = (key, mode) => { setClicked({ key, mode }); onRegister(mode); };
   const handleMenuChange = (menu) => {
     setActiveMenu(menu);
     if (setShowAnalysis) setShowAnalysis(false);
@@ -124,11 +134,23 @@ const Sidebar = ({
                         {activeMenu === '과제 관리' && (
                             <div className="nav-sub-menu">
                                 <div
-                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || activeSubMenu === '과제 등록' ? 'active' : ''}`}
+                                    className={`nav-sub-item ${activeSubMenu === '과제 관리' || (onRegisterScreen && ![...SIDEBAR_REGISTER, ...SIDEBAR_REGISTER_HISTORY].some((m) => m.mode === registrationMode)) ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('과제 관리')}
                                 >
                                     ⊙ 과제 관리 <span className="n-badge">N</span> <span className="badge">{taskCount ?? 0}</span>
                                 </div>
+                                {/* [TSK-15 v1.3] 새 과제 등록 — 과제 형태 × 등록 방식 */}
+                                {onRegister && (
+                                    <>
+                                        <div style={{ padding: '6px 12px 2px 28px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8' }}>새 과제 등록</div>
+                                        {SIDEBAR_REGISTER.map((m) => (
+                                            <div key={m.mode} className={`nav-sub-item ${regActive(`new:${m.mode}`) ? 'active' : ''}`} onClick={() => openReg(`new:${m.mode}`, m.mode)}
+                                                title={m.desc} style={{ paddingLeft: 36 }}>
+                                                {m.icon} {m.label}
+                                            </div>
+                                        ))}
+                                    </>
+                                )}
                                 {/* [QBK-01] 문제 은행 — 정답형 문항 저장소 (스마트 과제 등록 › 정답형) */}
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '문제 은행' ? 'active' : ''}`}
@@ -142,6 +164,21 @@ const Sidebar = ({
                                 >
                                     ⊙ 공유된 과제 <span className="n-badge" style={{ background: 'var(--success)' }}>N</span>
                                 </div>
+                                {/* 이전 메뉴 (history) — 정리 전 등록 메뉴. 같은 화면으로 연결 */}
+                                {onRegister && (
+                                    <>
+                                        <div className="nav-sub-item" onClick={() => setHistoryOpen((v) => !v)} aria-expanded={historyOpen}
+                                            style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-xs)' }}>
+                                            🕘 이전 메뉴 (history) {historyOpen ? '▴' : '▾'}
+                                        </div>
+                                        {historyOpen && SIDEBAR_REGISTER_HISTORY.map((m) => (
+                                            <div key={m.mode} className={`nav-sub-item ${regActive(`hist:${m.mode}`) ? 'active' : ''}`} onClick={() => openReg(`hist:${m.mode}`, m.mode)}
+                                                style={{ paddingLeft: 36, fontSize: 'var(--neo-font-size-xs)' }}>
+                                                {m.icon} {m.label}
+                                            </div>
+                                        ))}
+                                    </>
+                                )}
                             </div>
                         )}
 

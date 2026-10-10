@@ -15,3 +15,15 @@ export const REGISTER_GROUPS = [
         { mode: 'answer-smart', icon: '✨', label: '정답형 스마트 등록', desc: '시험지·교재를 올리면 AI가 문항 분류·정답·배점·과제명까지 채웁니다. 확인만 하면 됩니다.' },
     ] },
 ];
+
+// [TSK-15 v1.3] 왼쪽 메뉴 「과제 관리」 아래 — 새 등록 메뉴 4개
+export const SIDEBAR_REGISTER = REGISTER_GROUPS.flatMap((g) => g.items.map((m) => ({ ...m, color: g.color })));
+
+// 이전 메뉴 (history) — 정리 전 등록 메뉴를 그대로 남긴다. 같은 화면으로 연결
+export const SIDEBAR_REGISTER_HISTORY = [
+  { mode: 'direct', icon: '📝', label: '직접 입력' },
+  { mode: 'direct2', icon: '🧩', label: '직접 입력 2' },
+  { mode: 'upload', icon: '📷', label: '파일 업로드' },
+  { mode: 'generate-pick', icon: '✨', label: '스마트 과제 등록 (형태 선택)' },
+  { mode: 'answer-bank', icon: '🗂️', label: '문제 은행에서 고르기' },
+];

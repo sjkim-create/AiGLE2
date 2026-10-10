@@ -10,11 +10,13 @@ import WorksheetPreviewModal from './WorksheetPreviewModal';
 import NumberTagPreviewModal from './NumberTagPreviewModal';
 
 // initialEditTask — 과제 상세의 [✏️ 직접 입력 2에서 수정]으로 들어오면 그 과제를 채워서 연다
-const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank, initialEditTask = null }) => {
+// onModeChange — 왼쪽 메뉴 강조를 지금 화면에 맞춘다 (스마트 등록 → 직접 등록 화면에서 수정 등)
+const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank, initialEditTask = null, onModeChange }) => {
   const [editData, setEditData] = useState(() => (initialEditTask ? taskToDirectInputData(initialEditTask) : null));
   // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (✨ 스마트 과제 등록 — TSK-14) / 'generate-answer' (스마트 과제 등록을 정답형으로 바로 시작 — 문제 은행에서 진입)
   // [v3.6] initialMode prop으로 TaskManagement 슬라이딩 패널에서 선택된 모드로 바로 진입 가능
   const [registrationMode, setRegistrationMode] = useState(initialMode);
+  useEffect(() => { onModeChange?.(registrationMode); }, [registrationMode]); // eslint-disable-line react-hooks/exhaustive-deps
   const [formData, setFormData] = useState({
     title: '',
     type: '서술형',
@@ -363,9 +365,10 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
   }
 
   // ✨ 스마트 과제 등록 (TSK-14) — 서·논술형(바로 과제) / 정답형(→ TSK-15 스마트)
-  if (registrationMode === 'generate' || registrationMode === 'generate-answer') {
+  // 'generate-pick' — 이전 메뉴(history)의 「스마트 과제 등록」: 형태 선택 카드부터
+  if (registrationMode === 'generate' || registrationMode === 'generate-answer' || registrationMode === 'generate-pick') {
     // 등록 메뉴가 형태별로 나뉘어 있으므로 서·논술 그룹의 스마트 과제 등록은 서·논술형으로 바로 시작
-    return <SmartTaskRegistration initialKind={registrationMode === 'generate-answer' ? 'answer' : 'essay'}
+    return <SmartTaskRegistration initialKind={registrationMode === 'generate-pick' ? null : registrationMode === 'generate-answer' ? 'answer' : 'essay'}
       onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onGoItemBank={onGoItemBank}
       onStartAnswer={() => setRegistrationMode('answer-smart')}
       onEditTask={(task) => { setEditData(taskToDirectInputData(task)); setRegistrationMode('direct2'); }} />;

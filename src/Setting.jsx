@@ -166,6 +166,8 @@ function Setting() {
 
   // [1주차] 상세보기 — source 분기 라우팅 대상
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
+  const [regNonce, setRegNonce] = useState(0);    // 같은 등록 화면에 있어도 메뉴를 누르면 새로 연다
+  const [curRegMode, setCurRegMode] = useState(null); // 지금 열린 등록 방식 (왼쪽 메뉴 강조)
   const [editTask, setEditTask] = useState(null); // [✏️ 직접 입력 2에서 수정]으로 연 서·논술 과제
   /* [TSK v3.8] 과제 삭제 — 목록·상세 어디서든 같은 확인창을 거친다. 삭제된 id는 목록에서 걷어낸다(프로토타입 로컬 상태) */
   const [taskToDelete, setTaskToDelete] = useState(null);
@@ -557,6 +559,8 @@ function Setting() {
         setIsProfileDropdownOpen={setIsProfileDropdownOpen}
         setShowAnalysis={setShowAnalysis}
         onOpenIncident={() => setIsIncidentOpen(true)}
+        registrationMode={curRegMode}
+        onRegister={guardNav((mode) => { setEditTask(null); setSelectedTaskDetail(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setActiveMenu('과제 관리'); setActiveSubMenu('과제 등록'); })}
         taskCount={BASE_TASKS.length + copiedTasks.length + registeredTasks.length}
         settingsBadgeCount={settingsBadgeCount}
         incidentOpenCount={incidentBadge}
@@ -743,7 +747,8 @@ function Setting() {
               onEdit={(task) => { setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setSelectedTaskDetail(null); setActiveSubMenu('과제 등록'); }} />
           ) : activeSubMenu === '과제 등록' ? (
             <TaskRegistration
-              key={editTask?.n || 'reg'}
+              key={editTask?.n || `reg-${regNonce}`}
+              onModeChange={setCurRegMode}
               initialEditTask={editTask?.task || null}
               onBack={() => { setLeaveGuard(null); setEditTask(null); setActiveSubMenu('과제 관리'); }}
               showToast={showToast}
