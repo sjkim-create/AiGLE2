@@ -101,7 +101,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
   const teacherCell = (s) => { const r = resultOf(s); return s.teacherEdited && r ? <span>{r.correct}/{r.count} · <b>{r.score}점</b></span> : '-'; };
 
   // 카드 · 줄을 누르면 상세 (상세보기 버튼 없음). 답안을 받기 전이면 안내만
-  const openProps = (s) => ({
+  const openProps = (s) => (ungradedView ? {} : { // [일괄 채점 통합] 미채점 단계는 상세 없음
     onClick: () => (s.answers ? setReview(s.id) : setToast(`${s.name} — 답안을 받은 뒤 볼 수 있습니다.`)),
     role: 'button', tabIndex: 0, 'aria-label': `${s.name} 상세`,
     onKeyDown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); if (s.answers) setReview(s.id); } },

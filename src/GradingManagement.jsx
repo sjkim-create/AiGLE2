@@ -1160,14 +1160,15 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         </div>
                       )}
                     </div>}
-                    <button
+                    {/* [일괄 채점 통합] 미채점 단계는 상세보기 없음 — 학생별 파일 미리보기는 다음 단계(데이터 매핑)에서 */}
+                    {!unifiedUngraded && <button
                       className="btn-card-detail"
                       onClick={() => handleOpenModal(student)}
                       disabled={isBulkGrading}
                       title={isBulkGrading ? 'AI 채점이 진행 중입니다.' : undefined}
                     >
                       상세보기
-                    </button>
+                    </button>}
                   </div>
                   );
                 })}
@@ -1194,7 +1195,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       {!unifiedUngraded && <th>교사 채점</th>}
                       {isV2 && <th style={{ width: '170px' }}>퇴고 추이</th>}
                       <th>상태</th>
-                      <th style={{ width: '100px' }}>상세보기</th>
+                      {!unifiedUngraded && <th style={{ width: '100px' }}>상세보기</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1245,7 +1246,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             </td>
                           )}
                           <td>{statusBadge}</td>
-                          <td>
+                          {!unifiedUngraded && <td>
                             {isBulkGrading ? (
                               <span className="link-detail-disabled" title="AI 채점이 진행 중입니다.">
                                 상세보기 &gt;
@@ -1255,7 +1256,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                                 상세보기 &gt;
                               </button>
                             )}
-                          </td>
+                          </td>}
                         </tr>
                       );
                     })}
