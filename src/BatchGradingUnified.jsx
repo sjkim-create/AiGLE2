@@ -56,7 +56,7 @@ const BADGE = {
 };
 
 const STEPS = [
-  { key: 'import', cradle: '크래들 연결', scan: '파일 업로드', icon: { cradle: '🔌', scan: '📁' } },
+  { key: 'import', cradle: '펜 연결', scan: '파일 업로드', icon: { cradle: '🔌', scan: '📁' } }, // [SCR-08 v1.20] 크래들 · USB 펜 모두
   { key: 'mapping', cradle: '데이터 매핑', scan: '데이터 매핑', icon: { cradle: '🔗', scan: '🔗' } },
   { key: 'grading', cradle: 'AI 일괄 채점', scan: 'AI 일괄 채점', icon: { cradle: '🤖', scan: '🤖' } },
   { key: 'done', cradle: '완료', scan: '완료', icon: { cradle: '✓', scan: '✓' } },
@@ -105,6 +105,9 @@ const buildPens = () => {
   return pens;
 };
 const PEN_POOL = buildPens();
+/** [SCR-08 v1.20] 미채점 목록의 「상태」 — 학생 제출(학생이 낸 답안) · 데이터 있음(펜 필기가 있음) · 데이터 없음 */
+export const UNIFIED_DATA_STATE = Object.fromEntries(GROUP.map((s) => [s.id,
+  s.hasAnswer ? '학생 제출' : PEN_POOL.some((p) => p.owner === s.id && Object.values(p.pages).some((n) => n > 0)) ? '데이터 있음' : '데이터 없음']));
 const penPageCount = (p) => Object.values(p.pages).reduce((a, n) => a + n, 0);
 const capTone = (pct) => (pct < 10 ? { color: '#991B1B', bar: '#DC2626' } : pct < 20 ? { color: '#B45309', bar: '#F59E0B' } : { color: '#166534', bar: '#10B981' });
 
@@ -665,7 +668,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const list = model.gradable.map((s) => (source === 'cradle' ? (s.submitted ? { sid: s.id, submitted: true } : { sid: s.id, slot: s.pens[0].pen.slot, penId: s.pens[0].pen.id }) : { sid: s.id, sheets: s.qs.reduce((a, x) => a + x.list.length, 0), full: s.qs.every((x) => x.list.length) }));
     setGradedList(list);
     if (source === 'cradle') {
-      recordGradingSession({ source: '크래들 일괄 채점(통합)', task: TASK.title, group: TASK.group, pens: connected.map((p) => ({ mac: p.id, books: [{ code: '334212', pages: penPageCount(p) }] })) });
+      recordGradingSession({ source: '스마트 펜 채점(통합)', task: TASK.title, group: TASK.group, pens: connected.map((p) => ({ mac: p.id, books: [{ code: '334212', pages: penPageCount(p) }] })) });
     }
     appLogger.info('useBatchUploadPipeline', '일괄 업로드 시작', { source, collectedCount: ids.length });
     setGradedIds(ids); setFailedIds([]); setProgress(0); setGradingDone(false); setElapsed(0); setStep('grading');
@@ -1565,7 +1568,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   };
 
   /* ════════════ 렌더 ════════════ */
-  const T = { cradle: '🖊 크래들 일괄 채점', scan: '📷 스캔 일괄 채점' }[source];
+  const T = { cradle: '🖊 스마트 펜 채점', scan: '📷 스캔 채점' }[source]; // [SCR-08 v1.20] 크래들 일괄 · 펜 개별(USB)을 「스마트 펜 채점」 하나로
   return (
     /* main-wrapper가 overflow: hidden이라 본문이 직접 스크롤해야 한다 — 안 그러면 아래 푸터(다음 단계 버튼)가 잘린다 */
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 24px 0', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
@@ -1772,7 +1775,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         onAllReady={() => { markConnectDownloaded(); connectorSessionReady = true; setConnector('ready'); }} />
       {toast && <div style={{ position: 'fixed', left: '50%', bottom: 40, transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 16px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 50 }}>{toast}</div>}
       <IncidentReportDialog open={incidentOpen} onClose={() => setIncidentOpen(false)} onSubmitted={(r) => setToast(`이용불편 접수가 완료되었습니다 — ${r.id}`)}
-        context={{ source: source === 'cradle' ? '크래들 일괄 채점(통합)' : '스캔 일괄 채점(통합)', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr', task: TASK.title, group: TASK.group, studentCount: ROSTER.length }} />
+        context={{ source: source === 'cradle' ? '스마트 펜 채점(통합)' : '스캔 채점(통합)', school: '공주 고등학교', teacher: '김 b', teacherId: 'tch20261zim', teacherEmail: 'tch20261zim@gjhs.kr', task: TASK.title, group: TASK.group, studentCount: ROSTER.length }} />
     </div>
   );
 };

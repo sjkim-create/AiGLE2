@@ -83,7 +83,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
     const ids = selVisible;
     patch(ids, (s) => { const answers = mockAnswersFor(s.id, questions); return { submitType: type, answers, auto: autoGrade(questions, answers), overrides: {}, teacherEdited: false, status: '채점 확인' }; });
     setSel([]); setTab('채점 확인');
-    setToast(`${ids.length}명 답안을 ${type === 'pen' ? '크래들(펜)' : '스캔'}으로 받아 자동 채점했습니다 — 「채점 확인」에서 확인해 주세요.`);
+    setToast(`${ids.length}명 답안을 ${type === 'pen' ? (unified ? '스마트 펜' : '크래들(펜)') : '스캔'}으로 받아 자동 채점했습니다 — 「채점 확인」에서 확인해 주세요.`);
   };
   const completeReview = (ids) => {
     const ok = ids.filter((id) => { const s = students.find((x) => x.id === id); return s && resultOf(s)?.pending === 0; });
@@ -142,7 +142,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
           )}
           {tab === '미채점' && selVisible.length > 0 && (
             <>
-              <button className="btn-bulk-grading" onClick={() => receive('pen')}>🖊 크래들 일괄채점 ({selVisible.length}명)</button>
+              <button className="btn-bulk-grading" onClick={() => receive('pen')}>🖊 {unified ? '스마트 펜 채점' : '크래들 일괄채점'} ({selVisible.length}명)</button>
               <button className="btn-bulk-grading" style={{ background: '#0EA5E9' }} onClick={() => receive('ocr')}>📷 스캔 채점 ({selVisible.length}명)</button>
             </>
           )}
@@ -169,7 +169,9 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
             <div key={s.id} className="student-card" {...openProps(s)}>
               <input type="checkbox" className="card-checkbox" checked={sel.includes(s.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} />
               <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
-                {s.submitType && <div style={pill(['#F1F5F9', '#475569'])}>{submitLabel(s.submitType)}</div>}
+                {ungradedView
+                  ? <div style={pill(s.answers ? ['#DCFCE7', '#166534'] : ['#F1F5F9', '#64748B'])}>{s.answers ? '데이터 있음' : '데이터 없음'}</div>
+                  : s.submitType && <div style={pill(['#F1F5F9', '#475569'])}>{submitLabel(s.submitType)}</div>}
               </div>
               <div className="student-name">{s.name}</div>
               <div className="student-meta">{s.grade}</div>
@@ -192,7 +194,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
                 <th style={{ width: 40 }}>{!ungradedView && <input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="전체 선택" />}</th>
                 <th>학생 이름</th>
                 <th>학년/반/번호</th>
-                <th>제출 방식</th>
+                <th>{ungradedView ? '상태' : '제출 방식'}</th>
                 {!ungradedView && <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>}
                 {!ungradedView && <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>}
               </tr>
@@ -203,7 +205,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
                   <td><input type="checkbox" checked={sel.includes(s.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(s.id)} aria-label={`${s.name} 선택`} /></td>
                   <td style={{ fontWeight: 700 }}>{s.name}</td>
                   <td>{s.grade}</td>
-                  <td>{submitLabel(s.submitType)}</td>
+                  <td>{ungradedView ? <span style={pill(s.answers ? ['#DCFCE7', '#166534'] : ['#F1F5F9', '#64748B'])}>{s.answers ? '데이터 있음' : '데이터 없음'}</span> : submitLabel(s.submitType)}</td>
                   {!ungradedView && <td>{autoCell(s)}</td>}
                   {!ungradedView && <td>{teacherCell(s)}</td>}
                 </tr>

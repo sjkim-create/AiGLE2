@@ -19,7 +19,7 @@ import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
-import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS } from './BatchGradingUnified'; // 일괄 채점 통합 시안 — 목록에서 버튼으로 분기
+import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS, UNIFIED_DATA_STATE } from './BatchGradingUnified'; // 일괄 채점 통합 시안 — 목록에서 버튼으로 분기
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
 import { listWorkbooks } from './lib/itemBank'; // [TSK-15 v1.42] 문제지를 인쇄한 문제집 → 미채점 과제
 import AnswerGradingPanel from './AnswerGradingPanel';
@@ -263,6 +263,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // [일괄 채점 통합] 미채점 단계 — 그룹을 고르면 그 그룹 학생이 모두 선택된 채로 시작(전체 선택 메뉴 없음, 하나씩 해제 가능)
   //   · 학생이 이미 낸 답안은 「학생 제출」 · AI 채점 / 교사 채점 표시는 다음 단계(채점 확인)부터
   const unifiedUngraded = isUnified && activeTab === '미채점';
+  // [일괄 채점 통합] 미채점 「상태」 = 학생 제출 · 데이터 있음 · 데이터 없음 (채점 상태 대신 답안 데이터 유무)
+  const dataStateOf = (st) => UNIFIED_DATA_STATE[st.id] || (st.submitType === 'ocr' ? '학생 제출' : '데이터 없음');
+  const DATA_STATE_STYLE = { '학생 제출': ['#EBF2FF', '#2A75F3'], '데이터 있음': ['#DCFCE7', '#166534'], '데이터 없음': ['#F1F5F9', '#64748B'] };
+  const dataBadge = (st, Tag = 'span') => { const v = dataStateOf(st); const [bg, color] = DATA_STATE_STYLE[v]; return <Tag className="card-badge" style={{ background: bg, color }}>{v}</Tag>; };
   const inSelectedGroup = (st) => selectedGroup === '전체 그룹' || st.grade.startsWith(selectedGroup);
   const ungradedIds = unifiedUngraded && selectedGroup && selectedGroup !== '그룹 선택'
     ? filteredStudents.filter(inSelectedGroup).map(st => st.id) : [];
@@ -953,7 +957,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       style={isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                       title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
                     >
-                      🖊 크래들 일괄채점 ({selectedIds.length}명)
+                      🖊 {isUnified ? '스마트 펜 채점' : '크래들 일괄채점'} ({selectedIds.length}명)
                     </button>
                   )}
                   {/* [v3.16] 미채점 탭 — 스캔 채점 (스캔 파일 업로드 → OCR 학생 번호 연결 → AI 일괄 채점) */}
@@ -1147,7 +1151,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', flexWrap: 'wrap' }}>
                       {/* [SCR-06] 차수 배지 — 상태 배지 앞에 배치해 「몇 차 답안인지」를 먼저 읽히게 함 */}
                       {renderRoundBadge(student)}
-                      {student.status === '미채점' ? (
+                      {unifiedUngraded ? dataBadge(student, 'div') : student.status === '미채점' ? (
                         student.submitType === 'ocr' ? (
                           /* [v3.24] 舊 「OCR 제출」 → 「답안 있음」. 제출 수단 무관하게 「채점 전 + 답안 존재」를 의미 */
                           <div className="card-badge" style={{ background: '#EBF2FF', color: '#2A75F3' }}>{isUnified ? '학생 제출' : '답안 있음'}</div>
@@ -1240,6 +1244,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     {filteredStudents.map(student => {
                       const isBulkGrading = bulkGradingIds.includes(student.id);
                       const statusBadge = (() => {
+                        if (unifiedUngraded) return dataBadge(student);
                         if (student.status === '미채점') {
                           /* [v3.24] 舊 「OCR 제출」 → 「답안 있음」 */
                           return student.submitType === 'ocr'
