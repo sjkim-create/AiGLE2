@@ -56,7 +56,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
   }, [wbId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const autoKey = unified && tab === '미채점' && students
-    ? students.filter((s) => inTab(s, '미채점') && (groupF === 'all' || String(s.groupId) === groupF)).map((s) => s.id).join('|') : null;
+    ? (groupF === 'none' ? '' : students.filter((s) => inTab(s, '미채점') && (groupF === 'all' || String(s.groupId) === groupF)).map((s) => s.id).join('|')) : null;
   React.useEffect(() => { if (autoKey !== null) setSel(autoKey ? autoKey.split('|') : []); }, [autoKey]);
 
   const persist = async (next) => {
@@ -68,7 +68,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
 
   if (!students || !items) return <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>불러오는 중…</div>;
 
-  const visible = students.filter((s) => inTab(s, tab) && (groupF === 'all' || String(s.groupId) === groupF));
+  const visible = students.filter((s) => inTab(s, tab) && (groupF === 'all' || groupF === 'none' || String(s.groupId) === groupF));
   const selVisible = sel.filter((id) => visible.some((s) => s.id === id));
   const allOn = visible.length > 0 && visible.every((s) => sel.includes(s.id));
   const toggleAll = () => setSel(allOn ? [] : visible.map((s) => s.id));
@@ -132,6 +132,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
         </div>
         <div className="view-controls" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', rowGap: 8 }}>
           <select className="select-box" value={groupF} onChange={(e) => setGroupF(e.target.value)} aria-label="그룹 선택">
+            {unified && <option value="none">그룹 선택</option>}{/* [일괄 채점 통합] 고르면 체크 모두 해제 */}
             <option value="all">전체 그룹</option>
             {task.groups.map((g) => <option key={g.id} value={String(g.id)}>{g.label}</option>)}
           </select>
@@ -150,8 +151,6 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
             <>
               <button className="btn-bulk-grading" title="학생의 제출을 무효로 합니다 — 채점하지 않고 「결과 발송」으로 옮깁니다." onClick={() => setInvalidAsk(true)}
                 style={{ background: 'white', color: '#DC2626', border: '1px solid #FCA5A5' }}>⊘ 무효 처리 ({selVisible.length}명)</button>
-              <button type="button" onClick={() => setSel([])}
-                style={{ background: 'none', border: 'none', color: '#64748B', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>선택 해제</button>
             </>
           )}
           {tab === '채점 확인' && selVisible.length > 0 && <button className="btn-bulk-grading" style={{ background: '#E8590C' }} onClick={() => completeReview(selVisible)}>✓ 검토 완료 처리 ({selVisible.length}명)</button>}

@@ -972,17 +972,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       📷 스캔 채점 ({selectedIds.length}명)
                     </button>
                   )}
-                  {/* [일괄 채점 통합] 미채점 — 무효 처리 · 선택 해제 (전체 선택 메뉴는 없고 기본이 전체 선택) */}
+                  {/* [일괄 채점 통합] 미채점 — 무효 처리 (전체 선택 메뉴는 없고 기본이 전체 선택 · 그룹 셀렉트를 「그룹 선택」으로 두면 모두 해제) */}
                   {unifiedUngraded && selectedIds.length > 0 && (
                     <>
                       <button type="button" className="btn-bulk-grading" onClick={() => setInvalidAsk(true)} disabled={isAnyBgActive}
                         title="학생의 제출을 무효로 합니다 — 채점하지 않고 「결과 발송」으로 옮깁니다."
                         style={{ background: 'white', color: '#DC2626', border: '1px solid #FCA5A5', ...(isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
                         ⊘ 무효 처리 ({selectedIds.length}명)
-                      </button>
-                      <button type="button" onClick={() => setSelectedIds([])}
-                        style={{ background: 'none', border: 'none', color: '#64748B', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>
-                        선택 해제
                       </button>
                     </>
                   )}
