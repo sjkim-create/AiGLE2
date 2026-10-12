@@ -260,6 +260,19 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
   const filteredStudents = roster.filter(s => matchTab(s, activeTab) && matchRound(s));
 
+  // [일괄 채점 통합] 미채점 단계 — 그룹을 고르면 그 그룹 학생이 모두 선택된 채로 시작(전체 선택 메뉴 없음, 하나씩 해제 가능)
+  //   · 학생이 이미 낸 답안은 「학생 제출」 · AI 채점 / 교사 채점 표시는 다음 단계(채점 확인)부터
+  const unifiedUngraded = isUnified && activeTab === '미채점';
+  const inSelectedGroup = (st) => selectedGroup === '전체 그룹' || st.grade.startsWith(selectedGroup);
+  const ungradedIds = unifiedUngraded && selectedGroup && selectedGroup !== '그룹 선택'
+    ? filteredStudents.filter(inSelectedGroup).map(st => st.id) : [];
+  const ungradedKey = ungradedIds.join('|');
+  useEffect(() => {
+    if (!unifiedUngraded) return;
+    setSelectedIds(ungradedIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ungradedKey, selectedTask, unifiedUngraded]);
+
   /* [SCR-07 v1.0] 舊 일괄 채점 완료 요약 파생값 제거 —
    *   완료 요약(채점 문항 · 학생 수 · 미채점 잔류 고지)은 크래들 모달의 Step 4가 책임진다. */
 
@@ -810,7 +823,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
             {/* 상세 채점 관리 영역 */}
             {/* [TSK-15 v1.43] 정답형 문제집 · 낱말 문제집 — 서·논술과 같은 흐름 · 목록, 채점기는 자동 채점(정답 대조) */}
-            {currentTask.isWorkbook && <AnswerGradingPanel key={currentTask.id} task={currentTask} />}
+            {currentTask.isWorkbook && <AnswerGradingPanel key={currentTask.id} task={currentTask} unified={isUnified} />}
             <section className="detail-view" style={currentTask.isWorkbook ? { display: 'none' } : undefined}>
               <div className="task-info-banner" style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '1.5rem' }}>
                 <div className="info-left">
@@ -907,7 +920,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <option>1학년 1반</option>
                     <option>1학년 2반</option>
                   </select>
-                  <label
+                  {!unifiedUngraded && <label
                     className="select-all-wrapper"
                     style={isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                     title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
@@ -919,7 +932,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       disabled={isAnyBgActive}
                     />
                     전체 선택
-                  </label>
+                  </label>}
                   {/* [v3.20] 모든 탭의 일괄 액션 버튼을 view-controls로 통합 — 1명 이상 선택 시 탭별 조건에 따라 노출 */}
                   {/* 미채점 탭 — 일괄 채점 */}
                   {activeTab === '미채점' && selectedIds.length > 0 && (
@@ -1099,7 +1112,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       {student.status === '미채점' ? (
                         student.submitType === 'ocr' ? (
                           /* [v3.24] 舊 「OCR 제출」 → 「답안 있음」. 제출 수단 무관하게 「채점 전 + 답안 존재」를 의미 */
-                          <div className="card-badge" style={{ background: '#EBF2FF', color: '#2A75F3' }}>답안 있음</div>
+                          <div className="card-badge" style={{ background: '#EBF2FF', color: '#2A75F3' }}>{isUnified ? '학생 제출' : '답안 있음'}</div>
                         ) : (
                           <div className="card-badge badge-red-soft">미채점</div>
                         )
@@ -1118,7 +1131,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     </div>
                     <div className="student-name">{student.name}</div>
                     <div className="student-meta">{student.grade}</div>
-                    <div className="grading-info">
+                    {!unifiedUngraded && <div className="grading-info">
                       <div className="grading-row">
                         <span className="label">AI채점 :</span>
                         <span className="value">{fmtResult(student.aiGrade, student.aiScore)}</span>
@@ -1146,7 +1159,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           </span>
                         </div>
                       )}
-                    </div>
+                    </div>}
                     <button
                       className="btn-card-detail"
                       onClick={() => handleOpenModal(student)}
@@ -1165,20 +1178,20 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   <thead>
                     <tr>
                       <th style={{ width: '40px' }}>
-                        <input
+                        {!unifiedUngraded && <input
                           type="checkbox"
                           checked={filteredStudents.length > 0 && filteredStudents.every(s => selectedIds.includes(s.id))}
                           onChange={toggleAll}
                           disabled={isAnyBgActive}
                           title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
-                        />
+                        />}
                       </th>
                       <th>학생 이름</th>
                       <th>학년/반/번호</th>
                       {/* [SCR-06] v2 전용 — 차수 / 1차→2차 추이 */}
                       {isV2 && <th style={{ width: '72px' }}>차수</th>}
-                      <th>AI 채점</th>
-                      <th>교사 채점</th>
+                      {!unifiedUngraded && <th>AI 채점</th>}
+                      {!unifiedUngraded && <th>교사 채점</th>}
                       {isV2 && <th style={{ width: '170px' }}>퇴고 추이</th>}
                       <th>상태</th>
                       <th style={{ width: '100px' }}>상세보기</th>
@@ -1191,7 +1204,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         if (student.status === '미채점') {
                           /* [v3.24] 舊 「OCR 제출」 → 「답안 있음」 */
                           return student.submitType === 'ocr'
-                            ? <span className="card-badge" style={{ background: '#EBF2FF', color: '#2A75F3' }}>답안 있음</span>
+                            ? <span className="card-badge" style={{ background: '#EBF2FF', color: '#2A75F3' }}>{isUnified ? '학생 제출' : '답안 있음'}</span>
                             : <span className="card-badge badge-red-soft">미채점</span>;
                         }
                         return <span className="card-badge badge-blue-soft">{student.status}</span>;
@@ -1213,7 +1226,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <td className="cell-name">{student.name}</td>
                           <td className="cell-grade">{student.grade}</td>
                           {isV2 && <td>{renderRoundBadge(student)}</td>}
-                          <td className="cell-ai">
+                          {!unifiedUngraded && <td className="cell-ai">
                             {isBulkGrading ? (
                               <span className="grading-chip">
                                 <span className="grading-chip-spinner" aria-hidden="true"></span>
@@ -1222,10 +1235,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             ) : (
                               <span className="cell-value">{fmtResult(student.aiGrade, student.aiScore)}</span>
                             )}
-                          </td>
-                          <td className="cell-teacher">
+                          </td>}
+                          {!unifiedUngraded && <td className="cell-teacher">
                             <span className="cell-value">{fmtResult(student.teacherGrade, student.teacherScore)}</span>
-                          </td>
+                          </td>}
                           {isV2 && (
                             <td>
                               {renderTrendChip(student) || <span style={{ color: '#CBD5E1' }}>—</span>}

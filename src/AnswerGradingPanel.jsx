@@ -22,7 +22,8 @@ const pill = ([bg, color]) => ({ background: bg, color, fontSize: 'var(--neo-fon
 const submitLabel = (t) => (t === 'pen' ? '🖊 펜' : t === 'ocr' || t === 'file' ? '📄 파일' : t === 'keyboard' ? '⌨ 키보드' : '-');
 const btn = (primary, off) => ({ padding: '8px 14px', borderRadius: 8, fontFamily: 'inherit', fontWeight: 800, cursor: off ? 'not-allowed' : 'pointer', border: primary ? 'none' : '1px solid #CBD5E1', background: primary ? (off ? '#CBD5E1' : '#E8590C') : 'white', color: primary ? 'white' : '#334155', opacity: !primary && off ? 0.45 : 1 });
 
-const AnswerGradingPanel = ({ task }) => {
+// unified — 일괄 채점 통합 메뉴에서만: 미채점 단계는 그룹 학생 전체 선택이 기본(전체 선택 메뉴 없음) · 자동/교사 채점 표시는 다음 단계부터
+const AnswerGradingPanel = ({ task, unified = false }) => {
   const wbId = task.wb.id;
   const isWord = task.wb.kind === 'word';
   const [items, setItems] = React.useState(null);
@@ -53,6 +54,10 @@ const AnswerGradingPanel = ({ task }) => {
     setTab(TABS.find((t) => all.some((s) => inTab(s, t))) || '미채점'); // 학생이 있는 첫 단계로 연다
   }, [wbId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const autoKey = unified && tab === '미채점' && students
+    ? students.filter((s) => inTab(s, '미채점') && (groupF === 'all' || String(s.groupId) === groupF)).map((s) => s.id).join('|') : null;
+  React.useEffect(() => { if (autoKey !== null) setSel(autoKey ? autoKey.split('|') : []); }, [autoKey]);
+
   const persist = async (next) => {
     setStudents(next);
     const latest = (await listWorkbooks()).find((w) => w.id === wbId) || task.wb;
@@ -69,6 +74,7 @@ const AnswerGradingPanel = ({ task }) => {
   const toggle = (id) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
   const resultOf = (s) => (s.auto ? scoreOf(questions, s.auto, s.overrides) : null);
   const autoOnly = (s) => (s.auto ? scoreOf(questions, s.auto, {}) : null);
+  const ungradedView = unified && tab === '미채점';
   const sendable = selVisible.filter((id) => students.find((s) => s.id === id)?.status === '결과 발송 전');
 
   // 미채점 → 채점 확인: 답안 받기(모의) + 자동 채점
@@ -122,9 +128,11 @@ const AnswerGradingPanel = ({ task }) => {
             <option value="all">전체 그룹</option>
             {task.groups.map((g) => <option key={g.id} value={String(g.id)}>{g.label}</option>)}
           </select>
-          <label className="select-all-wrapper">
-            <input type="checkbox" checked={allOn} onChange={toggleAll} /> 전체 선택
-          </label>
+          {!ungradedView && (
+            <label className="select-all-wrapper">
+              <input type="checkbox" checked={allOn} onChange={toggleAll} /> 전체 선택
+            </label>
+          )}
           {tab === '미채점' && selVisible.length > 0 && (
             <>
               <button className="btn-bulk-grading" onClick={() => receive('pen')}>🖊 크래들 일괄채점 ({selVisible.length}명)</button>
@@ -150,10 +158,12 @@ const AnswerGradingPanel = ({ task }) => {
               </div>
               <div className="student-name">{s.name}</div>
               <div className="student-meta">{s.grade}</div>
-              <div className="grading-info">
-                <div className="grading-row"><span className="label">자동채점 :</span><span className="value">{autoCell(s)}</span></div>
-                <div className="grading-row"><span className="label">교사채점 :</span><span className="value">{s.teacherEdited && <span className="badge-dot badge-orange" />}{teacherCell(s)}</span></div>
-              </div>
+              {!ungradedView && (
+                <div className="grading-info">
+                  <div className="grading-row"><span className="label">자동채점 :</span><span className="value">{autoCell(s)}</span></div>
+                  <div className="grading-row"><span className="label">교사채점 :</span><span className="value">{s.teacherEdited && <span className="badge-dot badge-orange" />}{teacherCell(s)}</span></div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -164,12 +174,12 @@ const AnswerGradingPanel = ({ task }) => {
           <table className="student-list-table">
             <thead>
               <tr>
-                <th style={{ width: 40 }}><input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="전체 선택" /></th>
+                <th style={{ width: 40 }}>{!ungradedView && <input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="전체 선택" />}</th>
                 <th>학생 이름</th>
                 <th>학년/반/번호</th>
                 <th>제출 방식</th>
-                <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>
-                <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>
+                {!ungradedView && <th title="학생 답을 정답과 대조한 결과 — 맞힌 수 · 점수">자동 채점</th>}
+                {!ungradedView && <th title="교사가 O/X를 고친 뒤의 결과">교사 채점</th>}
               </tr>
             </thead>
             <tbody>
@@ -179,8 +189,8 @@ const AnswerGradingPanel = ({ task }) => {
                   <td style={{ fontWeight: 700 }}>{s.name}</td>
                   <td>{s.grade}</td>
                   <td>{submitLabel(s.submitType)}</td>
-                  <td>{autoCell(s)}</td>
-                  <td>{teacherCell(s)}</td>
+                  {!ungradedView && <td>{autoCell(s)}</td>}
+                  {!ungradedView && <td>{teacherCell(s)}</td>}
                 </tr>
               ))}
             </tbody>
