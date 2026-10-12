@@ -274,6 +274,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // [일괄 채점 통합] 무효 처리 — 미채점 상세가 없어져 목록에서 한다. 처리하면 「결과 발송」 탭으로(결과 발송 전 · 무효)
   const [invalidAsk, setInvalidAsk] = useState(false);
   const [flowRosterIds, setFlowRosterIds] = useState([]); // [SCR-08 v1.22] 채점 흐름의 채점 대상(왼쪽 열)
+  const [flowAsideFolded, setFlowAsideFolded] = useState(false); // [SCR-08 v1.23] 왼쪽 열 접기 — 매핑 3단을 넓게
   const [invalidMsg, setInvalidMsg] = useState('');
   useEffect(() => { if (!invalidMsg) return undefined; const t = setTimeout(() => setInvalidMsg(''), 2800); return () => clearTimeout(t); }, [invalidMsg]);
   const doInvalidate = () => {
@@ -800,9 +801,20 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           <div className="content-body">
             {/* 과제 선택 사이드바 */}
             {unifiedFlow && (
+              flowAsideFolded ? (
+                <aside className="sub-sidebar" aria-label="채점 대상 학생(접힘)" style={{ width: 44, alignItems: 'center', paddingTop: 12, gap: 8, flex: 'none' }}>
+                  <button type="button" onClick={() => setFlowAsideFolded(false)} title="채점 대상 학생 목록 펼치기" aria-label="채점 대상 학생 목록 펼치기"
+                    style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', cursor: 'pointer', fontWeight: 800, color: '#475569' }}>▶</button>
+                  <span style={{ writingMode: 'vertical-rl', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', letterSpacing: 2 }}>채점 대상 {flowRosterIds.length}명</span>
+                </aside>
+              ) : (
               <aside className="sub-sidebar" aria-label="채점 대상 학생">
                 <div className="sub-sidebar-header">
-                  <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, marginBottom: '0.35rem', color: '#1E2225' }}>채점 대상 학생 <span style={{ color: 'var(--primary)' }}>{flowRosterIds.length}명</span></div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, marginBottom: '0.35rem', color: '#1E2225' }}>
+                    <span>채점 대상 학생 <span style={{ color: 'var(--primary)' }}>{flowRosterIds.length}명</span></span>
+                    <button type="button" onClick={() => setFlowAsideFolded(true)} title="목록 접기 — 데이터 매핑 화면을 넓게 씁니다" aria-label="채점 대상 학생 목록 접기"
+                      style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 6, border: '1px solid #CBD5E1', background: 'white', cursor: 'pointer', fontWeight: 800, color: '#475569', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>◀ 접기</button>
+                  </div>
                   <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.5 }}>[{currentTask.type}] {currentTask.title} · {unifiedSource === 'scan' ? '📷 스캔 채점' : '🖊 스마트 펜 채점'}</div>
                 </div>
                 <div className="task-list">
@@ -818,6 +830,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   ))}
                 </div>
               </aside>
+              )
             )}
             <aside className="sub-sidebar" style={unifiedFlow ? { display: 'none' } : undefined}>
               <div className="sub-sidebar-header">

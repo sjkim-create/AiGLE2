@@ -286,7 +286,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /* ── 크래들 상태 ── */
   const [docked, setDocked] = useState({});      // { [slot]: pen + link }
   const [link, setLink] = useState('cradle');    // [SCR-08 v1.19] 연결 방식 — 'cradle' | 'usb'(펜 1자루)
-  const [usbPick, setUsbPick] = useState('');    // 시연 — USB로 연결할 펜
+  const [usbIdx, setUsbIdx] = useState(0);       // 시연 — 지금 USB에 꽂을 펜(PEN_POOL 순서). 누구 펜인지는 매핑 뒤에 안다
+  const [usbFail, setUsbFail] = useState(false); // USB 인식 실패 — 케이블을 다시 꽂아야 한다
   const [unrecognized, setUnrecognized] = useState([]);
   const failedDock = useRef(new Set());
   const [judged, setJudged] = useState([]);      // 마지막 판정에 들어간 펜 id
@@ -382,16 +383,50 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const undockPen = (slot) => setDocked((prev) => { const n = { ...prev }; delete n[slot]; return n; });
   /* [SCR-08 v1.19] USB 펜 1자루 — 한 번에 한 자루. 다른 펜을 연결하면 바꿔 끼운 것으로 본다(다시 매칭 필요) */
   const usbPen = docked[USB_SLOT] || null;
-  const usbPenLabel = (p) => {
-    const o = p.owner ? studentById(p.owner) : null;
-    return o ? `${o.no} ${o.name}의 펜` : p.ownerLabel ? `${p.ownerLabel}의 펜` : p.read ? `${p.read}의 펜` : '필기 없는 펜';
-  };
-  const defaultUsbPick = (PEN_POOL.find((p) => p.scenario === 'ok' && ROSTER.some((s) => s.id === p.owner)) || PEN_POOL[0]).id;
-  const connectUsb = (penId) => {
-    const base = PEN_POOL.find((p) => p.id === penId);
-    if (!base) return;
+  /* 펜을 꽂는 순간에는 누구의 펜인지 모른다 — 펜 번호(기기)만 보이고, 학생은 [데이터 매핑 시작] 뒤 답안지 학생정보로 안다 */
+  const connectUsb = (idx = usbIdx) => {
+    const base = PEN_POOL[idx % PEN_POOL.length];
+    const willFail = base.flaky && !failedDock.current.has(base.id); // 처음 한 번은 인식 실패(케이블 접촉) — 다시 꽂으면 된다
+    if (willFail) failedDock.current.add(base.id);
+    setUsbFail(false);
     setDocked({ [USB_SLOT]: { ...base, slot: USB_SLOT, usb: true, link: 'linking' } });
-    setTimeout(() => setDocked((prev) => (prev[USB_SLOT] ? { [USB_SLOT]: { ...prev[USB_SLOT], link: 'connected' } } : prev)), 600);
+    setTimeout(() => {
+      if (willFail) { setDocked({}); setUsbFail(true); return; }
+      setDocked((prev) => (prev[USB_SLOT] ? { [USB_SLOT]: { ...prev[USB_SLOT], link: 'connected' } } : prev));
+    }, 700);
+  };
+  const nextUsb = () => { const n = (usbIdx + 1) % PEN_POOL.length; setUsbIdx(n); connectUsb(n); }; // 🧪 다른 펜으로 바꿔 꽂기
+  const unplugUsb = () => { undockPen(USB_SLOT); setUsbFail(false); };
+  /** USB 에뮬레이터 — PC · 케이블 · 펜. LED 노랑 깜박임 = 연결 중 · 초록 = 정상 · 빨강 = 데이터 없음 / 배터리 부족 / 저장 잔량 부족 · 인식 실패 */
+  const renderUsbEmulator = (compact = false) => {
+    const pen = usbPen;
+    const linking = pen && pen.link === 'linking';
+    const cap = pen ? capacityOf(pen) : 100;
+    const redWhy = pen && !linking ? [!penPageCount(pen) && '데이터 없음', pen.battery < 30 && `배터리 부족 ${pen.battery}%`, cap < 20 && `저장 잔량 부족 ${cap}%`].filter(Boolean) : [];
+    const led = usbFail ? '#EF4444' : !pen ? '#CBD5E1' : linking ? '#FBBF24' : redWhy.length ? '#EF4444' : '#22C55E';
+    const plugged = !!pen;
+    const s = compact ? 0.6 : 1;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, padding: compact ? '2px 0' : '12px 0' }}>
+        <style>{'@keyframes usbBlink { 0%,100% { opacity: 1 } 50% { opacity: 0.25 } }'}</style>
+        {/* PC */}
+        <div style={{ width: 92 * s, height: 62 * s, borderRadius: 8 * s, background: '#1E293B', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: 11 * s, fontWeight: 800, position: 'relative', flex: 'none' }}>
+          <span style={{ fontSize: 20 * s }}>💻</span>이 PC
+          <span style={{ position: 'absolute', right: -4 * s, top: '50%', transform: 'translateY(-50%)', width: 8 * s, height: 14 * s, background: '#64748B', borderRadius: 2 }} />
+        </div>
+        {/* 케이블 */}
+        <div style={{ width: (compact ? 70 : 150) * s, height: 4 * s, background: plugged ? '#334155' : 'transparent', borderTop: plugged ? 'none' : `${3 * s}px dashed #CBD5E1`, flex: 'none' }} />
+        {/* 펜 */}
+        <button type="button" onClick={() => (plugged ? unplugUsb() : connectUsb())}
+          title={plugged ? `펜 ${pen.id} — 누르면 케이블을 뺍니다` : '누르면 펜을 USB 케이블에 꽂습니다(에뮬레이터)'}
+          aria-label={plugged ? `USB 펜 ${pen.id} 연결 해제` : 'USB 펜 꽂기'}
+          style={{ display: 'flex', alignItems: 'center', gap: 6 * s, height: 30 * s, padding: `0 ${12 * s}px 0 ${6 * s}px`, borderRadius: `${4 * s}px ${16 * s}px ${16 * s}px ${4 * s}px`, border: `2px ${plugged ? 'solid' : 'dashed'} ${plugged ? '#0F172A' : '#CBD5E1'}`, background: plugged ? '#334155' : 'white', color: plugged ? 'white' : '#94A3B8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11 * s, fontWeight: 800, flex: 'none' }}>
+          <span style={{ width: 10 * s, height: 10 * s, borderRadius: '50%', background: led, boxShadow: led !== '#CBD5E1' ? `0 0 ${6 * s}px ${led}` : 'none', animation: linking || usbFail ? 'usbBlink 0.8s ease-in-out infinite' : 'none' }} />
+          {plugged ? `펜 ${pen.id}` : '펜을 꽂으세요'}
+          <span style={{ width: 26 * s, height: 3 * s, background: plugged ? '#94A3B8' : '#E2E8F0', borderRadius: 2 }} />
+        </button>
+      </div>
+    );
   };
   const switchLink = (k) => {
     if (k === link) return;
@@ -728,39 +763,40 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569' }}>연결 방식</span>
         <span role="radiogroup" aria-label="펜 연결 방식" style={{ display: 'flex', gap: 6 }}>
-          {[['cradle', '🗄 크래들'], ['usb', '🔌 USB 펜 1자루']].map(([k, l]) => (
+          {[['cradle', '🗄 크래들'], ['usb', '🔌 USB 연결(펜 1개)']].map(([k, l]) => (
             <button key={k} type="button" role="radio" aria-checked={link === k} onClick={() => switchLink(k)}
               style={{ padding: '6px 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${link === k ? '#2A75F3' : '#E2E8F0'}`, background: link === k ? '#EFF6FF' : 'white', color: link === k ? '#1D4ED8' : '#475569' }}>{l}</button>
           ))}
         </span>
-        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>크래들이 없으면 펜을 USB 케이블로 PC에 연결해 한 자루씩 읽습니다.</span>
       </div>
     );
     if (link === 'usb') {
-      const pick = usbPick || defaultUsbPick;
       const cap = usbPen ? capacityOf(usbPen) : 0;
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {linkToggle}
           <div style={{ ...card, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)' }}>🔌 USB 펜 연결 — 크래들 없이 펜 1자루</div>
+            <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)' }}>🔌 USB 연결(펜 1개) — 크래들 없이 펜 1개를 읽습니다</div>
             <div style={{ color: '#64748B', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.6 }}>
               펜을 USB 케이블로 이 PC에 연결하세요. 한 번에 한 자루씩 읽습니다.<br />
-              다른 학생의 펜은 데이터 매핑 화면에서 바꿔 연결한 뒤 [↻ 다시 매칭]을 누르면 됩니다.
+              누구의 펜인지는 [데이터 매핑 시작] 뒤 답안지의 학생정보로 확인합니다. 다른 펜은 데이터 매핑 화면에서 바꿔 꽂은 뒤 [↻ 다시 매칭]을 누르면 됩니다.
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#7C3AED' }}>🧪 시연 — 연결할 펜</label>
-              <select value={pick} onChange={(e) => setUsbPick(e.target.value)} aria-label="USB로 연결할 펜(시연)"
-                style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit' }}>
-                {PEN_POOL.map((p) => <option key={p.id} value={p.id}>{usbPenLabel(p)}</option>)}
-              </select>
-              <button type="button" onClick={() => connectUsb(pick)} style={primaryBtn(true)}>{usbPen ? '🔌 이 펜으로 바꿔 연결' : '🔌 USB 펜 연결'}</button>
-              {usbPen && <button type="button" style={ghostBtn} onClick={() => undockPen(USB_SLOT)}>⏏ 연결 해제</button>}
+            {renderUsbEmulator()}
+            {usbFail && (
+              <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', textAlign: 'center' }}>
+                ⚠ 펜을 인식하지 못했습니다 <span style={{ fontWeight: 600, color: '#B45309' }}>— 케이블을 뺐다가 다시 꽂아 주세요. 계속 안 되면 [🚨 이용불편 접수]로 알려 주세요.</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {!usbPen && <button type="button" onClick={() => connectUsb()} style={primaryBtn(true)}>{usbFail ? '🔌 다시 꽂기' : '🔌 USB 펜 꽂기'}</button>}
+              {usbPen && <button type="button" style={ghostBtn} onClick={unplugUsb}>⏏ 케이블 빼기</button>}
+              <button type="button" style={{ ...ghostBtn, color: '#7C3AED', borderColor: '#DDD6FE' }} onClick={nextUsb} title="시연 — 다른 펜을 꽂은 것으로 바꿉니다">🧪 다른 펜으로 바꿔 꽂기</button>
             </div>
             {usbPen && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 10, background: usbPen.link === 'connected' ? '#F0FDF4' : '#FFFBEB', border: `1px solid ${usbPen.link === 'connected' ? '#86EFAC' : '#FCD34D'}`, fontSize: 'var(--neo-font-size-sm)' }}>
                 <strong>{usbPen.link === 'connected' ? '● 연결됨' : '연결 중…'}</strong>
-                <span>{usbPenLabel(usbPen)}</span>
+                <span>펜 {usbPen.id}</span>
+                <span style={{ color: '#94A3B8' }}>학생 — 매핑 후 확인</span>
                 {usbPen.link === 'connected' && <>
                   <span style={{ color: usbPen.battery < 50 ? '#DC2626' : '#475569' }}>배터리 {usbPen.battery}%</span>
                   <span>저장 잔량 <CapacityHelpTip /> <b style={{ color: capTone(cap).color }}>{cap}%</b></span>
@@ -1085,13 +1121,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       </div>
       {link === 'usb' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-xs)' }}>
-          <strong style={{ color: '#475569' }}>🔌 USB</strong>
-          <span style={{ color: usbPen ? '#1E293B' : '#94A3B8', fontWeight: 700 }}>{usbPen ? usbPenLabel(usbPen) : '연결된 펜 없음'}</span>
-          <select value={usbPick || defaultUsbPick} onChange={(e) => setUsbPick(e.target.value)} aria-label="바꿔 연결할 펜(시연)"
-            style={{ marginLeft: 'auto', maxWidth: 150, padding: '2px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
-            {PEN_POOL.map((p) => <option key={p.id} value={p.id}>{usbPenLabel(p)}</option>)}
-          </select>
-          <button type="button" onClick={() => connectUsb(usbPick || defaultUsbPick)} style={{ ...ghostBtn, padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' }}>펜 바꿔 연결</button>
+          <div style={{ flex: '1 1 100%' }}>{renderUsbEmulator(true)}</div>
+          {usbFail && <span style={{ flex: '1 1 100%', textAlign: 'center', color: '#B91C1C', fontWeight: 700 }}>⚠ 펜을 인식하지 못했습니다 — 다시 꽂아 주세요.</span>}
+          <span style={{ flex: '1 1 100%', display: 'flex', justifyContent: 'center', gap: 6 }}>
+            {!usbPen && <button type="button" onClick={() => connectUsb()} style={{ ...ghostBtn, padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' }}>🔌 펜 꽂기</button>}
+            <button type="button" onClick={nextUsb} style={{ ...ghostBtn, padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)', color: '#7C3AED' }} title="시연 — 다른 펜을 꽂은 것으로 바꿉니다. 바꾼 뒤 [↻ 다시 매칭]">🧪 다른 펜으로 바꿔 꽂기</button>
+          </span>
         </div>
       )}
       {link === 'cradle' && Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
