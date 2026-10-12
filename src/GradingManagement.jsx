@@ -166,7 +166,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
       const done = gs.filter((x) => x.status !== '미채점').length;
       const stage = done < total ? '미채점' : gs.some((x) => x.status === '채점 확인') ? '채점 확인' : gs.some((x) => x.status === '결과 발송 전') ? '결과 발송 전' : '결과 발송 완료';
       return { id: `wb:${w.id}`, isWorkbook: true, wb: w, groups, type: w.kind === 'word' ? '낱말' : (w.curriculum?.curriculumName || '정답형'), title: w.title,
-        date: first ? String(first).slice(0, 10).replace(/-/g, '.') : '-', submissions: `${done}/${total}`, stage, description: '', resultMode: 'score' };
+        date: first ? (() => { const d = new Date(first); return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`; })() : '-', submissions: `${done}/${total}`, stage, description: '', resultMode: 'score' };
     }))).catch(() => setWbTasks([]));
     load();
     window.addEventListener('aigle:item-bank-changed', load);
