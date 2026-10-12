@@ -267,6 +267,16 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const ungradedIds = unifiedUngraded && selectedGroup && selectedGroup !== '그룹 선택'
     ? filteredStudents.filter(inSelectedGroup).map(st => st.id) : [];
   const ungradedKey = ungradedIds.join('|');
+  // [일괄 채점 통합] 무효 처리 — 미채점 상세가 없어져 목록에서 한다. 처리하면 「결과 발송」 탭으로(결과 발송 전 · 무효)
+  const [invalidAsk, setInvalidAsk] = useState(false);
+  const [invalidMsg, setInvalidMsg] = useState('');
+  useEffect(() => { if (!invalidMsg) return undefined; const t = setTimeout(() => setInvalidMsg(''), 2800); return () => clearTimeout(t); }, [invalidMsg]);
+  const doInvalidate = () => {
+    const ids = selectedIds;
+    setStudents(prev => prev.map(st => (ids.includes(st.id) ? { ...st, status: '결과 발송 전', aiGrade: '무효', teacherGrade: '무효', invalid: true } : st)));
+    setSelectedIds([]); setInvalidAsk(false);
+    setInvalidMsg(`${ids.length}명의 제출을 무효 처리했습니다 — 「결과 발송」 탭에서 확인할 수 있습니다.`);
+  };
   useEffect(() => {
     if (!unifiedUngraded) return;
     setSelectedIds(ungradedIds);
@@ -958,6 +968,34 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       📷 스캔 채점 ({selectedIds.length}명)
                     </button>
                   )}
+                  {/* [일괄 채점 통합] 미채점 — 무효 처리 · 선택 해제 (전체 선택 메뉴는 없고 기본이 전체 선택) */}
+                  {unifiedUngraded && selectedIds.length > 0 && (
+                    <>
+                      <button type="button" className="btn-bulk-grading" onClick={() => setInvalidAsk(true)} disabled={isAnyBgActive}
+                        title="학생의 제출을 무효로 합니다 — 채점하지 않고 「결과 발송」으로 옮깁니다."
+                        style={{ background: 'white', color: '#DC2626', border: '1px solid #FCA5A5', ...(isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}>
+                        ⊘ 무효 처리 ({selectedIds.length}명)
+                      </button>
+                      <button type="button" onClick={() => setSelectedIds([])}
+                        style={{ background: 'none', border: 'none', color: '#64748B', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>
+                        선택 해제
+                      </button>
+                    </>
+                  )}
+                  {invalidAsk && (
+                    <div className="modal-overlay" onClick={() => setInvalidAsk(false)}>
+                      <div role="alertdialog" aria-modal="true" aria-label="무효 처리 확인" onClick={(e) => e.stopPropagation()}
+                        style={{ background: 'white', borderRadius: 16, padding: '24px 24px 18px', width: 'min(420px, 92vw)', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
+                        <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 8 }}>선택한 학생 {selectedIds.length}명의 제출을 무효 처리하시겠습니까?</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.6 }}>무효 처리한 학생은 채점하지 않고 「결과 발송」 탭으로 옮겨집니다.</div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+                          <button type="button" onClick={() => setInvalidAsk(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+                          <button type="button" onClick={doInvalidate} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#DC2626', color: 'white', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>무효 처리</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {invalidMsg && <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 10000 }}>{invalidMsg}</div>}
                   {/* 채점 확인 탭 — 검토 완료 처리 */}
                   {bulkReviewCompleteIds.length > 0 && (
                     <button
@@ -1117,7 +1155,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <div className="card-badge badge-red-soft">미채점</div>
                         )
                       ) : (
-                        <div className="card-badge badge-blue-soft">{student.status}</div>
+                        <div className="card-badge badge-blue-soft">{student.invalid ? '무효 처리' : student.status}</div>
                       )}
                       {student.handwritingEvaluation && (
                         <div
@@ -1208,7 +1246,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             ? <span className="card-badge" style={{ background: '#EBF2FF', color: '#2A75F3' }}>{isUnified ? '학생 제출' : '답안 있음'}</span>
                             : <span className="card-badge badge-red-soft">미채점</span>;
                         }
-                        return <span className="card-badge badge-blue-soft">{student.status}</span>;
+                        return <span className="card-badge badge-blue-soft">{student.invalid ? '무효 처리' : student.status}</span>;
                       })();
                       return (
                         <tr

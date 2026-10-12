@@ -35,6 +35,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
   const [sel, setSel] = React.useState([]);
   const [review, setReview] = React.useState(null); // 학생 id
   const [toast, setToast] = React.useState('');
+  const [invalidAsk, setInvalidAsk] = React.useState(false); // [일괄 채점 통합] 무효 처리 확인
   const sheetBoxRef = React.useRef(null);
   React.useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
 
@@ -91,13 +92,19 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
     setSel([]);
     setToast(`${ok.length}명 검토 완료${skip ? ` · 확인 필요가 남은 ${skip}명은 건너뛰었습니다(상세보기에서 O/X를 정해 주세요)` : ''}.`);
   };
+  const invalidate = () => {
+    const ids = selVisible;
+    patch(ids, () => ({ status: '결과 발송 전', invalid: true, answers: null, auto: null, overrides: {}, teacherEdited: false }));
+    setSel([]); setInvalidAsk(false);
+    setToast(`${ids.length}명의 제출을 무효 처리했습니다 — 「결과 발송」 탭에서 확인할 수 있습니다.`);
+  };
   const send = (ids) => {
     const ok = ids.filter((id) => students.find((x) => x.id === id)?.status === '결과 발송 전');
     patch(ok, () => ({ status: '결과 발송 완료', sentAt: new Date().toISOString() })); setSel([]);
     setToast(`${ok.length}명에게 결과를 발송했습니다 (점수 · 틀린 문항 · 정답).`);
   };
 
-  const autoCell = (s) => { const a = autoOnly(s); return a ? <span>{a.correct}/{a.count} · <b>{a.score}점</b>{a.pending ? <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }}>확인 필요 {a.pending}</span> : null}</span> : '-'; };
+  const autoCell = (s) => { if (s.invalid) return <b style={{ color: '#DC2626' }}>무효</b>; const a = autoOnly(s); return a ? <span>{a.correct}/{a.count} · <b>{a.score}점</b>{a.pending ? <span style={{ marginLeft: 6, ...pill(['#FEF3C7', '#B45309']) }}>확인 필요 {a.pending}</span> : null}</span> : '-'; };
   const teacherCell = (s) => { const r = resultOf(s); return s.teacherEdited && r ? <span>{r.correct}/{r.count} · <b>{r.score}점</b></span> : '-'; };
 
   // 카드 · 줄을 누르면 상세 (상세보기 버튼 없음). 답안을 받기 전이면 안내만
@@ -137,6 +144,14 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
             <>
               <button className="btn-bulk-grading" onClick={() => receive('pen')}>🖊 크래들 일괄채점 ({selVisible.length}명)</button>
               <button className="btn-bulk-grading" style={{ background: '#0EA5E9' }} onClick={() => receive('ocr')}>📷 스캔 채점 ({selVisible.length}명)</button>
+            </>
+          )}
+          {ungradedView && selVisible.length > 0 && (
+            <>
+              <button className="btn-bulk-grading" title="학생의 제출을 무효로 합니다 — 채점하지 않고 「결과 발송」으로 옮깁니다." onClick={() => setInvalidAsk(true)}
+                style={{ background: 'white', color: '#DC2626', border: '1px solid #FCA5A5' }}>⊘ 무효 처리 ({selVisible.length}명)</button>
+              <button type="button" onClick={() => setSel([])}
+                style={{ background: 'none', border: 'none', color: '#64748B', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>선택 해제</button>
             </>
           )}
           {tab === '채점 확인' && selVisible.length > 0 && <button className="btn-bulk-grading" style={{ background: '#E8590C' }} onClick={() => completeReview(selVisible)}>✓ 검토 완료 처리 ({selVisible.length}명)</button>}
@@ -270,6 +285,19 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
           </div>
         );
       })()}
+      {invalidAsk && (
+        <div className="modal-overlay" onClick={() => setInvalidAsk(false)}>
+          <div role="alertdialog" aria-modal="true" aria-label="무효 처리 확인" onClick={(e) => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: 16, padding: '24px 24px 18px', width: 'min(420px, 92vw)', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
+            <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 8 }}>선택한 학생 {selVisible.length}명의 제출을 무효 처리하시겠습니까?</div>
+            <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.6 }}>무효 처리한 학생은 채점하지 않고 「결과 발송」 탭으로 옮겨집니다.</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+              <button type="button" onClick={() => setInvalidAsk(false)} style={btn(false)}>취소</button>
+              <button type="button" onClick={invalidate} style={{ ...btn(true), background: '#DC2626' }}>무효 처리</button>
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 10000 }}>{toast}</div>}
     </section>
   );

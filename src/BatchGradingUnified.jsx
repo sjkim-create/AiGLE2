@@ -52,6 +52,7 @@ const BADGE = {
   check: { label: '확인 필요', bg: '#FEF2F2', border: '#FCA5A5', color: '#B91C1C', dot: '#EF4444' },
   answer: { label: '기존 답안', bg: '#ECFEFF', border: '#A5F3FC', color: '#0E7490', dot: '#06B6D4' },
   none: { label: '제외', bg: '#F8FAFC', border: '#E2E8F0', color: '#64748B', dot: '#CBD5E1' },
+  submitted: { label: '학생 제출', bg: '#ECFEFF', border: '#A5F3FC', color: '#0E7490', dot: '#06B6D4' }, // [SCR-08 v1.19] 펜은 없지만 학생이 낸 답안
 };
 
 const STEPS = [
@@ -70,7 +71,9 @@ const CRADLES = 3;
 const SLOTS = 10;
 const cradleOf = (slot) => Math.ceil(slot / SLOTS);
 const slotIn = (slot) => ((slot - 1) % SLOTS) + 1;
-const slotShort = (slot) => `${cradleOf(slot)}-${slotIn(slot)}`;
+/* [SCR-08 v1.19] USB 펜 1자루 — 크래들 없이 USB로 연결한 펜은 가상 슬롯 0 */
+const USB_SLOT = 0;
+const slotShort = (slot) => (slot === USB_SLOT ? 'USB' : `${cradleOf(slot)}-${slotIn(slot)}`);
 const fullPages = () => ({ 1: 2, 2: 1, 3: 1 });
 
 /** 펜 재고 — 교실에서 실제로 겪는 경우를 섞는다 (SCR-07 판정 규칙의 조건들) */
@@ -277,6 +280,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
 
   /* ── 크래들 상태 ── */
   const [docked, setDocked] = useState({});      // { [slot]: pen + link }
+  const [link, setLink] = useState('cradle');    // [SCR-08 v1.19] 연결 방식 — 'cradle' | 'usb'(펜 1자루)
+  const [usbPick, setUsbPick] = useState('');    // 시연 — USB로 연결할 펜
   const [unrecognized, setUnrecognized] = useState([]);
   const failedDock = useRef(new Set());
   const [judged, setJudged] = useState([]);      // 마지막 판정에 들어간 펜 id
@@ -370,6 +375,23 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     }, 600);
   };
   const undockPen = (slot) => setDocked((prev) => { const n = { ...prev }; delete n[slot]; return n; });
+  /* [SCR-08 v1.19] USB 펜 1자루 — 한 번에 한 자루. 다른 펜을 연결하면 바꿔 끼운 것으로 본다(다시 매칭 필요) */
+  const usbPen = docked[USB_SLOT] || null;
+  const usbPenLabel = (p) => {
+    const o = p.owner ? studentById(p.owner) : null;
+    return o ? `${o.no} ${o.name}의 펜` : p.ownerLabel ? `${p.ownerLabel}의 펜` : p.read ? `${p.read}의 펜` : '필기 없는 펜';
+  };
+  const defaultUsbPick = (PEN_POOL.find((p) => p.scenario === 'ok' && ROSTER.some((s) => s.id === p.owner)) || PEN_POOL[0]).id;
+  const connectUsb = (penId) => {
+    const base = PEN_POOL.find((p) => p.id === penId);
+    if (!base) return;
+    setDocked({ [USB_SLOT]: { ...base, slot: USB_SLOT, usb: true, link: 'linking' } });
+    setTimeout(() => setDocked((prev) => (prev[USB_SLOT] ? { [USB_SLOT]: { ...prev[USB_SLOT], link: 'connected' } } : prev)), 600);
+  };
+  const switchLink = (k) => {
+    if (k === link) return;
+    setLink(k); setDocked({}); setUnrecognized([]); setJudged([]); setManual({}); setDupPick({}); setSel(null);
+  };
   const connected = Object.values(docked).filter((p) => p.link === 'connected').sort((a, b) => a.slot - b.slot);
   const capacityOf = (p) => (deletedPens.includes(p.id) ? 99 : p.capacity);
   /* 펌웨어 업데이트 — 진행 막대. 채점의 필수 요건은 아니다 */
@@ -412,13 +434,15 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     });
     const students = ROSTER.map((s) => {
       const list = bySid[s.id] || [];
+      /* [SCR-08 v1.19] 펜이 없어도 학생이 이미 낸 답안(키보드 · 파일)이 있으면 그 답안으로 채점한다 */
+      if (list.length === 0 && s.hasAnswer) return { ...s, badge: 'submitted', detail: '학생 제출 — 학생이 낸 답안으로 채점합니다', pens: [], submitted: true };
       if (list.length === 0) return { ...s, badge: 'none', detail: '채점 제외 — 거치된 펜에서 이 학생의 답안을 찾지 못했습니다', pens: [] };
       if (list.length >= 2) return { ...s, badge: 'check', detail: `중복 데이터 — 슬롯 ${list.map((x) => slotShort(x.pen.slot)).join(' · ')}`, pens: list, dup: true };
       const { pen, manual: mm } = list[0];
       if (!penPageCount(pen)) return { ...s, badge: 'none', detail: '답안 없음 — 답안지 미작성', pens: list };
       return { ...s, badge: 'ok', detail: `펜 연결 · 슬롯 ${slotShort(pen.slot)}${mm ? ' · 직접 매칭' : ''}`, pens: list };
     });
-    const gradable = students.filter((s) => s.badge === 'ok');
+    const gradable = students.filter((s) => s.badge === 'ok' || s.badge === 'submitted');
     const dups = students.filter((s) => s.dup);
     const blocked = !!unread.length ? false : (dups.length > 0 || gradable.length === 0);
     const blockReason = dups.length ? `⚠ 중복 데이터 ${dups.length}건을 먼저 풀어 주세요. 답안을 보고 이 학생의 답안을 고르면 풀립니다.`
@@ -430,8 +454,9 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     empty.forEach((p) => { penInfo[p.id] = { kind: 'empty' }; });
     unc.forEach((u) => { penInfo[u.id] = { kind: 'unc', reason: u.reason, noAssign: u.noAssign }; });
     students.forEach((s) => s.pens.forEach((x) => { penInfo[x.pen.id] = { kind: s.dup ? 'dup' : s.badge === 'none' ? 'noans' : 'ok', sid: s.id, manual: !!x.manual }; }));
-    const absent = students.filter((s) => s.pens.length === 0);
-    return { students, unc, empty, unread, gradable, penInfo, absent, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — [↻ 다시 매칭]을 눌러 주세요.` : blockReason,
+    const absent = students.filter((s) => s.pens.length === 0 && !s.submitted);
+    const submitted = students.filter((s) => s.submitted);
+    return { students, unc, empty, unread, gradable, penInfo, absent, submitted, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — [↻ 다시 매칭]을 눌러 주세요.` : blockReason,
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -637,7 +662,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const startGrading = () => {
     setConfirm(null);
     const ids = model.gradable.map((s) => s.id);
-    const list = model.gradable.map((s) => (source === 'cradle' ? { sid: s.id, slot: s.pens[0].pen.slot, penId: s.pens[0].pen.id } : { sid: s.id, sheets: s.qs.reduce((a, x) => a + x.list.length, 0), full: s.qs.every((x) => x.list.length) }));
+    const list = model.gradable.map((s) => (source === 'cradle' ? (s.submitted ? { sid: s.id, submitted: true } : { sid: s.id, slot: s.pens[0].pen.slot, penId: s.pens[0].pen.id }) : { sid: s.id, sheets: s.qs.reduce((a, x) => a + x.list.length, 0), full: s.qs.every((x) => x.list.length) }));
     setGradedList(list);
     if (source === 'cradle') {
       recordGradingSession({ source: '크래들 일괄 채점(통합)', task: TASK.title, group: TASK.group, pens: connected.map((p) => ({ mac: p.id, books: [{ code: '334212', pages: penPageCount(p) }] })) });
@@ -694,8 +719,58 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
       );
     }
+    const linkToggle = (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569' }}>연결 방식</span>
+        <span role="radiogroup" aria-label="펜 연결 방식" style={{ display: 'flex', gap: 6 }}>
+          {[['cradle', '🗄 크래들'], ['usb', '🔌 USB 펜 1자루']].map(([k, l]) => (
+            <button key={k} type="button" role="radio" aria-checked={link === k} onClick={() => switchLink(k)}
+              style={{ padding: '6px 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1px solid ${link === k ? '#2A75F3' : '#E2E8F0'}`, background: link === k ? '#EFF6FF' : 'white', color: link === k ? '#1D4ED8' : '#475569' }}>{l}</button>
+          ))}
+        </span>
+        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>크래들이 없으면 펜을 USB 케이블로 PC에 연결해 한 자루씩 읽습니다.</span>
+      </div>
+    );
+    if (link === 'usb') {
+      const pick = usbPick || defaultUsbPick;
+      const cap = usbPen ? capacityOf(usbPen) : 0;
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {linkToggle}
+          <div style={{ ...card, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)' }}>🔌 USB 펜 연결 — 크래들 없이 펜 1자루</div>
+            <div style={{ color: '#64748B', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.6 }}>
+              펜을 USB 케이블로 이 PC에 연결하세요. 한 번에 한 자루씩 읽습니다.<br />
+              다른 학생의 펜은 데이터 매핑 화면에서 바꿔 연결한 뒤 [↻ 다시 매칭]을 누르면 됩니다.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#7C3AED' }}>🧪 시연 — 연결할 펜</label>
+              <select value={pick} onChange={(e) => setUsbPick(e.target.value)} aria-label="USB로 연결할 펜(시연)"
+                style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontFamily: 'inherit' }}>
+                {PEN_POOL.map((p) => <option key={p.id} value={p.id}>{usbPenLabel(p)}</option>)}
+              </select>
+              <button type="button" onClick={() => connectUsb(pick)} style={primaryBtn(true)}>{usbPen ? '🔌 이 펜으로 바꿔 연결' : '🔌 USB 펜 연결'}</button>
+              {usbPen && <button type="button" style={ghostBtn} onClick={() => undockPen(USB_SLOT)}>⏏ 연결 해제</button>}
+            </div>
+            {usbPen && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 10, background: usbPen.link === 'connected' ? '#F0FDF4' : '#FFFBEB', border: `1px solid ${usbPen.link === 'connected' ? '#86EFAC' : '#FCD34D'}`, fontSize: 'var(--neo-font-size-sm)' }}>
+                <strong>{usbPen.link === 'connected' ? '● 연결됨' : '연결 중…'}</strong>
+                <span>{usbPenLabel(usbPen)}</span>
+                {usbPen.link === 'connected' && <>
+                  <span style={{ color: usbPen.battery < 50 ? '#DC2626' : '#475569' }}>배터리 {usbPen.battery}%</span>
+                  <span>저장 잔량 <CapacityHelpTip /> <b style={{ color: capTone(cap).color }}>{cap}%</b></span>
+                  <span style={{ color: usbPen.needsUpdate && !fwDone[usbPen.id] ? '#DC2626' : '#94A3B8' }}>펌웨어 {usbPen.needsUpdate && !fwDone[usbPen.id] ? usbPen.firmware : '2.1.0'}</span>
+                  {!penPageCount(usbPen) && <span style={{ color: '#DC2626', fontWeight: 700 }}>필기 데이터 없음</span>}
+                </>}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {linkToggle}
         {unrecognized.length > 0 && (
           <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
             ⚠ 펜이 화면에 표시되지 않는 경우
@@ -996,14 +1071,25 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           펜을 다시 꽂거나 빼서 구성이 바뀌면 버튼을 주황으로 강조하고 읽지 않은 펜 수를 붙인다 */}
       <style>{'@keyframes rematchPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.55) } 50% { box-shadow: 0 0 0 5px rgba(249,115,22,0) } }'}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>※ 오류가 난 펜은 크래들에 표시되지 않습니다 — 꽂혀 있는데 빈 칸이면 뺐다가 다시 꽂아 주세요.</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>{link === 'usb' ? '※ 펜을 바꿔 연결하면 [↻ 다시 매칭]을 눌러 주세요.' : '※ 오류가 난 펜은 크래들에 표시되지 않습니다 — 꽂혀 있는데 빈 칸이면 뺐다가 다시 꽂아 주세요.'}</span>
         <button type="button" onClick={reread}
           title={changed ? `크래들 구성이 바뀌었습니다${cradleModel.unread.length > 0 ? ` — 읽지 않은 펜 ${cradleModel.unread.length}자루` : ''}. 다시 매칭해 주세요. (읽은 펜 수만큼 AI OCR 차감)` : '판정을 다시 돌립니다. 직접 매칭 기록은 유지됩니다. 읽은 펜 수만큼 AI OCR이 차감됩니다.'}
           style={{ ...ghostBtn, flex: 'none', padding: '4px 10px', fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1', animation: changed ? 'rematchPulse 1.6s ease-in-out infinite' : 'none' }}>
           ↻ 다시 매칭{changed && cradleModel.unread.length > 0 ? ` (${cradleModel.unread.length})` : ''}
         </button>
       </div>
-      {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
+      {link === 'usb' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-xs)' }}>
+          <strong style={{ color: '#475569' }}>🔌 USB</strong>
+          <span style={{ color: usbPen ? '#1E293B' : '#94A3B8', fontWeight: 700 }}>{usbPen ? usbPenLabel(usbPen) : '연결된 펜 없음'}</span>
+          <select value={usbPick || defaultUsbPick} onChange={(e) => setUsbPick(e.target.value)} aria-label="바꿔 연결할 펜(시연)"
+            style={{ marginLeft: 'auto', maxWidth: 150, padding: '2px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
+            {PEN_POOL.map((p) => <option key={p.id} value={p.id}>{usbPenLabel(p)}</option>)}
+          </select>
+          <button type="button" onClick={() => connectUsb(usbPick || defaultUsbPick)} style={{ ...ghostBtn, padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)' }}>펜 바꿔 연결</button>
+        </div>
+      )}
+      {link === 'cradle' && Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
         <div key={cn} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 14, fontSize: 10, fontWeight: 800, color: '#64748B', textAlign: 'right' }}>{cn}</span>
           {renderRail(cn)}
@@ -1011,10 +1097,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
       ))}
       {/* [SCR-08 v1.9] 크래들 제목은 그림 아래 한 줄 — LED 색 범례는 뺀다(색의 뜻은 펜 목록 배지가 말한다) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, paddingLeft: 20, fontSize: 10, color: '#64748B' }}>
-        <strong style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>크래들</strong>
-        <span>＋ 빈 슬롯을 누르면 거치</span>
-      </div>
+      {link === 'cradle' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, paddingLeft: 20, fontSize: 10, color: '#64748B' }}>
+          <strong style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>크래들</strong>
+          <span>＋ 빈 슬롯을 누르면 거치</span>
+        </div>
+      )}
     </div>
     );
   };
@@ -1022,8 +1110,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /** 위치 줄 — 고른 펜이 실물 크래들 어디에 있는지. 그림은 좌측 미니맵이 맡고, 여기는 말과 조치만 */
   const renderLocationCard = (pen) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
-      <span title="좌측 미니맵에 파랗게 표시된 자리입니다" style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>📍 실물 위치 — 크래들 {cradleOf(pen.slot)} · {slotIn(pen.slot)}번 자리</span>
-      <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title="크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 미니맵의 빈 슬롯을 누르세요." onClick={() => { undockPen(pen.slot); setSel(null); }}>⏏ 펜 빼기</button>
+      <span title={pen.usb ? 'USB 케이블로 연결한 펜입니다' : '좌측 미니맵에 파랗게 표시된 자리입니다'} style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{pen.usb ? '🔌 USB로 연결한 펜' : `📍 실물 위치 — 크래들 ${cradleOf(pen.slot)} · ${slotIn(pen.slot)}번 자리`}</span>
+      <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title={pen.usb ? 'USB 연결을 해제합니다. 다른 펜은 위의 [펜 바꿔 연결]로 연결하세요.' : '크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 미니맵의 빈 슬롯을 누르세요.'} onClick={() => { undockPen(pen.slot); setSel(null); }}>{pen.usb ? '⏏ 연결 해제' : '⏏ 펜 빼기'}</button>
     </div>
   );
 
@@ -1046,6 +1134,25 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* 목록은 한 줄로 이어진다(스캔 목록과 같은 모양). 슬롯 순서 */}
           {pens.filter(show).map(penRow)}
+          {tab === 'all' && cradleModel.submitted.length > 0 && (
+            <div>
+              <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#ECFEFF', borderBottom: '1px solid #A5F3FC', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#0E7490' }}>
+                학생 제출 · 채점 대상 {cradleModel.submitted.length}명
+              </div>
+              {cradleModel.submitted.map((s) => {
+                const on = sel?.type === 'submitted' && sel.sid === s.id;
+                return (
+                  <button key={s.id} type="button" onClick={() => { setSel({ type: 'submitted', sid: s.id }); setPageIdx(0); }}
+                    style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'center', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #F1F5F9', background: on ? '#EFF6FF' : 'white', boxShadow: on ? 'inset 3px 0 0 #2A75F3' : 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span style={{ flex: 'none', width: 34, textAlign: 'center', color: '#0E7490', fontWeight: 800 }}>📄</span>
+                    <strong style={{ fontSize: 'var(--neo-font-size-sm)' }}>{s.name}</strong>
+                    <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{s.no}</span>
+                    <span style={{ marginLeft: 'auto', ...pill(BADGE.submitted) }}>학생 제출</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {(tab === 'all' || tab === 'none') && cradleModel.absent.length > 0 && (
             <div>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
@@ -1127,6 +1234,16 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   };
 
   const renderCradleAction = () => {
+    if (sel?.type === 'submitted') {
+      const s = studentById(sel.sid);
+      return (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span><span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE.submitted)}>학생 제출</span></div>
+          <div style={noteBox('ok')}>✓ 펜 데이터는 없지만 학생이 이미 제출한 답안이 있어 그 답안으로 채점합니다.</div>
+          <div style={noteBox('muted')}>펜 답안으로 채점하려면 미분류 펜을 이 학생에게 매칭하세요 — 펜 답안이 있으면 펜 답안으로 채점합니다.</div>
+        </>
+      );
+    }
     if (sel?.type === 'absent') {
       const s = studentById(sel.sid);
       return (
@@ -1376,6 +1493,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const previewPages = () => {
     if (!model || !sel) return [];
     if (source === 'cradle') {
+      if (sel.type === 'submitted') {
+        const s = studentById(sel.sid);
+        return QUESTIONS.map((q) => ({ id: `sub-${s.id}-${q.id}`, label: `${q.title} · 학생 제출`, sub: '학생 제출 답안', studentLabel: `${s.grade} ${s.name}`, question: q.title, sheetNo: 1, kind: 'ok', writer: GROUP.findIndex((g) => g.id === s.id) }));
+      }
       const pen = sel.type === 'pen' ? connected.find((p) => p.id === sel.penId) : null;
       if (!pen) return [];
       const info = cradleModel.penInfo[pen.id] || {};
@@ -1590,7 +1711,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       {/* 다음 단계 버튼은 늘 보이도록 아래에 붙인다 */}
       <div style={{ ...card, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0, zIndex: 15, marginBottom: 16, boxShadow: '0 -6px 16px rgba(15,23,42,0.08)' }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
-          {step === 'import' && source === 'cradle' && !connected.length && <span style={{ color: '#94A3B8' }}>크래들에 펜을 1자루 이상 거치해야 다음 단계로 넘어갑니다.</span>}
+          {step === 'import' && source === 'cradle' && !connected.length && <span style={{ color: '#94A3B8' }}>{link === 'usb' ? 'USB로 펜을 연결해야 다음 단계로 넘어갑니다.' : '크래들에 펜을 1자루 이상 거치해야 다음 단계로 넘어갑니다.'}</span>}
           {step === 'import' && source === 'scan' && pendingSplit.length > 0 && <>⚠ 페이지 분리한 PDF {pendingSplit.length}개를 아직 목록에 넣지 않았습니다 — [업로드 목록에 추가] 또는 [버리기]를 눌러 주세요.</>}
           {step === 'import' && source === 'scan' && !pendingSplit.length && !files.length && <span style={{ color: '#94A3B8' }}>스캔 파일을 1개 이상 올려야 다음 단계로 넘어갑니다.</span>}
           {step === 'mapping' && !reading && model && (model.blocked ? model.blockReason : model.note)}
