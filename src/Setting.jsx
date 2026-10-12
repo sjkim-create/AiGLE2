@@ -740,15 +740,17 @@ function Setting() {
             <div className="content-container">그룹 관리 화면 준비 중...</div>
           )
         ) : activeMenu === '채점 관리' ? (
-          /* [v4.7] 채점 관리 메뉴 — 채점 관리 / 채점 관리 2(퇴고) */
+          /* [v4.7] 채점 관리 메뉴 — 채점 관리 / 채점 관리 2(퇴고)
+             key — 메뉴를 바꾸면 화면을 새로 만든다. 같은 자리라 React가 상태(학생 명단)를 재사용하면
+             일괄 채점 통합에 채점 관리 명단이 남아 고른 학생이 통합 명단과 맞지 않는다(대상 0명 · 매칭 0) */
           activeSubMenu === '채점 관리 2' ? (
             /* [SCR-06] 채점 관리 2 — 기존 기능 + 퇴고(1차/2차 차수 관리·점수 추이) */
-            <GradingManagement activeSubMenu={activeSubMenu} variant="v2" />
+            <GradingManagement key="v2" activeSubMenu={activeSubMenu} variant="v2" />
           ) : activeSubMenu === '일괄 채점 통합' ? (
             /* 크래들·스캔 일괄 채점을 한 구조로 묶은 시안 — 1단계만 입력 방식별, 데이터 매핑부터 공통 구조 */
-            <GradingManagement activeSubMenu={activeSubMenu} variant="unified" />
+            <GradingManagement key="unified" activeSubMenu={activeSubMenu} variant="unified" />
           ) : (
-            <GradingManagement activeSubMenu="채점 관리" />
+            <GradingManagement key="v1" activeSubMenu="채점 관리" />
           )
         ) : activeMenu === '과제 관리' ? (
           /* [v4.7] 과제 관리 메뉴 — 과제 관리 / 과제 등록 / 과제 상세 / 공유된 과제 */
