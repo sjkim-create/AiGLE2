@@ -273,6 +273,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const ungradedKey = ungradedIds.join('|');
   // [일괄 채점 통합] 무효 처리 — 미채점 상세가 없어져 목록에서 한다. 처리하면 「결과 발송」 탭으로(결과 발송 전 · 무효)
   const [invalidAsk, setInvalidAsk] = useState(false);
+  const [flowRosterIds, setFlowRosterIds] = useState([]); // [SCR-08 v1.22] 채점 흐름의 채점 대상(왼쪽 열)
   const [invalidMsg, setInvalidMsg] = useState('');
   useEffect(() => { if (!invalidMsg) return undefined; const t = setTimeout(() => setInvalidMsg(''), 2800); return () => clearTimeout(t); }, [invalidMsg]);
   const doInvalidate = () => {
@@ -754,18 +755,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
   // ── 렌더 ──
   // 일괄 채점 통합 — 버튼으로 분기하면 목록 자리에 통합 흐름을 띄운다. [확인] 시 채점 확인 탭으로 복귀
-  if (isUnified && unifiedSource) {
-    return (
-      <BatchGradingUnified
-        key={unifiedSource}
-        initialSource={unifiedSource}
-        targetIds={selectedIds}
-        task={{ title: currentTask?.title || '과제', team: '미래혁신융합인재육성 프로젝트팀' }}
-        onExit={() => setUnifiedSource(null)}
-        onCompleted={(ids) => (unifiedSource === 'scan' ? handleScanCompleted(ids) : handleCradleCompleted(ids))}
-      />
-    );
-  }
+  //   [SCR-08 v1.22] 목록과 같은 화면 구조 — 왼쪽 열(과제 선택 자리)은 「채점 대상 학생」, 오른쪽은 채점 흐름
+  const unifiedFlow = isUnified && !!unifiedSource;
   return (
     <>
       {(activeSubMenu === '채점 관리' || activeSubMenu === '채점 관리 2' || isUnified) ? (
@@ -808,7 +799,27 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
           <div className="content-body">
             {/* 과제 선택 사이드바 */}
-            <aside className="sub-sidebar">
+            {unifiedFlow && (
+              <aside className="sub-sidebar" aria-label="채점 대상 학생">
+                <div className="sub-sidebar-header">
+                  <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, marginBottom: '0.35rem', color: '#1E2225' }}>채점 대상 학생 <span style={{ color: 'var(--primary)' }}>{flowRosterIds.length}명</span></div>
+                  <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.5 }}>[{currentTask.type}] {currentTask.title} · {unifiedSource === 'scan' ? '📷 스캔 채점' : '🖊 스마트 펜 채점'}</div>
+                </div>
+                <div className="task-list">
+                  {flowRosterIds.map((id) => roster.find((st) => st.id === id)).filter(Boolean).map((st) => (
+                    <div key={st.id} className="task-item" style={{ cursor: 'default' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="title" style={{ margin: 0 }}>{st.name}</span>
+                        {!selectedIds.includes(st.id) && <span title="데이터 매핑에서 답안을 매칭해 채점 대상에 더한 학생" style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#7C3AED', background: '#F5F3FF', borderRadius: 6, padding: '0 6px' }}>추가</span>}
+                        {(() => { const v = dataStateOf(st); const [bg, color] = DATA_STATE_STYLE[v]; return <span style={{ marginLeft: 'auto', background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, borderRadius: 6, padding: '1px 8px', whiteSpace: 'nowrap' }}>{v}</span>; })()}
+                      </div>
+                      <div className="meta"><span>{st.grade}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            )}
+            <aside className="sub-sidebar" style={unifiedFlow ? { display: 'none' } : undefined}>
               <div className="sub-sidebar-header">
                 <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, marginBottom: '0.75rem', color: '#1E2225' }}>과제 선택</div>
                 <div className="search-box">
@@ -837,8 +848,19 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
             {/* 상세 채점 관리 영역 */}
             {/* [TSK-15 v1.43] 정답형 문제집 · 낱말 문제집 — 서·논술과 같은 흐름 · 목록, 채점기는 자동 채점(정답 대조) */}
-            {currentTask.isWorkbook && <AnswerGradingPanel key={currentTask.id} task={currentTask} unified={isUnified} />}
-            <section className="detail-view" style={currentTask.isWorkbook ? { display: 'none' } : undefined}>
+            {unifiedFlow && (
+              <BatchGradingUnified
+                key={unifiedSource}
+                initialSource={unifiedSource}
+                targetIds={selectedIds}
+                task={{ title: currentTask?.title || '과제', team: '미래혁신융합인재육성 프로젝트팀' }}
+                onExit={() => setUnifiedSource(null)}
+                onCompleted={(ids) => (unifiedSource === 'scan' ? handleScanCompleted(ids) : handleCradleCompleted(ids))}
+                onRosterChange={setFlowRosterIds}
+              />
+            )}
+            {!unifiedFlow && currentTask.isWorkbook && <AnswerGradingPanel key={currentTask.id} task={currentTask} unified={isUnified} />}
+            <section className="detail-view" style={currentTask.isWorkbook || unifiedFlow ? { display: 'none' } : undefined}>
               <div className="task-info-banner" style={{ borderBottom: '1px solid #F3F4F6', paddingBottom: '1.5rem' }}>
                 <div className="info-left">
                   <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800 }}>[{currentTask.type}] {currentTask.title}</h2>

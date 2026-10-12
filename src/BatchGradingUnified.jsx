@@ -233,7 +233,8 @@ const SheetMock = ({ studentLabel, question, sheetNo, small, answer, writer = 0 
 /* ════════════════════════════════════════════════════════════
  * 본 화면
  * ════════════════════════════════════════════════════════════ */
-const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit, onCompleted } = {}) => {
+// onRosterChange — 채점 대상(ROSTER)이 바뀌면 알린다(목록 화면 왼쪽 열의 「채점 대상 학생」 · 매칭으로 추가된 학생 포함)
+const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit, onCompleted, onRosterChange } = {}) => {
   const TASK = task ? { ...BASE_TASK, ...task } : BASE_TASK; // 목록에서 고른 과제명을 그대로 쓴다
   /* 채점 관리와 같은 목록에서 [크래들 일괄 채점]/[스캔 채점] 버튼으로 들어온다 — 고른 학생만 대상 */
   /* 매핑 중 「선택하지 않은 학생」에게 답안을 매칭하면 그 학생도 채점 대상에 더한다 */
@@ -243,6 +244,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     return addedIds.length ? GROUP.filter((s) => base.includes(s) || addedIds.includes(s.id)) : base;
   }, [targetIds, addedIds]);
   const addTarget = (sid) => { if (!ROSTER.some((s) => s.id === sid)) setAddedIds((prev) => [...prev, sid]); };
+  useEffect(() => { onRosterChange?.(ROSTER.map((s) => s.id)); }, [ROSTER]); // eslint-disable-line react-hooks/exhaustive-deps
   /* 학생 선택 목록 — 선택 그룹 전체 명단. 미채점 목록에서 고르지 않은 학생은 따로 묶는다 */
   const studentOptions = () => {
     const others = GROUP.filter((s) => !ROSTER.includes(s));
