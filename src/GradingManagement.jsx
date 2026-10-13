@@ -532,6 +532,19 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     setSelectedIds(prev => prev.filter(id => !bulkReviewCompleteIds.includes(id)));
   };
 
+  // 채점 결과 내보내기 — [일괄 채점 통합] 대상은 결과 발송 완료 학생만(SCR-08 v1.36)
+  const openExport = () => {
+    const eligible = roster.filter(s => (isUnified ? s.status === '결과 발송 완료' : (s.status === '결과 발송 전' || s.status === '결과 발송 완료')));
+    if (eligible.length === 0) {
+      alert('결과 발송 단계의 학생이 없습니다.');
+      return;
+    }
+    setExportSelectedIds(eligible.map(s => s.id));
+    setExportStatus('ready');
+    setExportProgress(0);
+    setIsExportModalOpen(true);
+  };
+
   // ── 결과 발송 단계: 일괄 발송 / 재검토 / 취소 ──
   const bulkPreSendIds = selectedIds.filter(id => {
     const s = students.find(st => st.id === id);
@@ -918,23 +931,11 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                 <div className="info-right">
                   <div className="stat-item" style={{ color: '#4E5968' }}>제출률 <span className="stat-value" style={{ color: 'var(--primary)', fontWeight: 800 }}>0%</span></div>
                   <div className="stat-item" style={{ color: '#4E5968' }}>완료율 <span className="stat-value" style={{ color: 'var(--primary)', fontWeight: 800 }}>100%</span></div>
-                  {/* [일괄 채점 통합 · SCR-08 v1.36] 결과 발송 탭에서만 보이고, 결과 발송 완료 학생이 있어야 켜진다(내보내기 대상도 발송 완료만) */}
-                  {(!isUnified || activeTab === '결과 발송') && <button
+                  {/* [일괄 채점 통합 · SCR-08 v1.37] 통합에서는 결과 발송 탭의 일괄 버튼 줄로 옮겼다(아래 view-controls) */}
+                  {!isUnified && <button
                     className="btn-primary"
-                    disabled={isUnified && !roster.some(s => s.status === '결과 발송 완료')}
-                    title={isUnified && !roster.some(s => s.status === '결과 발송 완료') ? '결과를 발송한 학생이 있어야 내보낼 수 있습니다.' : undefined}
-                    style={{ padding: '8px 16px', fontSize: 'var(--neo-font-size-base)', ...(isUnified && !roster.some(s => s.status === '결과 발송 완료') ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
-                    onClick={() => {
-                      const eligible = roster.filter(s => (isUnified ? s.status === '결과 발송 완료' : (s.status === '결과 발송 전' || s.status === '결과 발송 완료')));
-                      if (eligible.length === 0) {
-                        alert('결과 발송 단계의 학생이 없습니다.');
-                        return;
-                      }
-                      setExportSelectedIds(eligible.map(s => s.id));
-                      setExportStatus('ready');
-                      setExportProgress(0);
-                      setIsExportModalOpen(true);
-                    }}
+                    style={{ padding: '8px 16px', fontSize: 'var(--neo-font-size-base)' }}
+                    onClick={openExport}
                   >
                     채점 결과 내보내기
                   </button>}
@@ -1156,6 +1157,17 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       🚫 결과발송 취소 ({bulkSentIds.length}명)
                     </button>
                   )}
+                  {/* [일괄 채점 통합 · SCR-08 v1.37] 채점 결과 내보내기 — 결과 발송 탭의 일괄 버튼과 같은 줄 · 같은 자리. 결과 발송 완료 학생이 있어야 활성 */}
+                  {isUnified && activeTab === '결과 발송' && (() => {
+                    const can = roster.some(s => s.status === '결과 발송 완료');
+                    return (
+                      <button className="btn-bulk-grading" onClick={openExport} disabled={!can}
+                        title={can ? undefined : '결과를 발송한 학생이 있어야 내보낼 수 있습니다.'}
+                        style={{ background: '#0F766E', ...(can ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}>
+                        📄 채점 결과 내보내기
+                      </button>
+                    );
+                  })()}
                   {/* [SCR-06] 결과 발송 완료(1차) — 퇴고 요청 */}
                   {isV2 && bulkRevisionRequestIds.length > 0 && (
                     <button
