@@ -542,9 +542,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     return s && s.status === '결과 발송 완료';
   });
 
-  // [일괄 채점 통합 · SCR-08 v1.26] 결과 표시 방식은 과제 등록이 아니라 결과 발송 때 고른다 — 점수 · 점수+등급 · 등급
+  // [일괄 채점 통합 · SCR-08 v1.26] 결과 표시 방식은 과제 등록이 아니라 결과 발송 때 고른다 — 점수 · 점수(등급) · 등급
   //   고른 방식은 학생마다 sentMode로 남아 목록 · 리포트 표기에 쓰인다
-  const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수+등급', '우수 · 17점'], ['grade', '등급', '우수']];
+  const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수(등급)', '17점(우수)'], ['grade', '등급', '우수']];
   const [sendAsk, setSendAsk] = useState(null); // { ids }
   const [sendMode, setSendMode] = useState('score');
   const openSendAsk = (ids) => { setSendMode(currentTask.resultMode === 'grade' ? 'grade' : 'score'); setSendAsk({ ids }); };
@@ -1751,7 +1751,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <tr>
                             <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>문항번호</th>
                             <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>배점</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>{rm === 'gradeScore' ? '점수+등급' : RESULT_MODE_LABEL[rm]}</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>{rm === 'gradeScore' ? '점수(등급)' : RESULT_MODE_LABEL[rm]}</th>
                           </tr>
                         </thead>
                         <tbody>
