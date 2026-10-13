@@ -1188,7 +1188,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {renderMinimap()}
         {/* [SCR-08 v1.8] 필터는 미니맵 아래 — 아래 목록을 거르는 버튼이라 목록과 한 묶음 */}
         <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid #F1F5F9' }}>
-          {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['submitted', '학생 제출', cradleModel.submitted.length], ['none', '채점 제외', nNone]].map(([k, l, n]) => (
+          {/* [SCR-08 v1.49] 필터 = 전체 · 확인 필요 · 채점 제외 — 학생 제출은 탭 없이 목록의 상태 배지로만 */}
+          {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['none', '채점 제외', nNone]].map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
           ))}
@@ -1196,7 +1197,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* 목록은 한 줄로 이어진다(스캔 목록과 같은 모양). 슬롯 순서 */}
           {pens.filter(show).map(penRow)}
-          {(tab === 'all' || tab === 'submitted') && cradleModel.submitted.length > 0 && (
+          {tab === 'all' && cradleModel.submitted.length > 0 && (
             <div>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#ECFEFF', borderBottom: '1px solid #A5F3FC', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#0E7490' }}>
                 학생 제출 · 채점 대상 {cradleModel.submitted.length}명
@@ -1244,7 +1245,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const list = model.students.filter((s) => tab === 'all' || s.badge === tab);
     const uncScans = model.unc.filter((r) => r.origin !== 'existing'); // [SCR-09 v1.33] 학생을 찾지 못한 답안지 — 펜의 미분류 펜처럼 확인 필요에 센다
     const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length + uncScans.length],
-      ['answer', '학생 제출', model.students.filter((s) => s.badge === 'answer').length], ['none', '채점 제외', model.students.filter((s) => s.badge === 'none').length]];
+      /* [SCR-09 v1.36] 학생 제출은 탭 없이 상태 배지로만 */ ['none', '채점 제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
       <div style={{ ...card, flex: '0 0 28%', minWidth: 280, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 · [v1.13] 두 열을 약 10% 줄이고(28%) 남는 폭을 답안 미리보기에 */}
         {/* [SCR-09 v1.30] 목록 맨 위 — 파일 추가(펜의 [↻ 다시 매칭] 자리와 같은 곳). 이전 화면으로 돌아가지 않는다 */}
