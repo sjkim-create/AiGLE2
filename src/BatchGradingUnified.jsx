@@ -1040,6 +1040,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}{source === 'cradle' ? '자루' : '건'}</span>
         <span style={{ color: '#94A3B8' }}>채점 제외 {counts.none}명</span>
         <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '자루'}</span>
+        {source === 'cradle' && cradleModel.empty.length > 0 && <span style={{ color: '#94A3B8' }} title="학생과 연결되지 않은 필기 없는 펜 — 채점과 무관해 목록에 넣지 않습니다">빈 펜 {cradleModel.empty.length}자루</span>}
         <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500, flex: 1, minWidth: 200 }}>{model.manifest}</span>
         {/* [SCR-08 v1.8] [↻ 다시 매칭]은 슬롯 그림(미니맵) 위로 옮겼다 */}
       </div>
@@ -1162,7 +1163,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
 
   const renderPenList = () => {
     const infos = cradleModel.penInfo;
-    const pens = connected;
+    // [SCR-08 v1.47] 학생과 연결되지 않은 빈 펜(필기 없음)은 목록에서 빼고 요약에 「빈 펜 N자루」로만 — 채점 제외 = 채점되지 않는 학생만
+    const pens = connected.filter((p) => infos[p.id]?.kind !== 'empty');
     const nCheck = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'check').length;
     const nNone = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'none').length + cradleModel.absent.length;
     const show = (p) => tab === 'all' || (infos[p.id] && penTab(infos[p.id]) === tab);
