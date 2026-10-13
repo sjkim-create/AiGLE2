@@ -324,11 +324,11 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
    *   스캔 채점(SCR-05)과 같은 검증·같은 진입 형태를 쓴다. */
   const handleBulkGrading = () => {
     if (!selectedGroup || selectedGroup === '그룹 선택') {
-      alert('그룹이 선택되어야 크래들 일괄 채점을 시작할 수 있습니다.');
+      alert(`그룹이 선택되어야 ${isUnified ? '스마트 펜 채점' : '크래들 일괄 채점'}을 시작할 수 있습니다.`);
       return;
     }
     if (!selectedIds.length) {
-      alert('크래들 일괄 채점 대상 학생을 먼저 선택해 주세요.');
+      alert(`${isUnified ? '스마트 펜 채점' : '크래들 일괄 채점'} 대상 학생을 먼저 선택해 주세요.`);
       return;
     }
     if (isUnified) { setUnifiedSource('cradle'); return; }

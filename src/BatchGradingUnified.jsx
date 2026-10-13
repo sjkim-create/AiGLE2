@@ -1730,7 +1730,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
         {/* 입력 방식 — 바꾸면 처음부터 */}
         {!fromList && <div role="tablist" style={{ marginLeft: 'auto', display: 'flex', background: '#F1F5F9', borderRadius: 10, padding: 3 }}>
-          {[['cradle', '🖊 크래들'], ['scan', '📷 스캔']].map(([k, l]) => (
+          {[['cradle', '🖊 스마트 펜'], ['scan', '📷 스캔']].map(([k, l]) => (
             <button key={k} role="tab" aria-selected={source === k} type="button" onClick={() => requestSwitch(k)} disabled={step === 'grading'} title={step === 'grading' ? '채점 중에는 바꿀 수 없습니다' : undefined}
               style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: source === k ? 'white' : 'transparent', boxShadow: source === k ? '0 1px 3px rgba(15,23,42,0.15)' : 'none', fontWeight: 800, color: source === k ? '#1E293B' : '#64748B', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>{l}</button>
           ))}
@@ -1906,7 +1906,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       {/* [POP-30] 필수 프로그램 확인 — 크래들 채점은 AiGLE Connect만 요구한다 */}
       <RequiredProgramModal open={programOpen} onClose={() => setProgramOpen(false)}
         programs={[
-          { key: 'connect', name: 'AiGLE Connect', desc: 'USB·블루투스 펜 연결 · 크래들 일괄 채점 · 백그라운드 자동 실행', required: true, installed: isConnectDownloaded() },
+          { key: 'connect', name: 'AiGLE Connect', desc: 'USB·블루투스 펜 연결 · 스마트 펜 채점 · 백그라운드 자동 실행', required: true, installed: isConnectDownloaded() },
           { key: 'printDoctor', name: 'Ncode Print Doctor', desc: 'N-code 인쇄 최적 상태 지원 · 프린터 인쇄 적합성 진단', required: false },
         ]}
         onInstalled={(key) => { if (key === 'connect') markConnectDownloaded(); }}
