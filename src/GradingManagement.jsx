@@ -1057,28 +1057,32 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                         <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 6 }}>📤 {sendAsk.ids.length}명에게 결과를 발송합니다</div>
                         <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.6, marginBottom: 14 }}>학생에게 결과를 어떻게 보여 줄지 고르세요. 고른 방식이 학생 결과와 리포트에 그대로 쓰입니다.</div>
                         <div role="radiogroup" aria-label="결과 표시 방식" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {SEND_MODES.map(([k, lbl, ex]) => (
-                            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${sendMode === k ? '#2A75F3' : '#E2E8F0'}`, background: sendMode === k ? '#EFF6FF' : 'white' }}>
-                              <input type="radio" name="send-mode" checked={sendMode === k} onChange={() => setSendMode(k)} />
-                              <strong style={{ minWidth: 72 }}>{lbl}</strong>
-                              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>예: {ex}</span>
-                            </label>
-                          ))}
+                          {/* [SCR-08 v1.30] 점수(등급) · 등급 행 안에서 3/4/5단계를 고른다 — 단계를 누르면 그 행의 방식도 함께 선택(두 번 설정하지 않게), 기본 3단계 */}
+                          {SEND_MODES.map(([k, lbl, ex]) => {
+                            const on = sendMode === k;
+                            return (
+                              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white' }}>
+                                <input type="radio" name="send-mode" checked={on} onChange={() => setSendMode(k)} />
+                                <strong style={{ minWidth: 72 }}>{lbl}</strong>
+                                <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>예: {ex}</span>
+                                {k !== 'score' && (
+                                  <span role="radiogroup" aria-label={`${lbl} 등급 단계`} style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                                    {[3, 4, 5].map((n) => {
+                                      const pick = on && sendScale === n;
+                                      return (
+                                        <button key={n} type="button" role="radio" aria-checked={pick} onClick={(e) => { e.preventDefault(); setSendMode(k); setSendScale(n); }}
+                                          style={{ padding: '4px 10px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', border: `1.5px solid ${pick ? '#2A75F3' : '#E2E8F0'}`, background: pick ? '#2A75F3' : 'white', color: pick ? 'white' : '#475569' }}>
+                                          {n}단계
+                                        </button>
+                                      );
+                                    })}
+                                  </span>
+                                )}
+                                {k !== 'score' && on && <span style={{ flexBasis: '100%', paddingLeft: 26, fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{GRADE_NAMES[sendScale].join(' · ')} — 점수를 {sendScale}단계 등급으로 환산해 보입니다.</span>}
+                              </label>
+                            );
+                          })}
                         </div>
-                        {sendMode !== 'score' && (
-                          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#334155' }}>등급 단계</span>
-                            <span role="radiogroup" aria-label="등급 단계" style={{ display: 'flex', gap: 6 }}>
-                              {[3, 4, 5].map((n) => (
-                                <button key={n} type="button" role="radio" aria-checked={sendScale === n} onClick={() => setSendScale(n)}
-                                  style={{ padding: '6px 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1.5px solid ${sendScale === n ? '#2A75F3' : '#E2E8F0'}`, background: sendScale === n ? '#EFF6FF' : 'white', color: sendScale === n ? '#1D4ED8' : '#475569' }}>
-                                  {sendScale === n ? '✓ ' : ''}{n}단계
-                                </button>
-                              ))}
-                            </span>
-                            <span style={{ flexBasis: '100%', fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{GRADE_NAMES[sendScale].join(' · ')} — 점수를 이 단계 등급으로 환산해 보입니다.</span>
-                          </div>
-                        )}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
                           <button type="button" onClick={() => setSendAsk(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
                           <button type="button" onClick={confirmSend} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📤 결과 발송</button>
