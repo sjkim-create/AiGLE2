@@ -1398,7 +1398,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const n = rows.filter((x) => x.sid === sid && x.q === q).length;
     patchRow(r.id, { sid, q, sheet: n + 1, conf: 'high', reason: null });
     setAssignPick((p) => ({ ...p, [`${r.id}:s`]: '', [`${r.id}:q`]: '' }));
-    setToast(`${r.name}을(를) ${studentById(sid).name} · 문항 ${q}에 지정했습니다.`);
+    setToast(`${r.name}을(를) ${studentById(sid).name} · 문항 ${q}에 매칭했습니다.`);
   };
 
   const renderScanAction = () => {
@@ -1417,7 +1417,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <>
           <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>미분류 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{scanModel.unc.length}장</span></div>
           <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.6 }}>
-            학생을 찾지 못한 답안지입니다. 미리보기에서 답안을 보고 <strong>학생과 문항을 골라 지정</strong>하세요. 지정하지 않은 답안지는 채점하지 않습니다.
+            학생을 찾지 못한 답안지입니다. 미리보기에서 답안을 보고 <strong>학생과 문항을 고른 뒤 [매칭]</strong>하세요. 매칭하지 않은 답안지는 채점하지 않습니다.
           </div>
           {scans.length > 0 && <div style={{ fontWeight: 800, color: '#991B1B', fontSize: 'var(--neo-font-size-sm)' }}>학생 미매칭 {scans.length}장</div>}
           {scans.map((r) => (
@@ -1431,7 +1431,9 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               {r.noAssign ? (
                 <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>다른 과제의 답안지라 이 과제에 지정할 수 없습니다. 해당 과제에서 채점하세요.</div>
               ) : (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
+                {/* [SCR-09 v1.31] 펜과 같은 결 — 고른 뒤 [매칭]으로 확정 */}
+                이 답안을
                 <select value={assignPick[`${r.id}:s`] || ''} onChange={(e) => setAssignPick((p) => ({ ...p, [`${r.id}:s`]: e.target.value }))}
                   style={{ flex: '1 1 140px', padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
                   <option value="">학생 선택</option>
@@ -1442,8 +1444,9 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                   <option value="">문항</option>
                   {QUESTIONS.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
                 </select>
+                의 답안으로
                 <button type="button" disabled={!assignPick[`${r.id}:s`] || !assignPick[`${r.id}:q`]} onClick={() => assignUncRow(r)}
-                  style={{ ...primaryBtn(!!(assignPick[`${r.id}:s`] && assignPick[`${r.id}:q`])), padding: '5px 14px', flex: 'none' }}>지정</button>
+                  style={{ ...primaryBtn(!!(assignPick[`${r.id}:s`] && assignPick[`${r.id}:q`])), padding: '5px 14px', flex: 'none' }}>매칭</button>
               </div>
               )}
             </div>
@@ -1518,11 +1521,13 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>미분류와 맞교환</span>
-                      <select value="" disabled={!pool.length} onChange={(e) => { if (e.target.value) { swapRow(r, e.target.value); setRowMenu(null); } }}
+                      <select value={pick('sw')} disabled={!pool.length} onChange={(e) => setPick('sw', e.target.value)}
                         style={{ flex: 1, minWidth: 140, padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
                         <option value="">{pool.length ? '미분류 답안지 선택 — 이 장은 미분류로' : '미분류 답안지 없음'}</option>
                         {pool.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
+                      <button type="button" disabled={!pick('sw')} onClick={() => { swapRow(r, pick('sw')); setPick('sw', ''); setRowMenu(null); }}
+                        style={{ ...primaryBtn(!!pick('sw')), padding: '4px 12px' }}>맞교환</button>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>새 파일로 교체</span>
@@ -1550,17 +1555,26 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                   <span style={{ flex: 'none', width: 34, textAlign: 'center', padding: '1px 0', borderRadius: 5, border: '1px dashed #F87171', color: '#B91C1C', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800 }}>{x.q.id}-{x.list.length + i + 1}</span>
                   <span style={{ flex: 1, fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C' }}>빈 자리 — 답안지 없음</span>
                   {/* 부족: [답안지 선택] 하나 — 미분류 답안지 또는 새 파일 업로드(OCR 없이 교사 직접 지정) */}
-                  <select value=""
+                  {/* [SCR-09 v1.31] 펜과 같은 결 — 미분류 답안지는 고른 뒤 [매칭]으로 확정. 새 파일 올리기는 파일을 고르는 것이 곧 확정 */}
+                  <select value={assignPick[`slot:${s.id}:${x.q.id}:${i}`] || ''}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (v === '__upload') { document.getElementById(`up-${s.id}-${x.q.id}-${i}`)?.click(); return; }
-                      const r = pool.find((p) => p.id === v); if (r) patchRow(r.id, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1, conf: 'high', reason: null });
+                      setAssignPick((ap) => ({ ...ap, [`slot:${s.id}:${x.q.id}:${i}`]: v }));
                     }}
                     style={{ flex: 'none', padding: '4px 8px', borderRadius: 6, border: '1px solid #93C5FD', background: '#EFF6FF', color: '#1D4ED8', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, maxWidth: 170 }}>
                     <option value="">＋ 답안지 선택</option>
                     {pool.length > 0 && <optgroup label="미분류 답안지">{pool.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>}
                     <option value="__upload">⬆ 새 파일 올리기…</option>
                   </select>
+                  {assignPick[`slot:${s.id}:${x.q.id}:${i}`] && (
+                    <button type="button" style={{ ...primaryBtn(true), padding: '4px 12px', flex: 'none' }}
+                      onClick={() => {
+                        const k = `slot:${s.id}:${x.q.id}:${i}`; const r = pool.find((pp) => pp.id === assignPick[k]);
+                        if (r) { patchRow(r.id, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1, conf: 'high', reason: null }); setToast(`${r.name}을(를) ${s.name} · ${x.q.title}에 매칭했습니다.`); }
+                        setAssignPick((ap) => ({ ...ap, [k]: '' }));
+                      }}>매칭</button>
+                  )}
                   <input id={`up-${s.id}-${x.q.id}-${i}`} type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }} onChange={(e) => { uploadIntoSlot(e.target.files, { sid: s.id, q: x.q.id, sheet: x.list.length + i + 1 }); e.target.value = ''; }} />
                 </div>
               ))}
