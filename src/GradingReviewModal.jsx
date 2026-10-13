@@ -278,7 +278,9 @@ const GradingReviewModal = ({
     // [SCR-06] 퇴고 — 채점 관리 2(v2)에서만 전달된다. 미전달 시 관련 UI 전부 미노출
     isV2 = false,
     aiGradingLimitPerRound = 2,
-    onRevisionRequest
+    onRevisionRequest,
+    // [SCR-08 v1.35] 일괄 채점 통합 — 피드백 보기에는 점수만(등급 노출 안 함). 채점 결과는 점수만 저장, 등급은 결과 발송 때 환산
+    scoreOnlyFeedback = false
 }) => {
     const isProcessEvalSupported = taskSubject === '수학';
     const isStep3 = selectedStudent?.status === '결과 발송 전' || selectedStudent?.status === '결과 발송 완료';
@@ -432,10 +434,12 @@ const GradingReviewModal = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 6px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: '#2A75F3', fontVariantNumeric: 'tabular-nums' }}>{activeCriteria.length ? sum(activeCriteria.map((c) => c.ai)) : (aiPoints ?? '-')}점</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>/ {activeCriteria.length ? activeMax : maxPoints}점</span>
+                {!scoreOnlyFeedback && (<>
                 <span style={{ width: 1, height: 16, background: T.lineSoft }} />
                 <span style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 600, color: gradeColorMap[gradeFb.label] || '#2A75F3' }}>{gradeFb.letter}</span>
                 <span style={pill(gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#FEE2E2' : '#DCFCE7', gradeFb.label === '노력' || gradeFb.label === '매우 노력' ? '#B91C1C' : '#15803D')}>{gradeFb.label}</span>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: T.sub }}>{gradeFb.scale}</span>
+                </>)}
                 {isSaved && <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-xs)', color: '#059669', fontWeight: 600 }}>✓ 저장됨</span>}
             </div>
 

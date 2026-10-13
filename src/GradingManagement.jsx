@@ -1460,6 +1460,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
       {/* ── SCR-03: 채점 확인 상세 모달 ── */}
       <GradingReviewModal
+        scoreOnlyFeedback={isUnified}
         isOpen={isModalOpen && (selectedStudent?.status === '채점 확인' || selectedStudent?.status === '결과 발송 완료')}
         onClose={() => setIsModalOpen(false)}
         selectedStudent={selectedStudent}
