@@ -560,6 +560,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // [일괄 채점 통합 · SCR-08 v1.33] 결과 발송 탭 카드 = 이름 · 학년/반/번호 · 발송일(발송 완료면 날짜, 발송 전이면 「-」)
   const fmtSentAt = (iso) => { if (!iso) return null; const d = new Date(iso); const z = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}.${z(d.getMonth() + 1)}.${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
   const unifiedSendTab = isUnified && activeTab === '결과 발송';
+  const unifiedReviewTab = isUnified && activeTab === '채점 확인';
+  const ptsOf = (grade, score) => formatResult(grade, { resultMode: 'score', maxPoints: totalPoints, score }); // 점수로 표시(채점 결과는 점수만 저장)
   const sentDateOf = (st) => (st.status === '결과 발송 완료' ? (fmtSentAt(st.sentAt) || currentTask.date) : '-');
   const modeOf = (st) => (isUnified && st?.sentMode) || resultMode;
   const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score, scale: isUnified ? st?.sentScale : undefined });
@@ -1276,7 +1278,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div className="student-name">{student.name}</div>
                     <div className="student-meta">{student.grade}</div>
                     {unifiedSendTab && <div className="grading-info"><div className="grading-row"><span className="label">발송일 :</span><span className="value">{sentDateOf(student)}</span></div></div>}
-                    {!unifiedUngraded && !unifiedSendTab && <div className="grading-info">
+                    {/* [일괄 채점 통합 · SCR-08 v1.34] 채점 확인 탭 카드 = 이름 · 학년/반/번호 · AI 점수 / 교사 점수 */}
+                    {unifiedReviewTab && <div className="grading-info"><div className="grading-row"><span className="label">AI / 교사 :</span><span className="value">{ptsOf(student.aiGrade, student.aiScore)} / {ptsOf(student.teacherGrade, student.teacherScore)}</span></div></div>}
+                    {!unifiedUngraded && !unifiedSendTab && !unifiedReviewTab && <div className="grading-info">
                       <div className="grading-row">
                         <span className="label">AI채점 :</span>
                         <span className="value">{fmtFor(student, student.aiGrade, student.aiScore)}</span>
