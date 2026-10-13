@@ -3292,7 +3292,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange }) 
                 return (
                 <div>
                   <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '10px 12px', borderRadius: 8, marginBottom: 14, lineHeight: 1.6 }}>
-                    ✍️ 문항마다 채점 기준을 직접 입력하거나, 문항의 [🤖 AI 채점 기준 생성]을 눌러 성취기준·문항 내용으로 채울 수 있습니다. 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다. 채점 결과(등급/점수)는 맨 아래에서 정합니다.
+                    ✍️ 문항마다 채점 기준을 직접 입력하거나, 문항의 [🤖 AI 채점 기준 생성]을 눌러 성취기준·문항 내용으로 채울 수 있습니다. 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다.
                   </div>
 
                   {/* 문항 탭 */}
@@ -3410,21 +3410,7 @@ const TaskFileUploadWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange }) 
                         </div>
                       ))}
                       <button onClick={() => addCriterion(q.id)} style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>+ 채점 기준 추가 ({q.criteria.length}/5)</button>
-                      {/* [v3.94] 채점 결과 표시 방식(점수 · 점수+등급 · 등급)은 과제 등록에서 고르지 않는다 — 채점 관리(일괄 채점 통합) 결과 발송 때 고른다.
-                          여기서는 AI 채점의 등급 체계(3/4/5등급)만 정한다 */}
-                      <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginTop: 14, display: 'flex', alignItems: 'center', gap: '10px 14px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 등급</span>
-                        {[3, 4, 5].map((n) => (
-                          <button key={n} onClick={() => setSelfScale(n)}
-                            style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${selfScale === n ? '#2A75F3' : '#E2E8F0'}`, background: selfScale === n ? '#EFF6FF' : 'white', color: selfScale === n ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
-                            {selfScale === n ? '✓ ' : ''}{n}등급
-                          </button>
-                        ))}
-                        <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginLeft: 'auto' }}>
-                          {(() => { const names = GRADE_NAMES[selfScale] || []; const range = names.length >= 2 ? `${names[0]}~${names[names.length - 1]}` : ''; return <>채점기준 점수의 <strong>합산 → {selfScale}등급({range})</strong>으로 환산. 결과를 점수 · 점수+등급 · 등급 중 무엇으로 보일지는 <strong>결과 발송 때</strong> 고릅니다.</>; })()}
-                        </span>
-                      </div>
-
+                      {/* [v3.95] 「채점 등급」 카드 삭제 — 결과 표시 방식(v3.94)에 이어 등급 수(3/4/5)도 과제 등록에서 고르지 않는다. 등급 수는 학교급 기본값(초등 3 · 중·고등 5) */}
                       {/* [v3.76] 등급 환산 미리보기 패널 폐기 — 채점 등급 카드의 환산 안내 문구로 갈음 */}
                     </div>
                     );
