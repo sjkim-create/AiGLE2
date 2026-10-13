@@ -579,6 +579,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   };
 
   const handleRevertToReview = () => {
+    if (isUnified && bulkPreSendIds.length > 1) { // [일괄 채점 통합] 여러 명을 한 번에 채점 확인으로
+      const ids = bulkPreSendIds;
+      if (!window.confirm(`선택한 학생 ${ids.length}명을 '채점 확인' 단계로 되돌리시겠습니까?`)) return;
+      setStudents(prev => prev.map(s => (ids.includes(s.id) ? { ...s, status: '채점 확인' } : s)));
+      setSelectedIds([]);
+      return;
+    }
     if (bulkPreSendIds.length !== 1) return;
     const target = students.find(s => s.id === bulkPreSendIds[0]);
     if (!target) return;
@@ -932,7 +939,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div
                       key={tab}
                       className={`tab ${activeTab === tab ? 'active' : ''}`}
-                      onClick={() => setActiveTab(tab)}
+                      onClick={() => { if (isUnified && tab !== activeTab) setSelectedIds([]); setActiveTab(tab); }} // [일괄 채점 통합] 탭을 바꾸면 선택을 비워 이전 탭 버튼이 남지 않게
                     >
                       {getTabLabel(tab)}
                     </div>
@@ -1116,8 +1123,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       📤 결과발송 ({bulkPreSendIds.length}명)
                     </button>
                   )}
-                  {/* 결과 발송 전 단일 선택 — AI 재검토 */}
-                  {bulkPreSendIds.length === 1 && (
+                  {/* 결과 발송 전 단일 선택 — AI 재검토 ([일괄 채점 통합] 여러 명도 가능) */}
+                  {(isUnified ? bulkPreSendIds.length > 0 : bulkPreSendIds.length === 1) && (
                     <button
                       className="btn-bulk-grading"
                       style={{ background: 'white', color: '#EF4444', border: '1px solid #EF4444', ...(isAnyBgActive ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
@@ -1125,7 +1132,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       disabled={isAnyBgActive}
                       title={isAnyBgActive ? 'AI 채점이 진행 중입니다. 완료 후 다시 시도해 주세요.' : undefined}
                     >
-                      ↩ AI 재검토 (1명)
+                      ↩ AI 재검토 ({isUnified ? bulkPreSendIds.length : 1}명)
                     </button>
                   )}
                   {/* 결과 발송 완료 — 결과발송 취소 */}
