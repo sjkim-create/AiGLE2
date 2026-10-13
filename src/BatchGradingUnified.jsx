@@ -814,100 +814,65 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
       );
     }
+    /* [SCR-08 v1.41] 크래들 에뮬레이터(실물 그림) 삭제 → 크래들별 목록 — 슬롯 1~10 · 배터리 · 펌웨어. 빈 슬롯은 「-」.
+       펌웨어가 오래되면 빨간 버전 + [업데이트], 아래 [펌웨어 일괄 업데이트]. 시연: 행을 누르면 거치/빼기, [🧪 전체 거치] */
+    const cell = { padding: '10px 12px', borderTop: '1px solid #E5E7EB', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' };
+    const head = { padding: '10px 12px', background: '#DCE3EE', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#334155', textAlign: 'left' };
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {linkToggle}
         {unrecognized.length > 0 && (
           <div style={{ color: '#B91C1C', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>
-            ⚠ 펜이 화면에 표시되지 않는 경우
+            ⚠ 펜이 목록에 표시되지 않는 경우
             <span style={{ fontWeight: 600, color: '#B45309' }}> — 펜을 다시 뺐다가 꽂아주세요. 계속 표시되지 않으면 [🚨 이용불편 접수]로 알려 주세요.</span>
           </div>
         )}
-        <div style={{ ...card, padding: '18px 16px 0' }}>
-          <CapacityBlinkStyle />
-          {/* [SCR-08 v1.15] 크래들 연결 — 실물 이미지 크래들(채점 관리 크래들 일괄 채점과 같은 그림).
-              LED: 연결 중 = 노랑 깜박임 · 초록 = 정상 · 빨강 = 데이터 없음 / 배터리 부족(30% 미만) / 저장 잔량 부족(20% 미만) */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center', paddingBottom: 12 }}>
-            {Array.from({ length: CRADLES }, (_, ci) => ci + 1).map((cn) => {
-              const slots = Array.from({ length: SLOTS }, (_, i) => (cn - 1) * SLOTS + i + 1).map((slot) => {
-                const pen = docked[slot];
-                const available = PEN_POOL.some((p) => p.slot === slot);
-                const linking = pen && pen.link === 'linking';
-                const cap = pen ? capacityOf(pen) : 100;
-                const redWhy = pen && !linking ? [
-                  !penPageCount(pen) && '데이터 없음',
-                  pen.battery < 30 && `배터리 부족 ${pen.battery}%`,
-                  cap < 20 && `저장 잔량 부족 ${cap}%`,
-                ].filter(Boolean) : [];
-                return {
-                  slot, pen, available, linking,
-                  led: linking ? '#FBBF24' : redWhy.length ? '#EF4444' : '#22C55E',
-                  ariaLabel: `슬롯 ${slotShort(slot)}${pen ? '' : ' 비어 있음'}`,
-                  title: pen ? (redWhy.length ? `${slotShort(slot)} · ● 빨간 LED — ${redWhy.join(' · ')}` : `${slotShort(slot)} · 저장 잔량 ${cap}% · 배터리 ${pen.battery}%`) : (available ? `${slotShort(slot)} — 펜 거치` : `${slotShort(slot)} — 빈 슬롯`),
-                  onClick: () => (pen ? undockPen(slot) : dockPen(slot)),
-                  below: pen ? (linking
-                    ? <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: '#FEF3C7', color: '#B45309' }}>연결 중</span>
-                    : <span className={cap < 20 ? 'cap-blink' : undefined} style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: cap < 10 ? '#FEE2E2' : cap < 20 ? '#FEF3C7' : '#DCFCE7', color: capTone(cap).color }}>{cap}%</span>) : null,
-                };
-              });
-              return (
-                <CradleImage key={cn} slots={slots}
-                  header={(
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '0 4px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569' }}>
-                      <span>크래들 {cn}</span>
-                      <span style={{ color: '#16A34A' }}>● {Object.values(docked).filter((x) => cradleOf(x.slot) === cn).length}/{SLOTS}</span>
-                    </div>
-                  )} />
-              );
-            })}
-          </div>
-        </div>
-        <div style={{ ...card, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: 'var(--neo-font-size-base)' }}>연결된 펜 <span style={{ color: '#2A75F3' }}>{connected.length}</span>자루</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)' }}>
+          <strong>연결된 펜 <span style={{ color: '#2A75F3' }}>{connected.length}</span>자루</strong>
           {unrecognized.length > 0 && <span style={{ color: '#DC2626', fontWeight: 700 }}>· 인식 안 됨 {unrecognized.length}</span>}
-          {connected.length > 0 && <span style={{ fontWeight: 700 }}>· 저장 잔량 <CapacityHelpTip /> 최저 <span style={{ color: capTone(Math.min(...connected.map(capacityOf))).color }}>{Math.min(...connected.map(capacityOf))}%</span></span>}
           {needFw.length > 0 && <span style={{ color: '#DC2626', fontWeight: 700 }}>· 펌웨어 업데이트 {needFw.length}</span>}
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button type="button" style={ghostBtn} onClick={() => PEN_POOL.forEach((p) => !docked[p.slot] && dockPen(p.slot))}>🧪 전체 거치</button>
-            <button type="button" style={ghostBtn} onClick={() => { setDocked({}); setUnrecognized([]); }}>전체 제거</button>
-            <button type="button" disabled={!needFw.length} title="펌웨어 업데이트는 채점의 필수 요건이 아닙니다." onClick={() => needFw.forEach((x) => runFirmware(x.id))}
-              style={{ ...ghostBtn, background: '#EBF2FF', border: 'none', color: '#2A75F3', opacity: needFw.length ? 1 : 0.45 }}>↺ 펌웨어 일괄 업데이트 (선택)</button>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <button type="button" style={{ ...ghostBtn, padding: '4px 10px', color: '#7C3AED', borderColor: '#DDD6FE' }} title="시연 — 크래들에 펜을 모두 꽂은 것으로 합니다" onClick={() => PEN_POOL.forEach((p) => !docked[p.slot] && dockPen(p.slot))}>🧪 전체 거치</button>
+            <button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} onClick={() => { setDocked({}); setUnrecognized([]); }}>전체 제거</button>
           </span>
         </div>
-        {connected.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 12 }}>
-            {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
-              <div key={cn} style={{ ...card, overflow: 'hidden' }}>
-                <div style={{ padding: '8px 12px', background: '#F1F5F9', fontWeight: 800, fontSize: 'var(--neo-font-size-sm)' }}>크래들 {cn}</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
-                  <thead><tr style={{ color: '#64748B', fontSize: 'var(--neo-font-size-xs)' }}><th style={{ textAlign: 'left', padding: '6px 10px' }}>슬롯</th><th>연결</th><th>배터리</th><th style={{ whiteSpace: 'nowrap' }}>저장 잔량 <CapacityHelpTip /></th><th>펌웨어</th></tr></thead>
-                  <tbody>
-                    {connected.filter((p) => cradleOf(p.slot) === cn).map((p) => (
-                      <tr key={p.id} style={{ borderTop: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '6px 10px', fontWeight: 800 }}>{slotIn(p.slot)}번</td>
-                        <td style={{ textAlign: 'center' }}><span style={pill(BADGE.ok)}>연결됨</span></td>
-                        <td style={{ textAlign: 'center', color: p.battery < 50 ? '#DC2626' : '#475569' }}>{p.battery}%</td>
-                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                          <span style={{ display: 'inline-block', width: 30, height: 5, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle', marginRight: 4 }}>
-                            <span style={{ display: 'block', width: `${capacityOf(p)}%`, height: '100%', background: capTone(capacityOf(p)).bar }} />
-                          </span>
-                          <span style={{ fontWeight: 700, color: capTone(capacityOf(p)).color }}>{capacityOf(p)}%</span>
-                        </td>
-                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                          {fwProg[p.id] != null
-                            ? <span style={{ display: 'inline-block', width: 48, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle' }}><span style={{ display: 'block', width: `${fwProg[p.id]}%`, height: '100%', background: '#2A75F3' }} /></span>
-                            : p.needsUpdate && !fwDone[p.id]
-                              ? <><span style={{ color: '#DC2626' }}>{p.firmware}</span> <button type="button" onClick={() => runFirmware(p.id)} style={{ marginLeft: 4, background: '#EF4444', color: 'white', border: 'none', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>업데이트</button></>
-                              : <span style={{ color: '#94A3B8' }}>2.1.0</span>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+          {Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
+            <div key={cn}>
+              <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-sm)', marginBottom: 6 }}>크래들{cn}</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
+                <thead><tr><th style={{ ...head, width: 56 }}>슬롯</th><th style={head}>배터리</th><th style={head}>펌웨어</th></tr></thead>
+                <tbody>
+                  {Array.from({ length: SLOTS }, (_, k) => (cn - 1) * SLOTS + k + 1).map((slot) => {
+                    const pen = docked[slot];
+                    const avail = PEN_POOL.some((x) => x.slot === slot);
+                    const linking = pen && pen.link === 'linking';
+                    const old = pen && !linking && pen.needsUpdate && !fwDone[pen.id];
+                    return (
+                      <tr key={slot} onClick={() => (pen ? undockPen(slot) : avail && dockPen(slot))}
+                        title={pen ? `${slotShort(slot)} — 누르면 펜을 뺍니다(시연)` : avail ? `${slotShort(slot)} — 누르면 펜을 꽂습니다(시연)` : `${slotShort(slot)} — 빈 슬롯`}
+                        style={{ cursor: avail || pen ? 'pointer' : 'default' }}>
+                        <td style={cell}>{slotIn(slot)}</td>
+                        <td style={{ ...cell, color: pen && !linking && pen.battery < 30 ? '#DC2626' : cell.color }}>{linking ? <span style={{ color: '#B45309' }}>연결 중…</span> : unrecognized.includes(slot) ? <span style={{ color: '#DC2626' }}>인식 안 됨</span> : pen ? `${pen.battery}%` : '-'}</td>
+                        <td style={cell}>
+                          {!pen || linking ? '-' : fwProg[pen.id] != null
+                            ? <span style={{ display: 'inline-block', width: 64, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle' }}><span style={{ display: 'block', width: `${fwProg[pen.id]}%`, height: '100%', background: '#2A75F3' }} /></span>
+                            : old
+                              ? <><span style={{ color: '#DC2626' }}>{pen.firmware}</span> <button type="button" onClick={(e) => { e.stopPropagation(); runFirmware(pen.id); }} style={{ marginLeft: 6, background: '#EF4444', color: 'white', border: 'none', borderRadius: 4, padding: '3px 8px', fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer', fontFamily: 'inherit' }}>업데이트</button></>
+                              : '2.1.0 (최신)'}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
-        )}
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+        <div>
+          <button type="button" disabled={!needFw.length} title="펌웨어 업데이트는 채점의 필수 요건이 아닙니다." onClick={() => needFw.forEach((x) => runFirmware(x.id))}
+            style={{ ...ghostBtn, padding: '6px 12px', opacity: needFw.length ? 1 : 0.45 }}>펌웨어 일괄 업데이트</button>
+        </div>
       </div>
     );
   };
@@ -1117,7 +1082,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           펜을 다시 꽂거나 빼서 구성이 바뀌면 버튼을 주황으로 강조하고 읽지 않은 펜 수를 붙인다 */}
       <style>{'@keyframes rematchPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.55) } 50% { box-shadow: 0 0 0 5px rgba(249,115,22,0) } }'}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>{link === 'usb' ? '※ 펜을 바꿔 연결하면 [↻ 다시 매칭]을 눌러 주세요.' : '※ 오류가 난 펜은 크래들에 표시되지 않습니다 — 꽂혀 있는데 빈 칸이면 뺐다가 다시 꽂아 주세요.'}</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>{link === 'usb' ? '※ 펜을 바꿔 연결하면 [↻ 다시 매칭]을 눌러 주세요.' : '※ 오류가 난 펜은 목록에 나오지 않습니다 — 꽂혀 있는데 목록에 없으면 뺐다가 다시 꽂아 주세요.'}</span>
         <button type="button" onClick={reread}
           title={changed ? `크래들 구성이 바뀌었습니다${cradleModel.unread.length > 0 ? ` — 읽지 않은 펜 ${cradleModel.unread.length}자루` : ''}. 다시 매칭해 주세요. (읽은 펜 수만큼 AI OCR 차감)` : '판정을 다시 돌립니다. 직접 매칭 기록은 유지됩니다. 읽은 펜 수만큼 AI OCR이 차감됩니다.'}
           style={{ ...ghostBtn, flex: 'none', padding: '4px 10px', fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1', animation: changed ? 'rematchPulse 1.6s ease-in-out infinite' : 'none' }}>
@@ -1133,20 +1098,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           </span>
         </div>
       )}
-      {link === 'cradle' && Array.from({ length: CRADLES }, (_, i) => i + 1).map((cn) => (
-        <div key={cn} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 14, fontSize: 10, fontWeight: 800, color: '#64748B', textAlign: 'right' }}>{cn}</span>
-          {renderRail(cn)}
-          <span style={{ width: 30, fontSize: 10, color: '#94A3B8', textAlign: 'right' }}>{Object.values(docked).filter((x) => cradleOf(x.slot) === cn).length}/{SLOTS}</span>
-        </div>
-      ))}
+      {/* [SCR-08 v1.41] 매핑 화면의 크래들 그림(미니맵) 삭제 — 펜 위치는 목록의 슬롯 번호 · 상세의 위치 줄로 */}
       {/* [SCR-08 v1.9] 크래들 제목은 그림 아래 한 줄 — LED 색 범례는 뺀다(색의 뜻은 펜 목록 배지가 말한다) */}
-      {link === 'cradle' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, paddingLeft: 20, fontSize: 10, color: '#64748B' }}>
-          <strong style={{ fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>크래들</strong>
-          <span>＋ 빈 슬롯을 누르면 거치</span>
-        </div>
-      )}
     </div>
     );
   };
@@ -1154,8 +1107,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /** 위치 줄 — 고른 펜이 실물 크래들 어디에 있는지. 그림은 좌측 미니맵이 맡고, 여기는 말과 조치만 */
   const renderLocationCard = (pen) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
-      <span title={pen.usb ? 'USB 케이블로 연결한 펜입니다' : '좌측 미니맵에 파랗게 표시된 자리입니다'} style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{pen.usb ? '🔌 USB로 연결한 펜' : `📍 실물 위치 — 크래들 ${cradleOf(pen.slot)} · ${slotIn(pen.slot)}번 자리`}</span>
-      <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title={pen.usb ? 'USB 연결을 해제합니다. 다른 펜은 위의 [펜 바꿔 연결]로 연결하세요.' : '크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 미니맵의 빈 슬롯을 누르세요.'} onClick={() => { undockPen(pen.slot); setSel(null); }}>{pen.usb ? '⏏ 연결 해제' : '⏏ 펜 빼기'}</button>
+      <span title={pen.usb ? 'USB 케이블로 연결한 펜입니다' : '실물 크래들에서 이 펜이 꽂힌 자리입니다'} style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{pen.usb ? '🔌 USB로 연결한 펜' : `📍 실물 위치 — 크래들 ${cradleOf(pen.slot)} · ${slotIn(pen.slot)}번 자리`}</span>
+      <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title={pen.usb ? 'USB 연결을 해제합니다. 다른 펜은 위의 [펜 바꿔 연결]로 연결하세요.' : '크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 ① 펜 연결 목록에서 슬롯을 누르세요.'} onClick={() => { undockPen(pen.slot); setSel(null); }}>{pen.usb ? '⏏ 연결 해제' : '⏏ 펜 빼기'}</button>
     </div>
   );
 
@@ -1778,7 +1731,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {step === 'import' && <button type="button" disabled={!canStartMapping} onClick={startReading} style={primaryBtn(canStartMapping)}>🔗 데이터 매핑 시작</button>}
         {step === 'mapping' && !reading && (
           <>
-            {/* 크래들은 매핑 화면에서 바로 거치·빼기(미니맵)와 [↻ 다시 매칭]을 하므로 되돌아가기 버튼을 두지 않는다 */}
+            {/* [SCR-08 v1.41] 크래들 그림을 없앴으므로 펜을 더 꽂거나 바꾸려면 ① 펜 연결로 돌아간다(매칭 기록 유지 → 돌아와서 [↻ 다시 매칭]) */}
+            {source === 'cradle' && link === 'cradle' && (
+              <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); }}>↰ 펜 연결로</button>
+            )}
             {source === 'scan' && (
               <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 파일 다시 선택</button>
             )}
