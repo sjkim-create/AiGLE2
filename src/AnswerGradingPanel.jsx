@@ -31,7 +31,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
   const [students, setStudents] = React.useState(null);
   const [tab, setTab] = React.useState('미채점');
   const [view, setView] = React.useState('card'); // 서·논술과 같은 기본 — 카드
-  const [groupF, setGroupF] = React.useState('all');
+  const [groupF, setGroupF] = React.useState(unified ? 'none' : 'all'); // [일괄 채점 통합] 기본 「그룹 선택」 — 선택 없음
   const [sel, setSel] = React.useState([]);
   const [review, setReview] = React.useState(null); // 학생 id
   const [toast, setToast] = React.useState('');

@@ -213,6 +213,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   // [v3.19] 그룹 선택 기본값 — 미채점 학생 중 첫 번째 학생의 그룹을 자동 선택 (mount 1회)
   useEffect(() => {
     if (selectedGroup) return; // 사용자가 이미 변경했으면 skip
+    if (isUnified) { setSelectedGroup('그룹 선택'); return; } // [일괄 채점 통합] 기본은 「그룹 선택」 — 아무도 선택되지 않은 채로 시작
     const firstUngraded = students.find(s => s.status === '미채점');
     if (!firstUngraded) return;
     const groupName = firstUngraded.grade.replace(/\s*\d+번\s*$/, '').trim();
