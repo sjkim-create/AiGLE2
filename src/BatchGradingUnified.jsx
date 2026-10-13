@@ -743,6 +743,14 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     appLogger.info('usePenDataBatchUploadModalController', '다시 매칭 — 교사 매칭 초기화', { pens: connected.length });
     reread();
   };
+  /** [SCR-09 v1.35] 스캔 [↰ 다시 매칭] — 파일 업로드로 가지 않고 올린 파일 전체를 이 화면에서 다시 판별. 교사가 고친 매칭은 모두 초기화 */
+  const rematchScan = () => {
+    setConfirm(null);
+    setAssignPick({}); setAddedIds([]); setSel(null); setRowMenu(null);
+    setReading(true);
+    setTimeout(() => { readScan(); setReading(false); }, 1400);
+    appLogger.info('scan-ocr', '다시 매칭 — 교사 매칭 초기화', { files: files.length });
+  };
   // [SCR-08 v1.45] 매핑 중 새로 연결된 펜(USB 바꿔 꽂기)은 자동으로 다시 읽는다 — [↻ 다시 매칭] 버튼 삭제
   useEffect(() => {
     if (source !== 'cradle' || step !== 'mapping' || reading || !cradleModel?.unread.length) return;
@@ -1833,7 +1841,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               <button type="button" style={ghostBtn} title="이 화면에서 펜 데이터를 처음부터 다시 매칭합니다" onClick={() => setConfirm({ kind: 'rematch' })}>↰ 다시 매칭</button>
             )}
             {source === 'scan' && (
-              <button type="button" style={ghostBtn} title="① 파일 업로드로 돌아가 파일을 다시 고른 뒤 처음부터 다시 매칭합니다" onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 다시 매칭</button>
+              <button type="button" style={ghostBtn} title="이 화면에서 올린 파일을 처음부터 다시 매칭합니다" onClick={() => setConfirm({ kind: 'rematch' })}>↰ 다시 매칭</button>
             )}
             <button type="button" disabled={model?.blocked} onClick={requestGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
           </>
@@ -1867,7 +1875,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                 💡 지금 매칭으로 먼저 <strong>[AI 채점 시작]</strong>하고, 빠진 학생은 나중에 다시 채점하는 것을 권장합니다.
               </div></>,
             <><button type="button" style={ghostBtn} onClick={() => setConfirm(null)}>취소</button>
-              <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={rematchAll}>초기화하고 다시 매칭</button></>);
+              <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={source === 'scan' ? rematchScan : rematchAll}>초기화하고 다시 매칭</button></>);
         }
         if (confirm.kind === 'replace') {
           return box('🔄 이미 답안이 있는 학생이 있습니다',
