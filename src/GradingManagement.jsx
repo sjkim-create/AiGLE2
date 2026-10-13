@@ -1279,7 +1279,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div className="student-meta">{student.grade}</div>
                     {unifiedSendTab && <div className="grading-info"><div className="grading-row"><span className="label">발송일 :</span><span className="value">{sentDateOf(student)}</span></div></div>}
                     {/* [일괄 채점 통합 · SCR-08 v1.34] 채점 확인 탭 카드 = 이름 · 학년/반/번호 · AI 점수 / 교사 점수 */}
-                    {unifiedReviewTab && <div className="grading-info"><div className="grading-row"><span className="label">AI / 교사 :</span><span className="value">{ptsOf(student.aiGrade, student.aiScore)} / {ptsOf(student.teacherGrade, student.teacherScore)}</span></div></div>}
+                    {unifiedReviewTab && <div className="grading-info"><div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)' }}><span><span className="label">AI 점수 :</span> <b>{ptsOf(student.aiGrade, student.aiScore)}</b></span><span><span className="label">교사 점수 :</span> <b>{ptsOf(student.teacherGrade, student.teacherScore)}</b></span></div></div>}
                     {!unifiedUngraded && !unifiedSendTab && !unifiedReviewTab && <div className="grading-info">
                       <div className="grading-row">
                         <span className="label">AI채점 :</span>

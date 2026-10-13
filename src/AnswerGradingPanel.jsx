@@ -178,7 +178,7 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
               <div className="student-name">{s.name}</div>
               <div className="student-meta">{s.grade}</div>
               {sendView && <div className="grading-info"><div className="grading-row"><span className="label">발송일 :</span><span className="value">{s.status === '결과 발송 완료' ? (fmtSentAt(s.sentAt) || '-') : '-'}</span></div></div>}
-              {reviewView && <div className="grading-info"><div className="grading-row"><span className="label">자동 / 교사 :</span><span className="value">{s.auto ? `${autoOnly(s).score}점` : '-'} / {s.teacherEdited && s.auto ? `${resultOf(s).score}점` : '-'}</span></div></div>}
+              {reviewView && <div className="grading-info"><div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)' }}><span><span className="label">자동 점수 :</span> <b>{s.auto ? `${autoOnly(s).score}점` : '-'}</b></span><span><span className="label">교사 점수 :</span> <b>{s.teacherEdited && s.auto ? `${resultOf(s).score}점` : '-'}</b></span></div></div>}
               {!ungradedView && !sendView && !reviewView && (
                 <div className="grading-info">
                   <div className="grading-row"><span className="label">자동채점 :</span><span className="value">{autoCell(s)}</span></div>
