@@ -76,6 +76,8 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
   const resultOf = (s) => (s.auto ? scoreOf(questions, s.auto, s.overrides) : null);
   const autoOnly = (s) => (s.auto ? scoreOf(questions, s.auto, {}) : null);
   const ungradedView = unified && tab === '미채점';
+  const sendView = unified && tab === '결과 발송'; // [SCR-08 v1.33] 결과 발송 탭 카드 = 이름 · 학년/반/번호 · 발송일
+  const fmtSentAt = (iso) => { if (!iso) return null; const d = new Date(iso); const z = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}.${z(d.getMonth() + 1)}.${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
   const sendable = selVisible.filter((id) => students.find((s) => s.id === id)?.status === '결과 발송 전');
 
   // 미채점 → 채점 확인: 답안 받기(모의) + 자동 채점
@@ -174,7 +176,8 @@ const AnswerGradingPanel = ({ task, unified = false }) => {
               </div>
               <div className="student-name">{s.name}</div>
               <div className="student-meta">{s.grade}</div>
-              {!ungradedView && (
+              {sendView && <div className="grading-info"><div className="grading-row"><span className="label">발송일 :</span><span className="value">{s.status === '결과 발송 완료' ? (fmtSentAt(s.sentAt) || '-') : '-'}</span></div></div>}
+              {!ungradedView && !sendView && (
                 <div className="grading-info">
                   <div className="grading-row"><span className="label">자동채점 :</span><span className="value">{autoCell(s)}</span></div>
                   <div className="grading-row"><span className="label">교사채점 :</span><span className="value">{s.teacherEdited && <span className="badge-dot badge-orange" />}{teacherCell(s)}</span></div>

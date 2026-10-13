@@ -552,11 +552,15 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const confirmSend = () => {
     const { ids } = sendAsk;
     const scale = sendMode === 'score' ? undefined : sendScale;
-    setStudents(prev => prev.map(s => (ids.includes(s.id) ? { ...s, status: '결과 발송 완료', sentMode: sendMode, sentScale: scale } : s)));
+    setStudents(prev => prev.map(s => (ids.includes(s.id) ? { ...s, status: '결과 발송 완료', sentMode: sendMode, sentScale: scale, sentAt: new Date().toISOString() } : s)));
     setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
     setSendAsk(null);
     setInvalidMsg(`${ids.length}명에게 결과를 「${SEND_MODES.find(([k]) => k === sendMode)[1]}${scale ? ` · ${scale}단계` : ''}」(으)로 발송했습니다.`);
   };
+  // [일괄 채점 통합 · SCR-08 v1.33] 결과 발송 탭 카드 = 이름 · 학년/반/번호 · 발송일(발송 완료면 날짜, 발송 전이면 「-」)
+  const fmtSentAt = (iso) => { if (!iso) return null; const d = new Date(iso); const z = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}.${z(d.getMonth() + 1)}.${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
+  const unifiedSendTab = isUnified && activeTab === '결과 발송';
+  const sentDateOf = (st) => (st.status === '결과 발송 완료' ? (fmtSentAt(st.sentAt) || currentTask.date) : '-');
   const modeOf = (st) => (isUnified && st?.sentMode) || resultMode;
   const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score, scale: isUnified ? st?.sentScale : undefined });
 
@@ -574,7 +578,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     if (bulkSentIds.length === 0) return;
     const proceed = window.confirm(`선택된 ${bulkSentIds.length}명의 결과 발송을 취소하시겠습니까?`);
     if (!proceed) return;
-    setStudents(prev => prev.map(s => bulkSentIds.includes(s.id) ? { ...s, status: '결과 발송 전', sentMode: undefined, sentScale: undefined } : s));
+    setStudents(prev => prev.map(s => bulkSentIds.includes(s.id) ? { ...s, status: '결과 발송 전', sentMode: undefined, sentScale: undefined, sentAt: undefined } : s));
     setSelectedIds([]);
   };
 
@@ -1271,7 +1275,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     </div>
                     <div className="student-name">{student.name}</div>
                     <div className="student-meta">{student.grade}</div>
-                    {!unifiedUngraded && <div className="grading-info">
+                    {unifiedSendTab && <div className="grading-info"><div className="grading-row"><span className="label">발송일 :</span><span className="value">{sentDateOf(student)}</span></div></div>}
+                    {!unifiedUngraded && !unifiedSendTab && <div className="grading-info">
                       <div className="grading-row">
                         <span className="label">AI채점 :</span>
                         <span className="value">{fmtFor(student, student.aiGrade, student.aiScore)}</span>
@@ -1477,7 +1482,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           alert(`${student.name} 학생에게 결과가 발송되었습니다.`);
         }}
         onResultSendCancel={(student) => {
-          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전', sentMode: undefined, sentScale: undefined } : s));
+          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전', sentMode: undefined, sentScale: undefined, sentAt: undefined } : s));
         }}
         onRevertToStep2={(student) => {
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '채점 확인' } : s));
