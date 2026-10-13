@@ -160,7 +160,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
   const [aiImprove, setAiImprove] = useState(null); // { qid, original, improved }
   const evalMode = 'self'; // [v3.74] 자동평가 폐기 — 자율평가 단일 체제 (저장 스키마 호환용 고정값)
   const [resultScale, setResultScale] = useState(3); // 등급 환산 체계
-  const [resultMode, setResultMode] = useState('grade'); // [v3.82] 채점 결과 표시 — 'grade'(등급) | 'score'(점수)
+  const [resultMode, setResultMode] = useState('grade'); // [v3.82] 채점 결과 표시 — 'grade'(등급만) | 'gradeScore'(등급+점수, v3.83) | 'score'(점수만)
   const [selfScale, setSelfScale] = useState(initialData?.selfScale || 3);     // 채점 등급(3/4/5) — Step 4 최초 진입 시 학교급 기본값(초등 3 / 중·고등 5)으로 설정. 점수 구간은 3개 고정
   // Step 4 진입 처리 완료 여부 { [qid]: true } — [v3.85] 자동 설계 폐기 후에는 채점 등급 기본값 1회 적용 판별에만 쓴다
   const [rubricReady, setRubricReady] = useState(() => (initialData?.questions ? Object.fromEntries(initialData.questions.map((q) => [q.id, true])) : {}));
@@ -1522,16 +1522,16 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                       </div>
                     ))}
                     <button onClick={() => addCriterion(q.id)} style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>+ 채점 기준 추가 ({q.criteria.length}/5)</button>
-                    {/* [v3.82] 채점 결과 — 맨 아래로 이동. 결과를 「등급」으로 낼지 「점수」로 낼지 고르고, 등급이면 3/4/5등급 선택 */}
+                    {/* [v3.82] 채점 결과 — 맨 아래로 이동. [v3.83] 등급만 · 등급+점수 · 점수만 중 고르고, 등급이 들어가면 3/4/5등급 선택(고른 등급 수를 버튼에 표시) */}
                     <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginTop: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 결과</span>
-                      {[['grade', '등급'], ['score', '점수']].map(([k, lbl]) => (
+                      {[['grade', '등급만'], ['gradeScore', '등급+점수'], ['score', '점수만']].map(([k, lbl]) => (
                         <button key={k} onClick={() => setResultMode(k)}
                           style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${resultMode === k ? '#2A75F3' : '#E2E8F0'}`, background: resultMode === k ? '#EFF6FF' : 'white', color: resultMode === k ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
-                          {resultMode === k ? '✓ ' : ''}{lbl}
+                          {resultMode === k ? '✓ ' : ''}{lbl}{k !== 'score' && <span style={{ fontWeight: 600, opacity: 0.8 }}> ({selfScale}등급)</span>}
                         </button>
                       ))}
-                      {resultMode === 'grade' && (<>
+                      {resultMode !== 'score' && (<>
                         <span style={{ width: 1, height: 22, background: '#E2E8F0' }} />
                         {[3, 4, 5].map((n) => (
                           <button key={n} onClick={() => setSelfScale(n)}
@@ -1541,10 +1541,10 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                         ))}
                       </>)}
                       <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginLeft: 'auto' }}>
-                        {resultMode === 'grade' ? (() => {
+                        {resultMode !== 'score' ? (() => {
                           const names = GRADE_NAMES[selfScale] || [];
                           const range = names.length >= 2 ? `${names[0]}~${names[names.length - 1]}` : '';
-                          return <>채점기준 점수의 <strong>합산 → {selfScale}등급({range})</strong>으로 환산.</>;
+                          return <>채점기준 점수의 <strong>합산 → {selfScale}등급({range})</strong>으로 환산{resultMode === 'gradeScore' ? <>하고 <strong>점수(총 배점 {totalSelf}점 만점)</strong>도 함께 표시</> : ''}.</>;
                         })() : <>채점기준 점수의 <strong>합산(총 배점 {totalSelf}점 만점)</strong>을 점수 그대로 결과로 표시.</>}
                       </span>
                     </div>
