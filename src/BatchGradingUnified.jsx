@@ -1158,7 +1158,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const renderLocationCard = (pen) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
       <span title={pen.usb ? 'USB 케이블로 연결한 펜입니다' : '실물 크래들에서 이 펜이 꽂힌 자리입니다'} style={{ flex: 1, minWidth: 0, fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{pen.usb ? '🔌 USB로 연결한 펜' : `📍 실물 위치 — 크래들 ${cradleOf(pen.slot)} · ${slotIn(pen.slot)}번 자리`}</span>
-      <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title={pen.usb ? 'USB 연결을 해제합니다. 다른 펜은 위의 [펜 바꿔 연결]로 연결하세요.' : '크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 ① 펜 연결 목록에서 슬롯을 누르세요.'} onClick={() => { undockPen(pen.slot); setSel(null); }}>{pen.usb ? '⏏ 연결 해제' : '⏏ 펜 빼기'}</button>
+      {pen.usb && <button type="button" style={{ ...ghostBtn, padding: '4px 10px', flex: 'none' }} title={pen.usb ? 'USB 연결을 해제합니다. 다른 펜은 위의 [펜 바꿔 연결]로 연결하세요.' : '크래들에서 이 펜을 뺍니다 (에뮬레이터). 다시 꽂으려면 ① 펜 연결 목록에서 슬롯을 누르세요.'} onClick={() => { undockPen(pen.slot); setSel(null); }}>⏏ 연결 해제</button>}{/* [SCR-08 v1.44] 크래들 [⏏ 펜 빼기] 삭제 — USB [⏏ 연결 해제]만 */}
     </div>
   );
 
