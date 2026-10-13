@@ -542,8 +542,25 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     return s && s.status === '결과 발송 완료';
   });
 
+  // [일괄 채점 통합 · SCR-08 v1.26] 결과 표시 방식은 과제 등록이 아니라 결과 발송 때 고른다 — 점수 · 점수+등급 · 등급
+  //   고른 방식은 학생마다 sentMode로 남아 목록 · 리포트 표기에 쓰인다
+  const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수+등급', '우수 · 17점'], ['grade', '등급', '우수']];
+  const [sendAsk, setSendAsk] = useState(null); // { ids }
+  const [sendMode, setSendMode] = useState('score');
+  const openSendAsk = (ids) => { setSendMode(currentTask.resultMode === 'grade' ? 'grade' : 'score'); setSendAsk({ ids }); };
+  const confirmSend = () => {
+    const { ids } = sendAsk;
+    setStudents(prev => prev.map(s => (ids.includes(s.id) ? { ...s, status: '결과 발송 완료', sentMode: sendMode } : s)));
+    setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
+    setSendAsk(null);
+    setInvalidMsg(`${ids.length}명에게 결과를 「${SEND_MODES.find(([k]) => k === sendMode)[1]}」(으)로 발송했습니다.`);
+  };
+  const modeOf = (st) => (isUnified && st?.sentMode) || resultMode;
+  const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score });
+
   const handleBulkResultSend = () => {
     if (bulkPreSendIds.length === 0) return;
+    if (isUnified) { openSendAsk(bulkPreSendIds); return; }
     const proceed = window.confirm(`선택된 ${bulkPreSendIds.length}명에게 결과를 발송하시겠습니까?`);
     if (!proceed) return;
     setStudents(prev => prev.map(s => bulkPreSendIds.includes(s.id) ? { ...s, status: '결과 발송 완료' } : s));
@@ -555,7 +572,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     if (bulkSentIds.length === 0) return;
     const proceed = window.confirm(`선택된 ${bulkSentIds.length}명의 결과 발송을 취소하시겠습니까?`);
     if (!proceed) return;
-    setStudents(prev => prev.map(s => bulkSentIds.includes(s.id) ? { ...s, status: '결과 발송 전' } : s));
+    setStudents(prev => prev.map(s => bulkSentIds.includes(s.id) ? { ...s, status: '결과 발송 전', sentMode: undefined } : s));
     setSelectedIds([]);
   };
 
@@ -1031,6 +1048,28 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       </div>
                     </div>
                   )}
+                  {sendAsk && (
+                    <div className="modal-overlay" onClick={() => setSendAsk(null)} style={{ zIndex: 10001 }}>
+                      <div role="dialog" aria-modal="true" aria-label="결과 발송 — 결과 표시 방식" onClick={(e) => e.stopPropagation()}
+                        style={{ background: 'white', borderRadius: 16, padding: '24px 24px 18px', width: 'min(460px, 92vw)', boxShadow: '0 20px 50px rgba(15,23,42,0.25)' }}>
+                        <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 6 }}>📤 {sendAsk.ids.length}명에게 결과를 발송합니다</div>
+                        <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.6, marginBottom: 14 }}>학생에게 결과를 어떻게 보여 줄지 고르세요. 고른 방식이 학생 결과와 리포트에 그대로 쓰입니다.</div>
+                        <div role="radiogroup" aria-label="결과 표시 방식" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {SEND_MODES.map(([k, lbl, ex]) => (
+                            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${sendMode === k ? '#2A75F3' : '#E2E8F0'}`, background: sendMode === k ? '#EFF6FF' : 'white' }}>
+                              <input type="radio" name="send-mode" checked={sendMode === k} onChange={() => setSendMode(k)} />
+                              <strong style={{ minWidth: 72 }}>{lbl}</strong>
+                              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>예: {ex}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+                          <button type="button" onClick={() => setSendAsk(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+                          <button type="button" onClick={confirmSend} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📤 결과 발송</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {invalidMsg && <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1E293B', color: 'white', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', zIndex: 10000 }}>{invalidMsg}</div>}
                   {/* 채점 확인 탭 — 검토 완료 처리 */}
                   {bulkReviewCompleteIds.length > 0 && (
@@ -1208,13 +1247,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     {!unifiedUngraded && <div className="grading-info">
                       <div className="grading-row">
                         <span className="label">AI채점 :</span>
-                        <span className="value">{fmtResult(student.aiGrade, student.aiScore)}</span>
+                        <span className="value">{fmtFor(student, student.aiGrade, student.aiScore)}</span>
                       </div>
                       <div className="grading-row">
                         <span className="label">교사채점 :</span>
                         <span className="value">
                           {student.teacherGrade !== '-' && <span className="badge-dot badge-orange"></span>}
-                          {fmtResult(student.teacherGrade, student.teacherScore)}
+                          {fmtFor(student, student.teacherGrade, student.teacherScore)}
                         </span>
                       </div>
                       {/* [SCR-06] 1차→2차 등급 추이 · 차수별 AI 채점 잔여 횟수 */}
@@ -1309,11 +1348,11 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                                 채점중...
                               </span>
                             ) : (
-                              <span className="cell-value">{fmtResult(student.aiGrade, student.aiScore)}</span>
+                              <span className="cell-value">{fmtFor(student, student.aiGrade, student.aiScore)}</span>
                             )}
                           </td>}
                           {!unifiedUngraded && <td className="cell-teacher">
-                            <span className="cell-value">{fmtResult(student.teacherGrade, student.teacherScore)}</span>
+                            <span className="cell-value">{fmtFor(student, student.teacherGrade, student.teacherScore)}</span>
                           </td>}
                           {isV2 && (
                             <td>
@@ -1406,11 +1445,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, ...student, status: '결과 발송 전' } : s));
         }}
         onResultSend={(student) => {
+          if (isUnified) { openSendAsk([student.id]); return; }
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 완료' } : s));
           alert(`${student.name} 학생에게 결과가 발송되었습니다.`);
         }}
         onResultSendCancel={(student) => {
-          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전' } : s));
+          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전', sentMode: undefined } : s));
         }}
         onRevertToStep2={(student) => {
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '채점 확인' } : s));
@@ -1654,6 +1694,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                  화면: 단일 스크롤 + 점선 구분선 + 페이지 배지
                  출력: @media print로 A4 강제 분할 */}
             {previewStudent && (() => {
+              const rm = modeOf(previewStudent); // [일괄 채점 통합] 결과 발송 때 고른 표시 방식
               // 타이틀 영역 (모든 페이지 상단 반복) — 컴포넌트화
               const TitleArea = () => (
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '14px 18px', marginBottom: '20px' }}>
@@ -1710,14 +1751,14 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <tr>
                             <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>문항번호</th>
                             <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>배점</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>{RESULT_MODE_LABEL[resultMode]}</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', border: '1px solid #E5E7EB' }}>{rm === 'gradeScore' ? '점수+등급' : RESULT_MODE_LABEL[rm]}</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
                             <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>1</td>
                             <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>3</td>
-                            <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>{resultMode === 'score' ? `${fmtResult(previewStudent.teacherGrade || '우수', previewStudent.teacherScore)} / ${totalPoints}점 만점` : `${previewStudent.teacherGrade || '우수'} / 4단계 척도`}</td>
+                            <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>{rm === 'grade' ? `${previewStudent.teacherGrade || '우수'} / 4단계 척도` : `${fmtFor(previewStudent, previewStudent.teacherGrade || '우수', previewStudent.teacherScore)} / ${totalPoints}점 만점`}</td>
                           </tr>
                         </tbody>
                       </table>
