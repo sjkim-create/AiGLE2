@@ -41,7 +41,7 @@ const IDENT_UNREAD = '학생 미매칭 — 답안지 학생정보를 읽을 수 
 const NOT_IN_ROSTER = (read) => `학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: ${read}]`;
 const NOT_SELECTED = '학생 미매칭 — 채점 목록에서 선택하지 않은 학생입니다'; // 판정 #8
 const OTHER_TASK_PEN = '학생 미매칭 — 이 과제 데이터가 아닙니다';        // 판정 #3
-const REPLACED = '기존 답안 — 스캔본이 자리를 대신하고 있습니다';
+const REPLACED = '학생 제출 답안 — 스캔본이 자리를 대신하고 있습니다';
 /* 스캔 답안지 코드 — 과제당 1개가 아니라 장마다 1개 (SCR-05 v4.4) */
 const SHEET_CODES = (() => { let n = 594; return QUESTIONS.flatMap((q) => Array.from({ length: q.sheets }, (_, i) => ({ q: q.id, page: i + 1, code: String(n++).padStart(8, '0') }))); })();
 /* AiGLE Connect 실행 여부 — 한 번 확인되면 이 창을 다시 열어도 확인 창을 띄우지 않는다 (세션 기억) */
@@ -50,7 +50,7 @@ let connectorSessionReady = false;
 const BADGE = {
   ok: { label: '정상', bg: '#F0FDF4', border: '#86EFAC', color: '#166534', dot: '#22C55E' },
   check: { label: '확인 필요', bg: '#FEF2F2', border: '#FCA5A5', color: '#B91C1C', dot: '#EF4444' },
-  answer: { label: '기존 답안', bg: '#ECFEFF', border: '#A5F3FC', color: '#0E7490', dot: '#06B6D4' },
+  answer: { label: '학생 제출', bg: '#ECFEFF', border: '#A5F3FC', color: '#0E7490', dot: '#06B6D4' },
   none: { label: '제외', bg: '#F8FAFC', border: '#E2E8F0', color: '#64748B', dot: '#CBD5E1' },
   submitted: { label: '학생 제출', bg: '#ECFEFF', border: '#A5F3FC', color: '#0E7490', dot: '#06B6D4' }, // [SCR-08 v1.19] 펜은 없지만 학생이 낸 답안
 };
@@ -286,6 +286,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /* ── 크래들 상태 ── */
   const [docked, setDocked] = useState({});      // { [slot]: pen + link }
   const [link, setLink] = useState('cradle');    // [SCR-08 v1.19] 연결 방식 — 'cradle' | 'usb'(펜 1자루)
+  const [useSubmitted, setUseSubmitted] = useState([]); // [SCR-08 v1.40] 펜 답안 대신 학생 제출 답안으로 채점할 학생(되돌리기)
   const [usbIdx, setUsbIdx] = useState(0);       // 시연 — 지금 USB에 꽂을 펜(PEN_POOL 순서). 누구 펜인지는 매핑 뒤에 안다
   const [usbFail, setUsbFail] = useState(false); // USB 인식 실패 — 케이블을 다시 꽂아야 한다
   const [unrecognized, setUnrecognized] = useState([]);
@@ -355,7 +356,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all');
     setProgress(0); setGradingDone(false); setGradedIds([]); setFailedIds([]); setRetrying(false); failedOnce.current = false;
     setDocked({}); setUnrecognized([]); failedDock.current = new Set(); setJudged([]); setManual({}); setDupPick({}); setAssignPick({}); setFwDone({}); setFwProg({}); setDeletedPens([]);
-    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false); setAddedIds([]);
+    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false); setAddedIds([]); setUseSubmitted([]);
     if (nextSource === 'cradle' && !connectorSessionReady) setConnector('checking');
     files.forEach((f) => f.url && URL.revokeObjectURL(f.url));
     splitJobs.forEach((j) => { splitCancel.current.add(j.id); j.pages.forEach((p) => p.url && URL.revokeObjectURL(p.url)); });
@@ -479,8 +480,14 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       if (list.length === 0) return { ...s, badge: 'none', detail: '채점 제외 — 거치된 펜에서 이 학생의 답안을 찾지 못했습니다', pens: [] };
       if (list.length >= 2) return { ...s, badge: 'check', detail: `중복 데이터 — 슬롯 ${list.map((x) => slotShort(x.pen.slot)).join(' · ')}`, pens: list, dup: true };
       const { pen, manual: mm } = list[0];
+      /* [SCR-08 v1.40] 학생 제출 답안이 있는 학생 — 스캔과 같은 규칙: 새 데이터(펜) 우선, 학생 제출 답안은 [↩ 되돌리기]로 언제든 */
+      if (!penPageCount(pen) && s.hasAnswer) { empty.push(pen); return { ...s, badge: 'submitted', detail: '학생 제출 — 펜에 필기가 없어 학생이 낸 답안으로 채점합니다', pens: [], submitted: true }; }
       if (!penPageCount(pen)) return { ...s, badge: 'none', detail: '답안 없음 — 답안지 미작성', pens: list };
-      return { ...s, badge: 'ok', detail: `펜 연결 · 슬롯 ${slotShort(pen.slot)}${mm ? ' · 직접 매칭' : ''}`, pens: list };
+      if (s.hasAnswer && useSubmitted.includes(s.id)) {
+        unc.push({ id: pen.id, pen, reason: `학생 제출 답안으로 채점 — ${s.name}의 이 펜 답안은 쓰지 않습니다` });
+        return { ...s, badge: 'submitted', detail: '학생 제출 — 펜 답안 대신 학생이 낸 답안으로 채점합니다', pens: [], submitted: true, restored: true };
+      }
+      return { ...s, badge: 'ok', detail: `펜 연결 · 슬롯 ${slotShort(pen.slot)}${mm ? ' · 직접 매칭' : ''}${s.hasAnswer ? ' · 학생 제출 답안 교체' : ''}`, pens: list, replacedSubmitted: !!s.hasAnswer };
     });
     const gradable = students.filter((s) => s.badge === 'ok' || s.badge === 'submitted');
     const dups = students.filter((s) => s.dup);
@@ -500,7 +507,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, docked, judged, manual, dupPick, deletedPens, ROSTER]);
+  }, [source, docked, judged, manual, dupPick, deletedPens, ROSTER, useSubmitted]);
 
   /* ════════════ 스캔 — 1단계 업로드 · 페이지 분리 ════════════ */
   const appendFiles = (entries) => setFiles((prev) => {
@@ -577,10 +584,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     });
     const existing = ROSTER.filter((s) => s.hasAnswer).flatMap((s) => QUESTIONS.map((q) => {
       const attach = !taken.has(`${s.id}:${q.id}`);
-      return { id: `e${s.id}${q.id}`, name: `${s.name} 기존 답안 · ${q.title}`, origin: 'existing', home: { sid: s.id, q: q.id }, sid: attach ? s.id : null, q: attach ? q.id : null, conf: 'high', reason: attach ? null : '기존 답안 — 스캔본이 자리를 대신하고 있습니다' };
+      return { id: `e${s.id}${q.id}`, name: `${s.name} 학생 제출 답안 · ${q.title}`, origin: 'existing', home: { sid: s.id, q: q.id }, sid: attach ? s.id : null, q: attach ? q.id : null, conf: 'high', reason: attach ? null : '학생 제출 답안 — 스캔본이 자리를 대신하고 있습니다' };
     }));
     setRows([...out, ...existing]);
-    // [SCR-05 v4.12] 판별 직후 교체 의사 1회 확인 — 전체 스캔으로 기존 답안이 밀려났을 때
+    // [SCR-05 v4.12] 판별 직후 교체 의사 1회 확인 — 전체 스캔으로 학생 제출 답안이 밀려났을 때
     if (existing.some((r) => r.sid == null)) setConfirm({ kind: 'replace' });
     appLogger.info('scan-ocr', '답안지 판별 완료', { files: out.length, unassigned: out.filter((r) => r.sid == null).length });
   };
@@ -600,7 +607,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     setRows((prev) => [
       ...prev.flatMap((x) => {
         if (!replaceRow || x.id !== replaceRow.id) return [x];
-        return x.origin === 'existing' ? [{ ...x, sid: null, q: null, sheet: null, reason: REPLACED }] : []; // 밀려난 스캔본은 목록에서 제거, 기존 답안은 미분류로
+        return x.origin === 'existing' ? [{ ...x, sid: null, q: null, sheet: null, reason: REPLACED }] : []; // 밀려난 스캔본은 목록에서 제거, 학생 제출 답안은 미분류로
       }),
       { id: `r${fid}`, fid, name: f.name, sid, q, sheet, conf: 'high', manual: true },
     ]);
@@ -640,7 +647,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       if (issues.length) return { ...s, badge: 'check', detail: issues[0] + (issues.length > 1 ? ` 외 ${issues.length - 1}건` : ''), qs };
       if (s.hasAnswer) {
         const replaced = qs.some((x) => !x.hasExisting && x.list.length);
-        return { ...s, badge: 'answer', detail: replaced ? '기존 답안 교체 — 스캔본으로 채점됩니다' : '기존 답안으로 채점', qs };
+        return { ...s, badge: 'answer', detail: replaced ? '학생 제출 답안 교체 — 스캔본으로 채점됩니다' : '학생 제출 답안으로 채점', qs };
       }
       return { ...s, badge: 'ok', detail: '답안지 연결', qs };
     });
@@ -659,10 +666,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안지만 서버로 올라갑니다.${unc.length ? ` 미분류 ${unc.length}장은 올리지 않습니다.` : ''}` };
   }, [source, rows, ROSTER]);
   const patchRow = (id, patch) => setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const unlinkRow = (r) => patchRow(r.id, { sid: null, q: null, sheet: null, conf: 'low', reason: r.origin === 'existing' ? '기존 답안 — 스캔본이 자리를 대신하고 있습니다' : '미연결 — 연결을 해제한 답안지입니다' });
+  const unlinkRow = (r) => patchRow(r.id, { sid: null, q: null, sheet: null, conf: 'low', reason: r.origin === 'existing' ? '학생 제출 답안 — 스캔본이 자리를 대신하고 있습니다' : '미연결 — 연결을 해제한 답안지입니다' });
   const restoreExisting = (r) => setRows((prev) => prev.map((x) => {
     if (x.id === r.id) return { ...x, sid: r.home.sid, q: r.home.q, reason: null };
-    if (x.origin !== 'existing' && x.sid === r.home.sid && x.q === r.home.q) return { ...x, sid: null, q: null, sheet: null, conf: 'low', reason: '미연결 — 기존 답안을 되돌리면서 자리에서 내려온 스캔입니다' };
+    if (x.origin !== 'existing' && x.sid === r.home.sid && x.q === r.home.q) return { ...x, sid: null, q: null, sheet: null, conf: 'low', reason: '미연결 — 학생 제출 답안을 되돌리면서 자리에서 내려온 스캔입니다' };
     return x;
   }));
 
@@ -693,12 +700,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     setSel(first ? { type: 'student', id: first.id } : model.unc.length ? { type: 'unc' } : { type: 'student', id: model.students[0].id });
   }, [step, reading, model, sel]);
 
-  /** 채점 시작 — 스캔은 기존 답안을 교체하는 건이 있으면 한 번 더 확인 (SCR-05 S11) */
+  /** 채점 시작 — 스캔은 학생 제출 답안을 교체하는 건이 있으면 한 번 더 확인 (SCR-05 S11) */
   const requestGrading = () => {
-    if (source === 'scan' && replacedSlots().length) { setConfirm({ kind: 'overwrite' }); return; }
+    if (replacedSlots().length) { setConfirm({ kind: 'overwrite' }); return; } // [SCR-08 v1.40] 펜 · 스캔 공통
     startGrading();
   };
-  const replacedSlots = () => (scanModel ? scanModel.students.flatMap((s) => (s.hasAnswer ? s.qs.filter((x) => !x.hasExisting && x.list.length).map((x) => `${s.name} ${x.q.title}`) : [])) : []);
+  const replacedSlots = () => (source === 'cradle' ? (cradleModel ? cradleModel.students.filter((s) => s.replacedSubmitted).map((s) => s.name) : []) : scanModel ? scanModel.students.flatMap((s) => (s.hasAnswer ? s.qs.filter((x) => !x.hasExisting && x.list.length).map((x) => `${s.name} ${x.q.title}`) : [])) : []);
   const startGrading = () => {
     setConfirm(null);
     const ids = model.gradable.map((s) => s.id);
@@ -983,7 +990,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       {ROSTER.some((st) => st.hasAnswer) && (
         <div style={{ ...card, padding: '12px 16px', borderColor: '#FDBA74', background: '#FFF7ED' }}>
           <div style={{ fontWeight: 800, color: '#9A3412' }}>📄 이미 답안이 있는 학생 {ROSTER.filter((st) => st.hasAnswer).length}명이 포함되어 있습니다</div>
-          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', lineHeight: 1.6, margin: '4px 0 8px' }}>스캔본이 있으면 스캔본으로 채점하고, 기존 답안은 미분류에 남아 채점 전까지 되돌릴 수 있습니다. 교체한 건에 한해 채점 시작 시 한 번 더 확인하며, 기존 답안은 이력에 보관됩니다.</div>
+          <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', lineHeight: 1.6, margin: '4px 0 8px' }}>스캔본이 있으면 스캔본으로 채점하고, 학생 제출 답안은 미분류에 남아 채점 전까지 되돌릴 수 있습니다. 교체한 건에 한해 채점 시작 시 한 번 더 확인하며, 학생 제출 답안은 이력에 보관됩니다.</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{ROSTER.filter((st) => st.hasAnswer).map((st) => <span key={st.id} style={{ padding: '3px 10px', borderRadius: 8, background: 'white', border: '1px solid #FED7AA', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700 }}>{st.name} <span style={{ color: '#94A3B8' }}>{st.no}</span></span>)}</div>
         </div>
       )}
@@ -1010,7 +1017,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       <div style={{ ...card, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
         <span style={{ color: '#166534' }}>🟢 채점 대상 {counts.ok}명</span>
         <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}{source === 'cradle' ? '자루' : '명'}</span>
-        <span style={{ color: '#94A3B8' }}>제외 {counts.none}명</span>
+        <span style={{ color: '#94A3B8' }}>채점 제외 {counts.none}명</span>
         <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '자루'}</span>
         <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500, flex: 1, minWidth: 200 }}>{model.manifest}</span>
         {/* [SCR-08 v1.8] [↻ 다시 매칭]은 슬롯 그림(미니맵) 위로 옮겼다 */}
@@ -1163,7 +1170,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {renderMinimap()}
         {/* [SCR-08 v1.8] 필터는 미니맵 아래 — 아래 목록을 거르는 버튼이라 목록과 한 묶음 */}
         <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid #F1F5F9' }}>
-          {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['none', '제외', nNone]].map(([k, l, n]) => (
+          {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['submitted', '학생 제출', cradleModel.submitted.length], ['none', '채점 제외', nNone]].map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
           ))}
@@ -1171,7 +1178,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* 목록은 한 줄로 이어진다(스캔 목록과 같은 모양). 슬롯 순서 */}
           {pens.filter(show).map(penRow)}
-          {tab === 'all' && cradleModel.submitted.length > 0 && (
+          {(tab === 'all' || tab === 'submitted') && cradleModel.submitted.length > 0 && (
             <div>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#ECFEFF', borderBottom: '1px solid #A5F3FC', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#0E7490' }}>
                 학생 제출 · 채점 대상 {cradleModel.submitted.length}명
@@ -1218,7 +1225,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const renderStudentList = () => {
     const list = model.students.filter((s) => tab === 'all' || s.badge === tab);
     const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length],
-      ['answer', '기존 답안', model.students.filter((s) => s.badge === 'answer').length], ['none', '제외', model.students.filter((s) => s.badge === 'none').length]];
+      ['answer', '학생 제출', model.students.filter((s) => s.badge === 'answer').length], ['none', '채점 제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
       <div style={{ ...card, flex: '0 0 28%', minWidth: 280, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 · [v1.13] 두 열을 약 10% 줄이고(28%) 남는 폭을 답안 미리보기에 */}
         <div style={{ display: 'flex', gap: 6, padding: 10, flexWrap: 'wrap', borderBottom: '1px solid #F1F5F9' }}>
@@ -1237,7 +1244,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <strong style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E293B' }}>{s.name}</strong>
                   <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{s.no}</span>
-                  <span style={{ marginLeft: 'auto', ...pill(b) }}>{s.badge === 'answer' ? (s.detail.startsWith('기존 답안 교체') ? '교체됨' : '기존 답안') : b.label}</span>
+                  <span style={{ marginLeft: 'auto', ...pill(b) }}>{s.badge === 'answer' ? (s.detail.startsWith('학생 제출 답안 교체') ? '교체됨' : '학생 제출') : b.label}</span>
                 </div>
                 <div style={{ marginTop: 3, fontSize: 'var(--neo-font-size-xs)', color: s.badge === 'ok' ? '#166534' : b.color, lineHeight: 1.5 }}>{s.detail}</div>
               </button>
@@ -1276,8 +1283,17 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       return (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span><span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE.submitted)}>학생 제출</span></div>
-          <div style={noteBox('ok')}>✓ 펜 데이터는 없지만 학생이 이미 제출한 답안이 있어 그 답안으로 채점합니다.</div>
-          <div style={noteBox('muted')}>펜 답안으로 채점하려면 미분류 펜을 이 학생에게 매칭하세요 — 펜 답안이 있으면 펜 답안으로 채점합니다.</div>
+          {useSubmitted.includes(s.id) ? (
+            <>
+              <div style={noteBox('ok')}>✓ 펜 답안 대신 학생이 이미 제출한 답안으로 채점합니다. 이 학생의 펜 답안은 미분류로 내려갔습니다.</div>
+              <div><button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} onClick={() => setUseSubmitted((u) => u.filter((x) => x !== s.id))}>🖊 펜 답안으로 채점</button></div>
+            </>
+          ) : (
+            <>
+              <div style={noteBox('ok')}>✓ 펜 데이터는 없지만 학생이 이미 제출한 답안이 있어 그 답안으로 채점합니다.</div>
+              <div style={noteBox('muted')}>펜 답안으로 채점하려면 미분류 펜을 이 학생에게 매칭하세요 — 펜 답안이 있으면 펜 답안으로 채점합니다.</div>
+            </>
+          )}
         </>
       );
     }
@@ -1329,6 +1345,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {info.kind === 'empty' && <div style={noteBox('muted')}>이 펜에는 필기가 없습니다. 채점 대상이 아닙니다.</div>}
         {info.kind === 'unread' && <div style={noteBox('info')}>판정 이후에 꽂은 펜이라 아직 읽지 않았습니다. 위의 [↻ 다시 매칭]을 눌러 주세요.</div>}
         {info.kind === 'ok' && <div style={noteBox('ok')}>✓ {st.name}의 답안으로 채점됩니다.{info.manual ? ' (직접 매칭)' : ''}</div>}
+        {info.kind === 'ok' && st?.hasAnswer && (
+          <div style={noteBox('info')}>
+            🔄 학생이 이미 낸 답안 대신 펜 답안으로 채점됩니다. 학생 제출 답안으로 채점하려면 되돌리세요.
+            <div style={{ marginTop: 6 }}><button type="button" style={{ ...ghostBtn, padding: '4px 10px' }} onClick={() => { setUseSubmitted((u) => (u.includes(st.id) ? u : [...u, st.id])); setSel({ type: 'submitted', sid: st.id }); }}>↩ 학생 제출 답안으로 되돌리기</button></div>
+          </div>
+        )}
         {info.kind === 'ok' && changePen === pen.id && (
           <div style={{ ...noteBox('info'), display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div>미리보기의 답안이 <strong>{st.name}</strong>의 것이 아니면 실제 학생을 골라 바로잡으세요. {st.name}에게 다른 펜이 없으면 {st.name}은(는) 채점에서 제외됩니다.</div>
@@ -1403,7 +1425,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               )}
             </div>
           ))}
-          {ex.length > 0 && <div style={{ fontWeight: 800, color: '#0E7490', fontSize: 'var(--neo-font-size-sm)', marginTop: 4 }}>교체된 기존 답안 {ex.length}건</div>}
+          {ex.length > 0 && <div style={{ fontWeight: 800, color: '#0E7490', fontSize: 'var(--neo-font-size-sm)', marginTop: 4 }}>교체된 학생 제출 답안 {ex.length}건</div>}
           {ex.map((r) => (
             <div key={r.id} style={{ border: `1px solid ${curId === r.id ? '#2A75F3' : '#E2E8F0'}`, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>{fileHead(r)}<div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#0E7490', marginTop: 3 }}>스캔본이 자리를 대신하고 있습니다</div></div>
@@ -1426,7 +1448,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         </div>
         {s.badge === 'none' && <div style={noteBox('muted')}>채점에서 제외됩니다 — 올린 파일에서 답안지를 한 장도 찾지 못했습니다. 채점하려면 빈 자리에서 미분류 답안지를 지정하세요.</div>}
         {s.badge === 'check' && <div style={noteBox('warn')}>⚠ {s.detail}. 부족한 자리는 [답안지 선택]으로 채우고, 초과한 장(빨간 줄)은 [연결 해제]로 내려 주세요. 확인이 필요한 장(노란 줄)은 미리보기를 보고 [확인]을 눌러 주세요.</div>}
-        {s.badge === 'answer' && s.detail.startsWith('기존 답안 교체') && <div style={noteBox('info')}>🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 기존 답안으로 채점하려면 [미분류 파일]에서 [↩ 되돌리기]를 누르세요.</div>}
+        {s.badge === 'answer' && s.detail.startsWith('학생 제출 답안 교체') && <div style={noteBox('info')}>🔄 학생이 이미 낸 답안 대신 스캔본으로 채점됩니다. 학생 제출 답안으로 채점하려면 [미분류 파일]에서 [↩ 되돌리기]를 누르세요.</div>}
         {/* 문항 카드 — 장마다 한 줄: 장 번호 | 파일명 | (AI 추정 확인) | 연결 해제. 버튼끼리 띄워 오조작을 막는다 */}
         {s.qs.map((x) => {
           const empties = x.hasExisting ? 0 : Math.max(0, x.q.sheets - x.list.length);
@@ -1436,7 +1458,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: bad ? '#FEF2F2' : '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
                 <strong style={{ fontSize: 'var(--neo-font-size-sm)' }}>{x.q.title}</strong>
                 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: bad ? '#B91C1C' : '#94A3B8', fontWeight: 700 }}>
-                  {x.hasExisting ? '기존 답안' : `${x.list.length}/${x.q.sheets}장`}
+                  {x.hasExisting ? '학생 제출 답안' : `${x.list.length}/${x.q.sheets}장`}
                   {bad && x.st === 'over' && ` · ${x.list.length - x.q.sheets}장 초과`}
                   {bad && x.st === 'short' && ` · ${x.q.sheets - x.list.length}장 부족`}
                 </span>
@@ -1484,7 +1506,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                       <label style={{ ...smallBtn, cursor: 'pointer' }}>⬆ 파일 선택
                         <input type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }} onChange={(e) => { uploadIntoSlot(e.target.files, { sid: s.id, q: x.q.id, sheet: r.sheet, replaceRow: r }); e.target.value = ''; setRowMenu(null); }} />
                       </label>
-                      <span style={{ color: '#94A3B8' }}>{r.origin === 'existing' ? '기존 답안은 미분류로 내려갑니다' : '밀려난 스캔본은 목록에서 빠집니다'}</span>
+                      <span style={{ color: '#94A3B8' }}>{r.origin === 'existing' ? '학생 제출 답안은 미분류로 내려갑니다' : '밀려난 스캔본은 목록에서 빠집니다'}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ width: 92, fontWeight: 800, color: '#475569' }}>다른 자리로</span>
@@ -1494,7 +1516,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                       <select value={pick('mq')} onChange={(e) => setPick('mq', e.target.value)} style={{ flex: '0 1 90px', padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'inherit' }}>
                         <option value="">문항</option>{QUESTIONS.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
                       </select>
-                      <button type="button" disabled={!pick('ms') || !pick('mq') || r.origin === 'existing'} title={r.origin === 'existing' ? '기존 답안은 제 자리로만 돌아갑니다' : undefined}
+                      <button type="button" disabled={!pick('ms') || !pick('mq') || r.origin === 'existing'} title={r.origin === 'existing' ? '학생 제출 답안은 제 자리로만 돌아갑니다' : undefined}
                         onClick={() => { addTarget(pick('ms')); moveRow(r, pick('ms'), Number(pick('mq'))); setRowMenu(null); }} style={{ ...primaryBtn(!!(pick('ms') && pick('mq')) && r.origin !== 'existing'), padding: '4px 12px' }}>옮기기</button>
                     </div>
                   </div>
@@ -1551,10 +1573,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       }))) : [];
       return [...own, ...extra];
     }
-    if (sel.type === 'unc') return scanModel.unc.map((r) => ({ id: r.id, label: r.origin === 'existing' ? '기존 답안' : '미분류', sub: r.name, url: files.find((f) => f.id === r.fid)?.url, studentLabel: r.origin === 'existing' ? `${studentById(r.home.sid).grade} ${studentById(r.home.sid).name}` : '', existing: r.origin === 'existing', warn: r.origin === 'existing' ? null : r.reason }));
+    if (sel.type === 'unc') return scanModel.unc.map((r) => ({ id: r.id, label: r.origin === 'existing' ? '학생 제출 답안' : '미분류', sub: r.name, url: files.find((f) => f.id === r.fid)?.url, studentLabel: r.origin === 'existing' ? `${studentById(r.home.sid).grade} ${studentById(r.home.sid).name}` : '', existing: r.origin === 'existing', warn: r.origin === 'existing' ? null : r.reason }));
     const s = scanModel.students.find((x) => x.id === sel.id);
     if (!s) return [];
-    return s.qs.flatMap((x) => x.list.map((r, i) => ({ id: r.id, label: r.origin === 'existing' ? `${x.q.title} · 기존 답안` : `${x.q.title}-${i + 1}`, sub: r.name, url: files.find((f) => f.id === r.fid)?.url,
+    return s.qs.flatMap((x) => x.list.map((r, i) => ({ id: r.id, label: r.origin === 'existing' ? `${x.q.title} · 학생 제출 답안` : `${x.q.title}-${i + 1}`, sub: r.name, url: files.find((f) => f.id === r.fid)?.url,
       studentLabel: `${s.grade} ${s.name}`, question: x.q.title, sheetNo: i + 1, existing: r.origin === 'existing', writer: GROUP.findIndex((g) => g.id === (r.home?.sid || r.sid)),
       warn: i >= x.q.sheets && !x.hasExisting ? `${x.q.title} 기준 ${x.q.sheets}장 초과` : r.conf === 'medium' ? 'AI가 문항을 추정한 장' : null })));
   };
@@ -1790,11 +1812,11 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
             <>스캔본 내용 중 <strong style={{ color: '#C2410C' }}>{replacedNames.length}명</strong>의 학생이 이미 제출한 답안파일이 있습니다.
               <div style={{ margin: '8px 0', padding: '8px 12px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 8, color: '#9A3412' }}>대상 : {replacedNames.join(', ')}</div>
               어느 쪽을 선택해도 나머지 답안은 <strong>미분류로 남아</strong> 채점 전까지 변경할 수 있습니다.</>,
-            <><button type="button" style={ghostBtn} onClick={() => { rows.filter((r) => r.origin === 'existing' && r.sid == null).forEach(restoreExisting); setConfirm(null); }}>기존 답안으로 채점</button>
+            <><button type="button" style={ghostBtn} onClick={() => { rows.filter((r) => r.origin === 'existing' && r.sid == null).forEach(restoreExisting); setConfirm(null); }}>학생 제출 답안으로 채점</button>
               <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={() => setConfirm(null)}>스캔파일로 교체</button></>);
         }
-        return box('🔄 기존 답안을 교체합니다',
-          <>학생이 제출한 답안 <strong style={{ color: '#C2410C' }}>{replacedSlots().length}건</strong>이 스캔본으로 교체됩니다. 기존 답안은 이력에 보관되며 복원할 수 있습니다. 계속하시겠습니까?
+        return box('🔄 학생 제출 답안을 교체합니다',
+          <>학생이 제출한 답안 <strong style={{ color: '#C2410C' }}>{replacedSlots().length}건</strong>이 {source === 'cradle' ? '펜 답안' : '스캔본'}으로 교체됩니다. 학생 제출 답안은 이력에 보관되며 복원할 수 있습니다. 계속하시겠습니까?
             <div style={{ marginTop: 8, padding: '8px 12px', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 8, color: '#9A3412', fontSize: 'var(--neo-font-size-xs)' }}>교체 대상: {replacedSlots().join(', ')}</div></>,
           <><button type="button" style={ghostBtn} onClick={() => setConfirm(null)}>취소</button>
             <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={startGrading}>덮어쓰고 채점 시작</button></>);
