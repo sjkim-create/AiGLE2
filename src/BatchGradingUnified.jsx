@@ -503,7 +503,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     students.forEach((s) => s.pens.forEach((x) => { penInfo[x.pen.id] = { kind: s.dup ? 'dup' : s.badge === 'none' ? 'noans' : 'ok', sid: s.id, manual: !!x.manual }; }));
     const absent = students.filter((s) => s.pens.length === 0 && !s.submitted);
     const submitted = students.filter((s) => s.submitted);
-    return { students, unc, empty, unread, gradable, penInfo, absent, submitted, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — [↻ 다시 매칭]을 눌러 주세요.` : blockReason,
+    return { students, unc, empty, unread, gradable, penInfo, absent, submitted, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — 자동으로 읽는 중입니다.` : blockReason,
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -736,6 +736,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     }, 2200);
   };
   const reread = () => { setReading(true); setTimeout(() => { setJudged(connected.map((p) => p.id)); setReading(false); }, 1400); };
+  // [SCR-08 v1.45] 매핑 중 새로 연결된 펜(USB 바꿔 꽂기)은 자동으로 다시 읽는다 — [↻ 다시 매칭] 버튼 삭제
+  useEffect(() => {
+    if (source !== 'cradle' || step !== 'mapping' || reading || !cradleModel?.unread.length) return;
+    reread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, step, reading, cradleModel?.unread.length]);
 
   // 기본 선택 — 확인 필요 학생 → 미분류 → 첫 학생
   useEffect(() => {
@@ -836,7 +842,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
             <div style={{ fontWeight: 800, fontSize: 'var(--neo-font-size-base)' }}>🔌 USB 연결(펜 1개) — 크래들 없이 펜 1개를 읽습니다</div>
             <div style={{ color: '#64748B', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.6 }}>
               펜을 USB 케이블로 이 PC에 연결하세요. 한 번에 한 자루씩 읽습니다.<br />
-              누구의 펜인지는 [데이터 매핑 시작] 뒤 답안지의 학생정보로 확인합니다. 다른 펜은 그림의 펜을 눌러 케이블을 뺐다가 다시 꽂은 뒤, 데이터 매핑 화면에서 [↻ 다시 매칭]을 누르면 됩니다.
+              누구의 펜인지는 [데이터 매핑 시작] 뒤 답안지의 학생정보로 확인합니다. 다른 펜은 그림의 펜을 눌러 케이블을 뺐다가 다시 꽂으면 데이터 매핑 화면에서 자동으로 다시 읽습니다.
             </div>
             {renderUsbEmulator()}
             {usbFail && (
@@ -1055,7 +1061,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     unc: info.reason,
     noans: '답안 없음 — 답안지 미작성',
     empty: '필기 데이터가 없습니다',
-    unread: '아직 읽지 않음 — [↻ 다시 매칭] 필요',
+    unread: '아직 읽지 않음 — 읽는 중',
   }[info.kind]);
   const penTab = (info) => (info.kind === 'dup' || info.kind === 'unc' ? 'check' : info.kind === 'ok' ? 'ok' : 'none');
 
@@ -1125,20 +1131,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
 
   /** 미니맵 — 검은 크래들 3대를 점 한 줄 높이로. 목록 맨 위에 고정 (약 90px) */
   const renderMinimap = () => {
-    const changed = cradleModel.unread.length > 0 || judged.some((id) => !connected.some((p) => p.id === id));
     return (
     <div style={{ padding: '8px 12px 6px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: 4 }}>
       {/* [SCR-08 v1.12] 맨 위 한 줄 — 펜 오류 안내 + [↻ 다시 매칭].
           펜을 다시 꽂거나 빼서 구성이 바뀌면 버튼을 주황으로 강조하고 읽지 않은 펜 수를 붙인다 */}
-      <style>{'@keyframes rematchPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.55) } 50% { box-shadow: 0 0 0 5px rgba(249,115,22,0) } }'}</style>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>{link === 'usb' ? '※ 펜을 바꿔 연결하면 [↻ 다시 매칭]을 눌러 주세요.' : '※ 오류가 난 펜은 목록에 나오지 않습니다 — 꽂혀 있는데 목록에 없으면 뺐다가 다시 꽂아 주세요.'}</span>
-        <button type="button" onClick={reread}
-          title={changed ? `크래들 구성이 바뀌었습니다${cradleModel.unread.length > 0 ? ` — 읽지 않은 펜 ${cradleModel.unread.length}자루` : ''}. 다시 매칭해 주세요. (읽은 펜 수만큼 AI OCR 차감)` : '판정을 다시 돌립니다. 직접 매칭 기록은 유지됩니다. 읽은 펜 수만큼 AI OCR이 차감됩니다.'}
-          style={{ ...ghostBtn, flex: 'none', padding: '4px 10px', fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap', background: changed ? '#F97316' : 'white', color: changed ? 'white' : '#475569', border: changed ? 'none' : '1px solid #CBD5E1', animation: changed ? 'rematchPulse 1.6s ease-in-out infinite' : 'none' }}>
-          ↻ 다시 매칭{changed && cradleModel.unread.length > 0 ? ` (${cradleModel.unread.length})` : ''}
-        </button>
-      </div>
+      {/* [SCR-08 v1.45] 목록 위 [↻ 다시 매칭] 삭제 — 펜을 더 꽂거나 바꾸려면 아래 [↰ 다시 매칭](① 펜 연결). USB에서 펜을 바꿔 꽂으면 자동으로 다시 읽는다 */}
+      <div style={{ fontSize: 10, color: '#B45309', lineHeight: 1.4, marginBottom: 4 }}>{link === 'usb' ? '※ 펜을 바꿔 꽂으면 자동으로 다시 읽습니다.' : '※ 오류가 난 펜은 목록에 나오지 않습니다 — 펜을 더 꽂거나 바꾸려면 아래 [↰ 다시 매칭]을 누르세요.'}</div>
       {link === 'usb' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-xs)' }}>
           <div style={{ flex: '1 1 100%' }}>{renderUsbEmulator(true)}</div>
@@ -1325,7 +1323,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       return (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span><span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE.none)}>제외</span></div>
-          <div style={noteBox('muted')}>거치된 펜에서 이 학생의 답안을 찾지 못해 채점에서 제외됩니다(미채점에 남습니다). 펜을 찾았다면 크래들에 꽂고 [↻ 다시 매칭]을 누르거나, 미분류 펜을 이 학생에게 매칭하세요.</div>
+          <div style={noteBox('muted')}>거치된 펜에서 이 학생의 답안을 찾지 못해 채점에서 제외됩니다(미채점에 남습니다). 펜을 찾았다면 아래 [↰ 다시 매칭]으로 돌아가 크래들에 꽂거나, 미분류 펜을 이 학생에게 매칭하세요.</div>
         </>
       );
     }
@@ -1366,7 +1364,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         )}
         {info.kind === 'noans' && <div style={noteBox('muted')}>답안지 학생정보는 읽혔지만 답안이 없습니다. 채점에서 제외됩니다.</div>}
         {info.kind === 'empty' && <div style={noteBox('muted')}>이 펜에는 필기가 없습니다. 채점 대상이 아닙니다.</div>}
-        {info.kind === 'unread' && <div style={noteBox('info')}>판정 이후에 꽂은 펜이라 아직 읽지 않았습니다. 위의 [↻ 다시 매칭]을 눌러 주세요.</div>}
+        {info.kind === 'unread' && <div style={noteBox('info')}>판정 이후에 꽂은 펜이라 지금 읽고 있습니다.</div>}
         {info.kind === 'ok' && <div style={noteBox('ok')}>✓ {st.name}의 답안으로 채점됩니다.{info.manual ? ' (직접 매칭)' : ''}</div>}
         {info.kind === 'ok' && st?.hasAnswer && (
           <div style={noteBox('info')}>
