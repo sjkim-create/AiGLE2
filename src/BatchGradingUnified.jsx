@@ -1817,10 +1817,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           <>
             {/* [SCR-08 v1.41] 크래들 그림을 없앴으므로 펜을 더 꽂거나 바꾸려면 ① 펜 연결로 돌아간다(매칭 기록 유지 → 돌아와서 [↻ 다시 매칭]) */}
             {source === 'cradle' && link === 'cradle' && (
-              <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); }}>↰ 펜 연결로</button>
+              <button type="button" style={ghostBtn} title="① 펜 연결로 돌아가 펜을 더 꽂거나 바꾼 뒤 다시 매칭합니다(매칭 기록 유지)" onClick={() => { setStep('import'); setSel(null); }}>↰ 다시 매칭</button>
             )}
             {source === 'scan' && (
-              <button type="button" style={ghostBtn} onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 파일 다시 선택</button>
+              <button type="button" style={ghostBtn} title="① 파일 업로드로 돌아가 파일을 다시 고른 뒤 처음부터 다시 매칭합니다" onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 다시 매칭</button>
             )}
             <button type="button" disabled={model?.blocked} onClick={requestGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
           </>
