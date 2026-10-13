@@ -954,6 +954,17 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       {getTabLabel(tab)}
                     </div>
                   ))}
+                  {/* [일괄 채점 통합 · SCR-08 v1.39] 채점 결과 내보내기 — 결과 발송 탭 줄 오른쪽 끝(체크로 바뀌는 일괄 버튼 줄과 분리). 결과 발송 완료 학생이 있어야 활성 */}
+                  {isUnified && activeTab === '결과 발송' && (() => {
+                    const can = roster.some(s => s.status === '결과 발송 완료');
+                    return (
+                      <button type="button" className="btn-bulk-grading" onClick={openExport} disabled={!can}
+                        title={can ? '결과를 발송한 학생의 리포트를 PDF · 엑셀로 내보냅니다.' : '결과를 발송한 학생이 있어야 내보낼 수 있습니다.'}
+                        style={{ marginLeft: 'auto', alignSelf: 'center', background: '#0F766E', ...(can ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}>
+                        📄 채점 결과 내보내기
+                      </button>
+                    );
+                  })()}
                 </div>
                 <div className="view-controls" style={{ justifyContent: 'flex-start', flexWrap: 'wrap', rowGap: 8 }}>
                   {/* [SCR-06] 차수 필터 칩 — 전 탭 공통. 퇴고를 별도 탭이 아닌 「학생 속성 필터」로 다룬다.
@@ -1157,17 +1168,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       🚫 결과발송 취소 ({bulkSentIds.length}명)
                     </button>
                   )}
-                  {/* [일괄 채점 통합 · SCR-08 v1.37] 채점 결과 내보내기 — 결과 발송 탭의 일괄 버튼과 같은 줄 · 같은 자리. 결과 발송 완료 학생이 있어야 활성 */}
-                  {isUnified && activeTab === '결과 발송' && (() => {
-                    const can = roster.some(s => s.status === '결과 발송 완료');
-                    return (
-                      <button className="btn-bulk-grading" onClick={openExport} disabled={!can}
-                        title={can ? undefined : '결과를 발송한 학생이 있어야 내보낼 수 있습니다.'}
-                        style={{ background: '#0F766E', ...(can ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}>
-                        📄 채점 결과 내보내기
-                      </button>
-                    );
-                  })()}
                   {/* [SCR-06] 결과 발송 완료(1차) — 퇴고 요청 */}
                   {isV2 && bulkRevisionRequestIds.length > 0 && (
                     <button
