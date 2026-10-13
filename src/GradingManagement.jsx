@@ -542,7 +542,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     return s && s.status === '결과 발송 완료';
   });
 
-  // [일괄 채점 통합 · SCR-08 v1.26] 결과 표시 방식은 과제 등록이 아니라 결과 발송 때 고른다 — 점수 · 점수+등급 · 등급
+  // [SCR-08 v1.26 · SCR-01 v4.33] 결과 표시 방식은 과제 등록이 아니라 결과 발송 때 고른다 — 점수 · 점수+등급 · 등급 (채점 관리 · 일괄 채점 통합 공통)
   //   고른 방식은 학생마다 sentMode로 남아 목록 · 리포트 표기에 쓰인다
   const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수+등급', '우수 · 17점'], ['grade', '등급', '우수']];
   const [sendAsk, setSendAsk] = useState(null); // { ids }
@@ -555,17 +555,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     setSendAsk(null);
     setInvalidMsg(`${ids.length}명에게 결과를 「${SEND_MODES.find(([k]) => k === sendMode)[1]}」(으)로 발송했습니다.`);
   };
-  const modeOf = (st) => (isUnified && st?.sentMode) || resultMode;
+  const modeOf = (st) => st?.sentMode || resultMode;
   const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score });
 
   const handleBulkResultSend = () => {
     if (bulkPreSendIds.length === 0) return;
-    if (isUnified) { openSendAsk(bulkPreSendIds); return; }
-    const proceed = window.confirm(`선택된 ${bulkPreSendIds.length}명에게 결과를 발송하시겠습니까?`);
-    if (!proceed) return;
-    setStudents(prev => prev.map(s => bulkPreSendIds.includes(s.id) ? { ...s, status: '결과 발송 완료' } : s));
-    setSelectedIds([]);
-    alert(`${bulkPreSendIds.length}명에게 결과가 발송되었습니다.`);
+    openSendAsk(bulkPreSendIds); // [SCR-01 v4.33] 채점 관리 · 일괄 채점 통합 모두 — 결과 표시 방식을 고른 뒤 발송(confirmSend)
   };
 
   const handleBulkSendCancel = () => {
@@ -1445,9 +1440,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, ...student, status: '결과 발송 전' } : s));
         }}
         onResultSend={(student) => {
-          if (isUnified) { openSendAsk([student.id]); return; }
-          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 완료' } : s));
-          alert(`${student.name} 학생에게 결과가 발송되었습니다.`);
+          openSendAsk([student.id]); // [SCR-01 v4.33] 결과 표시 방식을 고른 뒤 발송
         }}
         onResultSendCancel={(student) => {
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전', sentMode: undefined } : s));
@@ -1694,7 +1687,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                  화면: 단일 스크롤 + 점선 구분선 + 페이지 배지
                  출력: @media print로 A4 강제 분할 */}
             {previewStudent && (() => {
-              const rm = modeOf(previewStudent); // [일괄 채점 통합] 결과 발송 때 고른 표시 방식
+              const rm = modeOf(previewStudent); // 결과 발송 때 고른 표시 방식
               // 타이틀 영역 (모든 페이지 상단 반복) — 컴포넌트화
               const TitleArea = () => (
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '14px 18px', marginBottom: '20px' }}>
