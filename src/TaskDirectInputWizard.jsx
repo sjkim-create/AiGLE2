@@ -1523,7 +1523,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                     ))}
                     <button onClick={() => addCriterion(q.id)} style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #94A3B8', background: 'white', color: '#475569', fontWeight: 700, cursor: 'pointer', fontSize: 'var(--neo-font-size-sm)' }}>+ 채점 기준 추가 ({q.criteria.length}/5)</button>
                     {/* [v3.82] 채점 결과 — 맨 아래로 이동. [v3.83] 등급만 · 등급+점수 · 점수만 중 고르고, 등급이 들어가면 3/4/5등급 선택(고른 등급 수를 버튼에 표시) */}
-                    <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginTop: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                    <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: '14px 16px', marginTop: 14, display: 'flex', alignItems: 'center', gap: '10px 14px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>채점 결과</span>
                       {[['grade', '등급만'], ['gradeScore', '등급+점수'], ['score', '점수만']].map(([k, lbl]) => (
                         <button key={k} onClick={() => setResultMode(k)}
@@ -1532,13 +1532,16 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                         </button>
                       ))}
                       {resultMode !== 'score' && (<>
-                        <span style={{ width: 1, height: 22, background: '#E2E8F0' }} />
-                        {[3, 4, 5].map((n) => (
-                          <button key={n} onClick={() => setSelfScale(n)}
-                            style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${selfScale === n ? '#2A75F3' : '#E2E8F0'}`, background: selfScale === n ? '#EFF6FF' : 'white', color: selfScale === n ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
-                            {selfScale === n ? '✓ ' : ''}{n}등급
-                          </button>
-                        ))}
+                        {/* [v3.93] 등급 수(3/4/5등급)는 결과 방식 버튼 아래 줄 — 「채점 결과」 글자 폭만큼 들여 맞춘다 */}
+                        <span style={{ flexBasis: '100%', height: 0 }} />
+                        <span style={{ display: 'flex', gap: 8, paddingLeft: 66 }}>
+  {[3, 4, 5].map((n) => (
+                            <button key={n} onClick={() => setSelfScale(n)}
+                              style={{ padding: '7px 16px', borderRadius: 999, border: `1.5px solid ${selfScale === n ? '#2A75F3' : '#E2E8F0'}`, background: selfScale === n ? '#EFF6FF' : 'white', color: selfScale === n ? '#1D4ED8' : '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer' }}>
+                              {selfScale === n ? '✓ ' : ''}{n}등급
+                            </button>
+                          ))}
+                        </span>
                       </>)}
                       <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginLeft: 'auto' }}>
                         {resultMode !== 'score' ? (() => {
