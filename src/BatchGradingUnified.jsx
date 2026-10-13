@@ -591,6 +591,56 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     if (existing.some((r) => r.sid == null)) setConfirm({ kind: 'replace' });
     appLogger.info('scan-ocr', '답안지 판별 완료', { files: out.length, unassigned: out.filter((r) => r.sid == null).length });
   };
+  /* ── [SCR-09 v1.30] 매핑 중 파일 추가 — 펜의 [↻ 다시 매칭]처럼, 이전 화면으로 돌아가지 않고 파일을 더 올린다.
+   *    새로 올린 파일만 판별해 목록에 더하고, 이미 정한 매칭 · 교사 지정은 그대로 둔다.
+   *    여러 쪽 PDF는 쪽을 나눠(빈 쪽 제외) 바로 넣는다. 새 스캔본이 학생 제출 답안 자리를 차지하면 학생 제출 답안은 미분류로(되돌리기 가능) */
+  const mapFileRef = useRef(null);
+  const [pendingJudge, setPendingJudge] = useState(false);
+  const judgeNewFiles = () => {
+    const seen = new Set(rows.filter((r) => r.fid != null).map((r) => r.fid));
+    const fresh = files.filter((f) => !seen.has(f.id));
+    if (!fresh.length) return 0;
+    const added = fresh.map((f) => {
+      const pl = f.plan;
+      if (!pl) return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason: IDENT_UNREAD, added: true };
+      if (pl.fault) {
+        const reason = pl.fault === 'other_task' ? '학생 미매칭 — 이 과제 답안지가 아닙니다' : pl.fault === 'not_in_roster' ? NOT_IN_ROSTER('1학년 1반 31번 오세훈') : IDENT_UNREAD;
+        return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason, noAssign: pl.fault === 'other_task', added: true };
+      }
+      if (!isTarget(pl.sid)) return { id: `r${f.id}`, fid: f.id, name: f.name, sid: null, q: null, sheet: null, conf: 'low', reason: NOT_SELECTED, readAs: pl.sid, added: true };
+      return { id: `r${f.id}`, fid: f.id, name: f.name, sid: pl.sid, q: pl.q, sheet: pl.page, conf: 'high', added: true };
+    });
+    const taken = new Set(added.filter((r) => r.sid).map((r) => `${r.sid}:${r.q}`));
+    setRows((prev) => [...prev.map((x) => (x.origin === 'existing' && x.sid && taken.has(`${x.sid}:${x.q}`) ? { ...x, sid: null, q: null, sheet: null, reason: REPLACED } : x)), ...added]);
+    return added.length;
+  };
+  useEffect(() => {
+    if (!pendingJudge || source !== 'scan' || step !== 'mapping') return undefined;
+    if (splitJobs.some((j) => j.status === 'splitting')) return undefined;          // PDF 쪽 나누기가 끝날 때까지
+    const ready = splitJobs.filter((j) => j.status === 'done');
+    if (ready.length) { ready.forEach((j) => { j.pages.forEach((pg) => { if (pg.blank) pg.selected = false; }); commitSplit(j); }); return undefined; }
+    setReading(true);
+    const t = setTimeout(() => {
+      const n = judgeNewFiles();
+      setReading(false); setPendingJudge(false);
+      setToast(n ? `파일 ${n}개를 판별해 목록에 더했습니다 — 이미 정한 매칭은 그대로입니다.` : '새로 판별할 파일이 없습니다.');
+      appLogger.info('scan-ocr', '매핑 중 파일 추가 판별', { added: n });
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingJudge, files, splitJobs, step, source]);
+  const addInMapping = (fileList) => { if (!fileList?.length) return; addFiles(fileList); setPendingJudge(true); };
+  /** 🧪 시연 — 빠진 답안지(장수 부족 · 결석생)를 스캔해 추가한 것으로 */
+  const demoAddMissing = () => {
+    if (!scanModel) return;
+    const plans = scanModel.students.flatMap((st) => st.qs.flatMap((x) => {
+      const need = x.q.sheets - x.list.length;
+      return need > 0 && !x.hasExisting ? Array.from({ length: need }, (_, k) => ({ sid: st.id, q: x.q.id, page: x.list.length + k + 1 })) : [];
+    }));
+    if (!plans.length) { setToast('빠진 답안지가 없습니다.'); return; }
+    appendFiles(plans.map((pl, i) => ({ name: `추가스캔_${String(i + 1).padStart(3, '0')}.jpg`, size: 950_000 + i * 20_000, kind: 'mock', plan: pl })));
+    setPendingJudge(true);
+  };
   /* 스캔 — 자리 조작 (SCR-05 §4.4): 맞교환 · 새 파일로 교체 · 빈 자리에 업로드 · 옮기기 · 삭제 */
   const swapRow = (oldR, newId) => setRows((prev) => prev.map((x) => {
     if (x.id === newId) return { ...x, sid: oldR.sid, q: oldR.q, sheet: oldR.sheet, conf: 'high', reason: null };
@@ -1181,6 +1231,26 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       ['answer', '학생 제출', model.students.filter((s) => s.badge === 'answer').length], ['none', '채점 제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
       <div style={{ ...card, flex: '0 0 28%', minWidth: 280, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 · [v1.13] 두 열을 약 10% 줄이고(28%) 남는 폭을 답안 미리보기에 */}
+        {/* [SCR-09 v1.30] 목록 맨 위 — 파일 추가(펜의 [↻ 다시 매칭] 자리와 같은 곳). 이전 화면으로 돌아가지 않는다 */}
+        <div style={{ padding: '8px 12px 6px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#B45309', lineHeight: 1.4 }}>※ 빠진 답안지는 파일을 추가하세요 — 새 파일만 판별해 목록에 더하고, 이미 정한 매칭은 그대로입니다.</span>
+            <button type="button" onClick={() => mapFileRef.current?.click()} disabled={pendingJudge}
+              title="스캔 파일(PDF · PNG · JPG)을 더 올립니다. 여러 쪽 PDF는 쪽을 나눠 넣습니다."
+              style={{ ...ghostBtn, flex: 'none', padding: '4px 10px', fontSize: 'var(--neo-font-size-xs)', whiteSpace: 'nowrap', background: '#2A75F3', color: 'white', border: 'none', opacity: pendingJudge ? 0.5 : 1 }}>
+              📁 파일 추가
+            </button>
+            <input ref={mapFileRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg" aria-label="스캔 파일 추가" style={{ display: 'none' }}
+              onChange={(e) => { addInMapping(e.target.files); e.target.value = ''; }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>
+            <span>올린 파일 {files.length}개</span>
+            <button type="button" onClick={demoAddMissing} disabled={pendingJudge} style={{ ...ghostBtn, marginLeft: 'auto', padding: '2px 8px', fontSize: 'var(--neo-font-size-xs)', color: '#7C3AED', borderColor: '#DDD6FE' }}>🧪 빠진 답안지 추가(시연)</button>
+          </div>
+          {uploadErrors.length > 0 && (
+            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B91C1C', fontWeight: 700 }}>⚠ 파일 {uploadErrors.length}개를 올리지 못했습니다 — {uploadErrors.join(' · ')}</div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 6, padding: 10, flexWrap: 'wrap', borderBottom: '1px solid #F1F5F9' }}>
           {tabs.map(([k, l, n]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
