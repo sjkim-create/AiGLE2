@@ -736,6 +736,13 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     }, 2200);
   };
   const reread = () => { setReading(true); setTimeout(() => { setJudged(connected.map((p) => p.id)); setReading(false); }, 1400); };
+  /** [SCR-08 v1.48] [↰ 다시 매칭] — 펜 연결로 가지 않고 이 화면에서 처음부터 다시 매칭. 교사가 고친 매칭은 모두 초기화 */
+  const rematchAll = () => {
+    setConfirm(null);
+    setManual({}); setDupPick({}); setUseSubmitted([]); setAssignPick({}); setAddedIds([]); setSel(null); setChangePen(null);
+    appLogger.info('usePenDataBatchUploadModalController', '다시 매칭 — 교사 매칭 초기화', { pens: connected.length });
+    reread();
+  };
   // [SCR-08 v1.45] 매핑 중 새로 연결된 펜(USB 바꿔 꽂기)은 자동으로 다시 읽는다 — [↻ 다시 매칭] 버튼 삭제
   useEffect(() => {
     if (source !== 'cradle' || step !== 'mapping' || reading || !cradleModel?.unread.length) return;
@@ -1823,7 +1830,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           <>
             {/* [SCR-08 v1.41] 크래들 그림을 없앴으므로 펜을 더 꽂거나 바꾸려면 ① 펜 연결로 돌아간다(매칭 기록 유지 → 돌아와서 [↻ 다시 매칭]) */}
             {source === 'cradle' && link === 'cradle' && (
-              <button type="button" style={ghostBtn} title="① 펜 연결로 돌아가 펜을 더 꽂거나 바꾼 뒤 다시 매칭합니다(매칭 기록 유지)" onClick={() => { setStep('import'); setSel(null); }}>↰ 다시 매칭</button>
+              <button type="button" style={ghostBtn} title="이 화면에서 펜 데이터를 처음부터 다시 매칭합니다" onClick={() => setConfirm({ kind: 'rematch' })}>↰ 다시 매칭</button>
             )}
             {source === 'scan' && (
               <button type="button" style={ghostBtn} title="① 파일 업로드로 돌아가 파일을 다시 고른 뒤 처음부터 다시 매칭합니다" onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 다시 매칭</button>
@@ -1852,6 +1859,15 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               : <>답안지 판별 결과와 직접 지정한 내용이 모두 사라집니다. <strong>다시 채점하려면 스캔 파일을 다시 올려야 합니다.</strong></>,
             <><button type="button" style={ghostBtn} onClick={() => setConfirm(null)}>계속 매핑하기</button>
               <button type="button" style={{ ...primaryBtn(true), background: '#EF4444' }} onClick={() => resetAll(confirm.next)}>나가기</button></>);
+        }
+        if (confirm.kind === 'rematch') {
+          return box('↰ 다시 매칭할까요?',
+            <>직접 고친 매칭이 <strong style={{ color: '#C2410C' }}>모두 초기화</strong>됩니다.
+              <div style={{ marginTop: 8, padding: '8px 12px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, color: '#1E40AF' }}>
+                💡 지금 매칭으로 먼저 <strong>[AI 채점 시작]</strong>하고, 빠진 학생은 나중에 다시 채점하는 것을 권장합니다.
+              </div></>,
+            <><button type="button" style={ghostBtn} onClick={() => setConfirm(null)}>취소</button>
+              <button type="button" style={{ ...primaryBtn(true), background: '#EA580C' }} onClick={rematchAll}>초기화하고 다시 매칭</button></>);
         }
         if (confirm.kind === 'replace') {
           return box('🔄 이미 답안이 있는 학생이 있습니다',
