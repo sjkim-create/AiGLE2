@@ -1179,7 +1179,15 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const renderPenList = () => {
     const infos = cradleModel.penInfo;
     // [SCR-08 v1.47] 학생과 연결되지 않은 빈 펜(필기 없음)은 목록에서 빼고 요약에 「빈 펜 N자루」로만 — 채점 제외 = 채점되지 않는 학생만
-    const pens = connected.filter((p) => infos[p.id]?.kind !== 'empty');
+    // [SCR-08 v1.50] 크래들 슬롯 순이 아니라 학생 이름 가나다 순(채점 대상 학생 목록처럼). 행의 번호 칸 = 그 학생 펜이 꽂힌 자리.
+    //   학생이 정해지지 않은 펜(미분류 · 학생 미지정)은 맨 뒤에 슬롯 순
+    const nameOf = (p) => { const sid = infos[p.id]?.sid; return sid ? studentById(sid)?.name || '' : ''; };
+    const pens = connected.filter((p) => infos[p.id]?.kind !== 'empty').slice().sort((a, b) => {
+      const na = nameOf(a); const nb = nameOf(b);
+      if (na && nb) return na.localeCompare(nb, 'ko') || a.slot - b.slot;
+      if (na) return -1; if (nb) return 1;
+      return a.slot - b.slot;
+    });
     const nCheck = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'check').length;
     const nNone = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'none').length + cradleModel.absent.length;
     const show = (p) => tab === 'all' || (infos[p.id] && penTab(infos[p.id]) === tab);
@@ -1202,7 +1210,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#ECFEFF', borderBottom: '1px solid #A5F3FC', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#0E7490' }}>
                 학생 제출 · 채점 대상 {cradleModel.submitted.length}명
               </div>
-              {cradleModel.submitted.map((s) => {
+              {cradleModel.submitted.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((s) => {
                 const on = sel?.type === 'submitted' && sel.sid === s.id;
                 return (
                   <button key={s.id} type="button" onClick={() => { setSel({ type: 'submitted', sid: s.id }); setPageIdx(0); }}
@@ -1221,7 +1229,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#64748B' }}>
                 펜 없음 · 채점 제외 {cradleModel.absent.length}명
               </div>
-              {cradleModel.absent.map((s) => {
+              {cradleModel.absent.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((s) => {
                 const on = sel?.type === 'absent' && sel.sid === s.id;
                 return (
                   <button key={s.id} type="button" onClick={() => setSel({ type: 'absent', sid: s.id })}
