@@ -169,7 +169,12 @@ export const RESULT_MODE_LABEL = { grade: '등급', gradeScore: '점수(등급)'
 const GRADE_PCT = { '매우우수': 0.95, '매우 우수': 0.95, '우수': 0.85, '보통': 0.7, '노력': 0.55, '매우 노력': 0.4 };
 export const gradeToPoints = (grade, max) => { const pct = GRADE_PCT[grade]; return pct == null || !max ? null : Math.round(pct * max); };
 /** 등급명·(있으면) 점수 → 화면 표기. 점수 모드면 "n점", 등급 모드면 등급명 그대로 */
-export const formatResult = (grade, { resultMode = 'grade', maxPoints = 0, score } = {}) => {
+// scale(3/4/5) — 결과 발송 때 고른 등급 단계. 있으면 점수(또는 등급의 대표 점수)를 그 단계 등급으로 다시 환산한다 (SCR-08 v1.28)
+export const formatResult = (grade, { resultMode = 'grade', maxPoints = 0, score, scale } = {}) => {
+  if (scale && maxPoints && resultMode !== 'score' && grade && grade !== '-') {
+    const p0 = (score != null && score !== '') ? Number(score) : gradeToPoints(grade, maxPoints);
+    if (p0 != null) grade = scoreToGrade(p0, maxPoints, scale);
+  }
   if (resultMode === 'gradeScore') { // [SCR-08 v1.27] 점수(등급) — 「17점(우수)」
     if (!grade || grade === '-') return '-';
     const p = (score != null && score !== '') ? Number(score) : gradeToPoints(grade, maxPoints);

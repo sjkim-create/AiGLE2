@@ -16,7 +16,7 @@ import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
 import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE, processResultFor, learningFeedbackOf } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
-import { formatResult, RESULT_MODE_LABEL } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
+import { formatResult, RESULT_MODE_LABEL, GRADE_NAMES } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
 import CradleGradingModal from './CradleGradingModal';
 import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS, UNIFIED_DATA_STATE } from './BatchGradingUnified'; // 일괄 채점 통합 시안 — 목록에서 버튼으로 분기
@@ -544,19 +544,21 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
   // [일괄 채점 통합 · SCR-08 v1.26] 결과 표시 방식은 과제 등록이 아니라 결과 발송 때 고른다 — 점수 · 점수(등급) · 등급
   //   고른 방식은 학생마다 sentMode로 남아 목록 · 리포트 표기에 쓰인다
-  const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수(등급)', '17점(우수)'], ['grade', '등급', '우수']];
+  const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수(등급)', '17점(우수)'], ['grade', '등급', '우수']]; // 순서: 점수 · 점수(등급) · 등급
   const [sendAsk, setSendAsk] = useState(null); // { ids }
   const [sendMode, setSendMode] = useState('score');
+  const [sendScale, setSendScale] = useState(5); // [SCR-08 v1.28] 등급이 들어가면(점수(등급) · 등급) 3/4/5단계
   const openSendAsk = (ids) => { setSendMode(currentTask.resultMode === 'grade' ? 'grade' : 'score'); setSendAsk({ ids }); };
   const confirmSend = () => {
     const { ids } = sendAsk;
-    setStudents(prev => prev.map(s => (ids.includes(s.id) ? { ...s, status: '결과 발송 완료', sentMode: sendMode } : s)));
+    const scale = sendMode === 'score' ? undefined : sendScale;
+    setStudents(prev => prev.map(s => (ids.includes(s.id) ? { ...s, status: '결과 발송 완료', sentMode: sendMode, sentScale: scale } : s)));
     setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
     setSendAsk(null);
-    setInvalidMsg(`${ids.length}명에게 결과를 「${SEND_MODES.find(([k]) => k === sendMode)[1]}」(으)로 발송했습니다.`);
+    setInvalidMsg(`${ids.length}명에게 결과를 「${SEND_MODES.find(([k]) => k === sendMode)[1]}${scale ? ` · ${scale}단계` : ''}」(으)로 발송했습니다.`);
   };
   const modeOf = (st) => (isUnified && st?.sentMode) || resultMode;
-  const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score });
+  const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score, scale: isUnified ? st?.sentScale : undefined });
 
   const handleBulkResultSend = () => {
     if (bulkPreSendIds.length === 0) return;
@@ -572,7 +574,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     if (bulkSentIds.length === 0) return;
     const proceed = window.confirm(`선택된 ${bulkSentIds.length}명의 결과 발송을 취소하시겠습니까?`);
     if (!proceed) return;
-    setStudents(prev => prev.map(s => bulkSentIds.includes(s.id) ? { ...s, status: '결과 발송 전', sentMode: undefined } : s));
+    setStudents(prev => prev.map(s => bulkSentIds.includes(s.id) ? { ...s, status: '결과 발송 전', sentMode: undefined, sentScale: undefined } : s));
     setSelectedIds([]);
   };
 
@@ -1063,6 +1065,20 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             </label>
                           ))}
                         </div>
+                        {sendMode !== 'score' && (
+                          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#334155' }}>등급 단계</span>
+                            <span role="radiogroup" aria-label="등급 단계" style={{ display: 'flex', gap: 6 }}>
+                              {[3, 4, 5].map((n) => (
+                                <button key={n} type="button" role="radio" aria-checked={sendScale === n} onClick={() => setSendScale(n)}
+                                  style={{ padding: '6px 14px', borderRadius: 999, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', border: `1.5px solid ${sendScale === n ? '#2A75F3' : '#E2E8F0'}`, background: sendScale === n ? '#EFF6FF' : 'white', color: sendScale === n ? '#1D4ED8' : '#475569' }}>
+                                  {sendScale === n ? '✓ ' : ''}{n}단계
+                                </button>
+                              ))}
+                            </span>
+                            <span style={{ flexBasis: '100%', fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{GRADE_NAMES[sendScale].join(' · ')} — 점수를 이 단계 등급으로 환산해 보입니다.</span>
+                          </div>
+                        )}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
                           <button type="button" onClick={() => setSendAsk(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
                           <button type="button" onClick={confirmSend} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📤 결과 발송</button>
@@ -1450,7 +1466,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
           alert(`${student.name} 학생에게 결과가 발송되었습니다.`);
         }}
         onResultSendCancel={(student) => {
-          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전', sentMode: undefined } : s));
+          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '결과 발송 전', sentMode: undefined, sentScale: undefined } : s));
         }}
         onRevertToStep2={(student) => {
           setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: '채점 확인' } : s));
@@ -1758,7 +1774,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <tr>
                             <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>1</td>
                             <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>3</td>
-                            <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>{rm === 'grade' ? `${previewStudent.teacherGrade || '우수'} / 4단계 척도` : `${fmtFor(previewStudent, previewStudent.teacherGrade || '우수', previewStudent.teacherScore)} / ${totalPoints}점 만점`}</td>
+                            <td style={{ padding: '10px 12px', border: '1px solid #E5E7EB' }}>{rm === 'grade' ? `${fmtFor(previewStudent, previewStudent.teacherGrade || '우수', previewStudent.teacherScore)} / ${(isUnified && previewStudent.sentScale) || 4}단계 척도` : `${fmtFor(previewStudent, previewStudent.teacherGrade || '우수', previewStudent.teacherScore)} / ${totalPoints}점 만점`}</td>
                           </tr>
                         </tbody>
                       </table>
