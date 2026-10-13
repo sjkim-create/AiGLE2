@@ -1191,21 +1191,23 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const nCheck = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'check').length;
     const nNone = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'none').length + cradleModel.absent.length;
     const show = (p) => tab === 'all' || (infos[p.id] && penTab(infos[p.id]) === tab);
+    const nOk = pens.filter((p) => infos[p.id] && penTab(infos[p.id]) === 'ok').length + cradleModel.submitted.length;
+    // [SCR-08 v1.51] 필터 = 셀렉트 박스 — 전체 · 답안 있음(채점 대상: 정상 펜 + 학생 제출) · 확인 필요 · 채점 제외
+    const FILTERS = [['all', '전체', pens.length + cradleModel.submitted.length + cradleModel.absent.length], ['ok', '답안 있음', nOk], ['check', '확인 필요', nCheck], ['none', '채점 제외', nNone]];
     return (
       <div style={{ ...card, flex: '0 0 28%', minWidth: 280, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 · [v1.13] 두 열을 약 10% 줄이고(28%) 남는 폭을 답안 미리보기에 */}
         {renderMinimap()}
         {/* [SCR-08 v1.8] 필터는 미니맵 아래 — 아래 목록을 거르는 버튼이라 목록과 한 묶음 */}
         <div style={{ display: 'flex', gap: 6, padding: '8px 10px', borderBottom: '1px solid #F1F5F9' }}>
-          {/* [SCR-08 v1.49] 필터 = 전체 · 확인 필요 · 채점 제외 — 학생 제출은 탭 없이 목록의 상태 배지로만 */}
-          {[['all', '전체', pens.length], ['check', '확인 필요', nCheck], ['none', '채점 제외', nNone]].map(([k, l, n]) => (
-            <button key={k} type="button" onClick={() => setTab(k)}
-              style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
-          ))}
+          <select value={tab} onChange={(e) => setTab(e.target.value)} aria-label="목록 필터"
+            style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#334155', minWidth: 150 }}>
+            {FILTERS.map(([k, l, n]) => <option key={k} value={k}>{l} ({n})</option>)}
+          </select>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {/* 목록은 한 줄로 이어진다(스캔 목록과 같은 모양). 슬롯 순서 */}
           {pens.filter(show).map(penRow)}
-          {tab === 'all' && cradleModel.submitted.length > 0 && (
+          {(tab === 'all' || tab === 'ok') && cradleModel.submitted.length > 0 && (
             <div>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#ECFEFF', borderBottom: '1px solid #A5F3FC', padding: '8px 12px', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#0E7490' }}>
                 학생 제출 · 채점 대상 {cradleModel.submitted.length}명
@@ -1250,9 +1252,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
 
   /** 스캔 — 좌측 학생 목록 (+ 미분류 바) */
   const renderStudentList = () => {
-    const list = model.students.filter((s) => tab === 'all' || s.badge === tab);
+    const list = model.students.filter((s) => tab === 'all' || s.badge === tab || (tab === 'ok' && s.badge === 'answer'));
     const uncScans = model.unc.filter((r) => r.origin !== 'existing'); // [SCR-09 v1.33] 학생을 찾지 못한 답안지 — 펜의 미분류 펜처럼 확인 필요에 센다
-    const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length + uncScans.length],
+    // [SCR-09 v1.37] 필터 = 셀렉트 박스 — 전체 · 답안 있음(정상 + 학생 제출) · 확인 필요 · 채점 제외
+    const FILTERS = [['all', '전체', model.students.length], ['ok', '답안 있음', model.students.filter((s) => s.badge === 'ok' || s.badge === 'answer').length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length + uncScans.length],
       /* [SCR-09 v1.36] 학생 제출은 탭 없이 상태 배지로만 */ ['none', '채점 제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
       <div style={{ ...card, flex: '0 0 28%', minWidth: 280, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 · [v1.13] 두 열을 약 10% 줄이고(28%) 남는 폭을 답안 미리보기에 */}
@@ -1277,10 +1280,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, padding: 10, flexWrap: 'wrap', borderBottom: '1px solid #F1F5F9' }}>
-          {tabs.map(([k, l, n]) => (
-            <button key={k} type="button" onClick={() => setTab(k)}
-              style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${tab === k ? '#2A75F3' : '#E2E8F0'}`, background: tab === k ? '#2A75F3' : 'white', color: tab === k ? 'white' : '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l} ({n})</button>
-          ))}
+          <select value={tab} onChange={(e) => setTab(e.target.value)} aria-label="목록 필터"
+            style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#334155', minWidth: 150 }}>
+            {FILTERS.map(([k, l, n]) => <option key={k} value={k}>{l} ({n})</option>)}
+          </select>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {list.map((s) => {
