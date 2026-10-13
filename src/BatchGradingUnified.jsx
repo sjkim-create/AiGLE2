@@ -83,7 +83,7 @@ const buildPens = () => {
     id: `PEN-${String(pens.length + 1).padStart(3, '0')}`, slot: pens.length + 1,
     battery: [92, 85, 74, 61, 88, 57, 96, 43, 79, 68][pens.length % 10],
     firmware: pens.length === 2 ? '2.0.5' : '2.1.0', needsUpdate: pens.length === 2,
-    flaky: pens.length === 7, pages: {},
+    flaky: pens.length === 16, pages: {}, // [SCR-08 v1.46] 인식 실패 시연 = 빈 펜(슬롯 2-7) — 장하린 「답안 없음」 펜과 겹치지 않게
     /* [SCR-07 v4.23] 저장 잔량(%) — 20% 미만 주의 · 10% 미만 위험. 채점 성공으로 데이터가 지워지면 회복 */
     capacity: Math.min(96, [88, 62, 36, 79, 17, 53, 7, 29, 45, 70][pens.length % 10] + (pens.length >= 10 ? 15 : 0)),
     extraBooks: [], ...p,
@@ -115,7 +115,7 @@ const capTone = (pct) => (pct < 10 ? { color: '#991B1B', bar: '#DC2626' } : pct 
 const buildScanPlan = () => {
   const plan = [];
   GROUP.forEach((s, i) => {
-    if (i === 5) return;                           // 결석생 — 한 장도 없음 → 제외
+    if (i === 5 || i === 8) return;                // 결석생(강지호) · 답안 없음(장하린) — 한 장도 없음 → 채점 제외 (미채점 「데이터 없음」과 같게)
     QUESTIONS.forEach((q) => {
       let need = q.sheets;
       if (i === 0 && q.id === 2) need += 1;        // 답안지 초과(중복 스캔)
@@ -1030,14 +1030,14 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const renderSummaryBar = () => {
     const counts = {
       ok: model.gradable.length,
-      check: source === 'cradle' ? Object.values(cradleModel.penInfo).filter((x) => x.kind === 'dup' || x.kind === 'unc').length : model.students.filter((s) => s.badge === 'check').length,
+      check: source === 'cradle' ? Object.values(cradleModel.penInfo).filter((x) => x.kind === 'dup' || x.kind === 'unc').length : model.students.filter((s) => s.badge === 'check').length + model.unc.filter((r) => r.origin !== 'existing').length,
       none: model.students.filter((s) => s.badge === 'none').length,
       unc: model.unc.length,
     };
     return (
       <div style={{ ...card, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>
         <span style={{ color: '#166534' }}>🟢 채점 대상 {counts.ok}명</span>
-        <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}{source === 'cradle' ? '자루' : '명'}</span>
+        <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}{source === 'cradle' ? '자루' : '건'}</span>
         <span style={{ color: '#94A3B8' }}>채점 제외 {counts.none}명</span>
         <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '자루'}</span>
         <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500, flex: 1, minWidth: 200 }}>{model.manifest}</span>
@@ -1225,7 +1225,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /** 스캔 — 좌측 학생 목록 (+ 미분류 바) */
   const renderStudentList = () => {
     const list = model.students.filter((s) => tab === 'all' || s.badge === tab);
-    const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length],
+    const uncScans = model.unc.filter((r) => r.origin !== 'existing'); // [SCR-09 v1.33] 학생을 찾지 못한 답안지 — 펜의 미분류 펜처럼 확인 필요에 센다
+    const tabs = [['all', '전체', model.students.length], ['check', '확인 필요', model.students.filter((s) => s.badge === 'check').length + uncScans.length],
       ['answer', '학생 제출', model.students.filter((s) => s.badge === 'answer').length], ['none', '채점 제외', model.students.filter((s) => s.badge === 'none').length]];
     return (
       <div style={{ ...card, flex: '0 0 28%', minWidth: 280, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>{/* [v1.10] 목록 폭 = 매핑 열 폭 · [v1.13] 두 열을 약 10% 줄이고(28%) 남는 폭을 답안 미리보기에 */}
@@ -1272,6 +1273,11 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
             );
           })}
         </div>
+        {tab === 'check' && uncScans.length > 0 && (
+          <div style={{ padding: '8px 12px', borderTop: '1px solid #FDBA74', background: '#FFF7ED', fontSize: 'var(--neo-font-size-xs)', color: '#9A3412', fontWeight: 700 }}>
+            미분류 답안지 {uncScans.length}장도 확인이 필요합니다 — 아래 [미분류 파일]에서 학생 · 문항을 골라 [매칭]하세요.
+          </div>
+        )}
         <button type="button" onClick={() => { setSel({ type: 'unc' }); setPageIdx(0); }}
           style={{ padding: '12px 14px', border: 'none', background: sel?.type === 'unc' ? '#1E293B' : '#475569', color: 'white', display: 'flex', justifyContent: 'space-between', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }}>
           <span>미분류 파일</span><span>{model.unc.length}장 ›</span>
