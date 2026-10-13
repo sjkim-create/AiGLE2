@@ -925,7 +925,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                   <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800 }}>[{currentTask.type}] {currentTask.title}</h2>
                   <div className="stats-summary" style={{ fontSize: 'var(--neo-font-size-sm)', color: '#8A94A1' }}>
                     배포일: {currentTask.date} ∙ 1개 그룹 ∙ {roster.length}명
-                    <button className="btn-card-detail" style={{ width: 'auto', height: 'auto', padding: '2px 8px', marginLeft: '10px', fontSize: 'var(--neo-font-size-xs)', borderRadius: '4px' }}>과제 상세보기 &gt;</button>
+                    {!isUnified && <button className="btn-card-detail" style={{ width: 'auto', height: 'auto', padding: '2px 8px', marginLeft: '10px', fontSize: 'var(--neo-font-size-xs)', borderRadius: '4px' }}>과제 상세보기 &gt;</button>}{/* [일괄 채점 통합 · SCR-08 v1.38] 과제 상세보기 버튼 삭제 */}
                   </div>
                 </div>
                 <div className="info-right">
