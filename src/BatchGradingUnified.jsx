@@ -1137,7 +1137,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       {/* [SCR-08 v1.12] 맨 위 한 줄 — 펜 오류 안내 + [↻ 다시 매칭].
           펜을 다시 꽂거나 빼서 구성이 바뀌면 버튼을 주황으로 강조하고 읽지 않은 펜 수를 붙인다 */}
       {/* [SCR-08 v1.45] 목록 위 [↻ 다시 매칭] 삭제 — 펜을 더 꽂거나 바꾸려면 아래 [↰ 다시 매칭](① 펜 연결). USB에서 펜을 바꿔 꽂으면 자동으로 다시 읽는다 */}
-      <div style={{ fontSize: 10, color: '#B45309', lineHeight: 1.4, marginBottom: 4 }}>{link === 'usb' ? '※ 펜을 바꿔 꽂으면 자동으로 다시 읽습니다.' : '※ 오류가 난 펜은 목록에 나오지 않습니다 — 펜을 더 꽂거나 바꾸려면 아래 [↰ 펜 연결로]를 누르세요.'}</div>
+      <div style={{ fontSize: 10, color: '#B45309', lineHeight: 1.4, marginBottom: 4 }}>{link === 'usb' ? '※ 펜을 바꿔 꽂으면 자동으로 다시 읽습니다.' : '※ 오류가 난 펜은 목록에 나오지 않습니다 — 펜을 더 꽂거나 바꾸려면 아래 [↰ 다시 매칭]을 누르세요.'}</div>
       {link === 'usb' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--neo-font-size-xs)' }}>
           <div style={{ flex: '1 1 100%' }}>{renderUsbEmulator(true)}</div>
@@ -1331,7 +1331,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       return (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>{s.name}</span><span style={{ color: '#94A3B8' }}>{s.grade}</span><span style={pill(BADGE.none)}>제외</span></div>
-          <div style={noteBox('muted')}>거치된 펜에서 이 학생의 답안을 찾지 못해 채점에서 제외됩니다(미채점에 남습니다). 펜을 찾았다면 아래 [↰ 펜 연결로] 돌아가 크래들에 꽂거나, 미분류 펜을 이 학생에게 매칭하세요.</div>
+          <div style={noteBox('muted')}>거치된 펜에서 이 학생의 답안을 찾지 못해 채점에서 제외됩니다(미채점에 남습니다). 펜을 찾았다면 아래 [↰ 다시 매칭]으로 돌아가 크래들에 꽂거나, 미분류 펜을 이 학생에게 매칭하세요.</div>
         </>
       );
     }
@@ -1823,10 +1823,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           <>
             {/* [SCR-08 v1.41] 크래들 그림을 없앴으므로 펜을 더 꽂거나 바꾸려면 ① 펜 연결로 돌아간다(매칭 기록 유지 → 돌아와서 [↻ 다시 매칭]) */}
             {source === 'cradle' && link === 'cradle' && (
-              <button type="button" style={ghostBtn} title="① 펜 연결로 돌아가 펜을 더 꽂거나 바꾼 뒤 다시 매칭합니다(매칭 기록 유지)" onClick={() => { setStep('import'); setSel(null); }}>↰ 펜 연결로</button>
+              <button type="button" style={ghostBtn} title="① 펜 연결로 돌아가 펜을 더 꽂거나 바꾼 뒤 다시 매칭합니다(매칭 기록 유지)" onClick={() => { setStep('import'); setSel(null); }}>↰ 다시 매칭</button>
             )}
             {source === 'scan' && (
-              <button type="button" style={ghostBtn} title="① 파일 업로드로 돌아가 파일을 다시 고른 뒤 처음부터 다시 매칭합니다" onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 파일 다시 선택</button>
+              <button type="button" style={ghostBtn} title="① 파일 업로드로 돌아가 파일을 다시 고른 뒤 처음부터 다시 매칭합니다" onClick={() => { setStep('import'); setSel(null); setRows([]); }}>↰ 다시 매칭</button>
             )}
             <button type="button" disabled={model?.blocked} onClick={requestGrading} style={primaryBtn(!model?.blocked)}>🤖 {model?.gradable.length || 0}명 AI 채점 시작</button>
           </>
