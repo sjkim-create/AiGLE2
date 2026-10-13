@@ -547,8 +547,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const SEND_MODES = [['score', '점수', '17점'], ['gradeScore', '점수(등급)', '17점(우수)'], ['grade', '등급', '우수']]; // 순서: 점수 · 점수(등급) · 등급
   const [sendAsk, setSendAsk] = useState(null); // { ids }
   const [sendMode, setSendMode] = useState('score');
-  const [sendScale, setSendScale] = useState(5); // [SCR-08 v1.28] 등급이 들어가면(점수(등급) · 등급) 3/4/5단계
-  const openSendAsk = (ids) => { setSendMode(currentTask.resultMode === 'grade' ? 'grade' : 'score'); setSendAsk({ ids }); };
+  const [sendScale, setSendScale] = useState(3); // [SCR-08 v1.28~29] 등급이 들어가면(점수(등급) · 등급) 3/4/5단계 — 기본 3단계
+  const openSendAsk = (ids) => { setSendMode(currentTask.resultMode === 'grade' ? 'grade' : 'score'); setSendScale(3); setSendAsk({ ids }); };
   const confirmSend = () => {
     const { ids } = sendAsk;
     const scale = sendMode === 'score' ? undefined : sendScale;
