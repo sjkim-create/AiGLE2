@@ -578,6 +578,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const sentDateOf = (st) => (st.status === '결과 발송 완료' ? (fmtSentAt(st.sentAt) || currentTask.date) : '-');
   const modeOf = (st) => (isUnified && st?.sentMode) || resultMode;
   const fmtFor = (st, grade, score) => formatResult(grade, { resultMode: modeOf(st), maxPoints: totalPoints, score, scale: isUnified ? st?.sentScale : undefined });
+  // [일괄 채점 통합 · SCR-01 v4.34] 채점 결과 내보내기 — 결과 발송 때 고른 방식 · 단계를 그대로 쓴다
+  const sentModeLabel = (st) => {
+    if (!st?.sentMode) return '-';
+    const lbl = (SEND_MODES.find(([k]) => k === st.sentMode) || [])[1] || st.sentMode;
+    return st.sentScale ? `${lbl} · ${st.sentScale}단계` : lbl;
+  };
 
   const handleBulkResultSend = () => {
     if (bulkPreSendIds.length === 0) return;
@@ -1559,7 +1565,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
               } else {
                 setExportStatus('done');
                 setTimeout(() => {
-                  alert(`${total}명 명단이 엑셀로 다운로드되었습니다.\n파일명: ${currentTask.title}.xlsx\n열: 이름 · 학년반번호 · 등급 · 피드백`);
+                  alert(`${total}명 명단이 엑셀로 다운로드되었습니다.\n파일명: ${currentTask.title}.xlsx\n열: 이름 · 학년반번호 · ${isUnified ? '결과(학생마다 결과 발송 때 고른 방식)' : '등급'} · 피드백`);
                   setIsExportModalOpen(false);
                   setExportStatus('ready');
                   setExportProgress(0);
@@ -1642,7 +1648,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                 <div style={{ padding: '12px 14px', background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: '8px', marginBottom: '1rem', fontSize: 'var(--neo-font-size-sm)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
                     <span style={{ fontWeight: 700, color: '#1E2225' }}>📊 엑셀 열 구성 — 고정</span>
-                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>이름 · 학년반번호 · 등급 · 피드백 (4열)</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{isUnified ? '이름 · 학년반번호 · 결과 · 피드백 (4열) — 결과는 학생마다 결과 발송 때 고른 방식(점수 · 점수(등급) · 등급 · 단계)으로' : '이름 · 학년반번호 · 등급 · 피드백 (4열)'}</span>
                   </div>
                   <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', lineHeight: 1.5 }}>
                     파일명: <strong style={{ color: '#1E2225' }}>{`${currentTask?.title || '과제명'}.xlsx`}</strong> · 학생별 1행. 엑셀은 <strong>문항·답안 미포함</strong>이며 미리보기를 지원하지 않습니다.
@@ -1665,6 +1671,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>이름</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>학년/반/번호</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>상태</th>
+                          {isUnified && <th style={{ padding: '10px 12px', textAlign: 'left' }} title="결과 발송 때 고른 표시 방식으로 내보냅니다">결과 (발송 방식)</th>}
                           <th style={{ padding: '10px 12px', textAlign: 'left' }}>과정 분석</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left', width: '70px' }}>미리보기</th>
                         </tr>
@@ -1683,6 +1690,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                                 {s.status}
                               </span>
                             </td>
+                            {isUnified && (
+                              <td style={{ padding: '10px 12px' }}>
+                                <div style={{ fontWeight: 700, color: '#1E293B' }}>{s.sentMode ? fmtFor(s, s.teacherGrade || '우수', s.teacherScore) : '-'}</div>
+                                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>{sentModeLabel(s)}</div>
+                              </td>
+                            )}
                             <td style={{ padding: '10px 12px' }}>
                               {s.handwritingEvaluation ? (
                                 <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: '#F3E8FF', color: '#86198F' }}>✎ 완료</span>
@@ -1762,6 +1775,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div><div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>교과</div><div style={{ color: '#1E293B', fontWeight: 700, marginTop: '2px' }}>수학</div></div>
                     <div><div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>출제일자</div><div style={{ color: '#1E293B', fontWeight: 700, marginTop: '2px' }}>2026년 4월 13일</div></div>
                   </div>
+                  {isUnified && previewStudent.sentMode && (
+                    <div style={{ marginTop: '8px', fontSize: 'var(--neo-font-size-sm)' }}>
+                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>결과 </span>
+                      <strong style={{ color: '#1E293B' }}>{fmtFor(previewStudent, previewStudent.teacherGrade || '우수', previewStudent.teacherScore)}</strong>
+                      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}> · 표시 방식 {sentModeLabel(previewStudent)}</span>
+                    </div>
+                  )}
                 </div>
               );
               // 페이지 구분선 (화면 전용, 출력 시 숨김)
