@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE, processResultFor, learningFeedbackOf, GUIDE_EMPTY_MESSAGE } from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE, processResultFor, learningFeedbackOf, GUIDE_EMPTY_MESSAGE, INVALID_FEEDBACK_MESSAGE, INVALID_GUIDE_MESSAGE, INVALID_HW_MESSAGE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL, GRADE_NAMES } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
@@ -1844,6 +1844,17 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       {(() => {
                         const fb = learningFeedbackOf(previewStudent, processResultFor(previewStudent, currentTask.type));
                         const para = (t) => t.split('\n').map((line, k) => <div key={k}>{line}</div>);
+                        // [SCR-03 v5.24] 무효 처리된 제출 — 피드백 · 학습 안내 대신 안내 문구 (일괄 채점 통합)
+                        if (isUnified && previewStudent.invalid) {
+                          return (
+                            <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155' }}>
+                              <div style={{ fontWeight: 700, color: '#B91C1C', marginBottom: '0.25rem' }}>무효 처리</div>
+                              <div style={{ marginBottom: '0.75rem' }}>{INVALID_FEEDBACK_MESSAGE}</div>
+                              <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.25rem' }}>학습 안내</div>
+                              <div>{INVALID_GUIDE_MESSAGE}</div>
+                            </div>
+                          );
+                        }
                         return (
                           <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155' }}>
                             <div style={{ fontWeight: 700, color: '#65A30D', marginBottom: '0.25rem' }}>이런 점이 좋아요</div>
@@ -1892,6 +1903,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             {(() => {
                               // [POP-19 v2.12] 상세 화면과 같은 결과 — 상세를 열어 보지 않은 학생도 AI 채점에 딸려 온 분석이 있으면 캐릭터가 실린다
                               const hw = processResultFor(previewStudent, currentTask.type);
+                              if (isUnified && previewStudent.invalid) return <div>{INVALID_HW_MESSAGE}</div>; // [SCR-03 v5.24]
                               if (!hw || hw.insufficient) {
                                 /* 분석 내용 없음(미분석 · 필기 부족) — 캐릭터 대신 안내 문구만 (상세 화면과 동일) */
                                 return <div>{hw?.message || PROCESS_INSUFFICIENT_MESSAGE}</div>;
@@ -1916,7 +1928,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             {/* 강점·개선·성장 제안은 등급평가 피드백에 합쳐졌으므로 여기서는 캐릭터와 총평만 싣는다 (舊 학습 행동 밀착 가이드 삭제) */}
                             {(() => {
                               const hw = processResultFor(previewStudent, currentTask.type);
-                              if (!hw || hw.insufficient) return null;
+                              if (!hw || hw.insufficient || (isUnified && previewStudent.invalid)) return null; // [SCR-03 v5.24] 무효 처리면 총평 없음
                               return (<>
                                 <div style={{ fontWeight: 700, color: '#86198F', marginBottom: '0.25rem' }}>총평</div>
                                 <div>{hw.evaluationSummary?.totalEvaluation || '-'}</div>

@@ -46,6 +46,10 @@ export const PROCESS_INSUFFICIENT_MESSAGE =
 /* [SCR-03 v5.23] 학습 안내 — 만점이라 고칠 내용이 없을 때 (AI 필기 분석의 「분석불가」 안내와 같은 자리 · 같은 말투) */
 export const GUIDE_EMPTY_MESSAGE =
     '모든 채점 기준을 충족해 따로 고칠 부분이 없어요. 지금처럼 풀이 과정을 차근차근 적는 습관을 이어가고, 한 단계 더 어려운 문제에도 도전해 보세요.';
+/* [SCR-03 v5.24] 무효 처리된 제출 — AI 채점을 하지 않아 피드백 · 학습 안내 · AI 필기 분석이 모두 없다. 빈 칸 대신 안내 */
+export const INVALID_FEEDBACK_MESSAGE = '제출이 무효 처리되어 채점하지 않았어요. 궁금한 점은 선생님께 여쭤보세요.';
+export const INVALID_GUIDE_MESSAGE = '무효 처리된 제출이라 학습 안내가 없어요.';
+export const INVALID_HW_MESSAGE = '무효 처리된 제출이라 필기 분석을 하지 않았어요.';
 export const isPenDataInsufficient = (penStats) =>
     !!penStats && (penStats.strokes < PROCESS_MIN_STROKES || penStats.durationSec < PROCESS_MIN_DURATION_SEC);
 
@@ -433,7 +437,26 @@ const GradingReviewModal = ({
     const shownTotal = activePicks.some(isPicked) ? sum(activePicks) : '–';
 
     /* ── 우측: 피드백 보기 (등급평가 공통 + 과정 분석 전용 영역) ── */
-    const renderFeedback = () => (
+    const renderInvalidFeedback = () => {
+        const box = { background: T.surface, border: `1px solid ${T.lineSoft}`, borderRadius: T.rLg, padding: '12px 16px', fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 };
+        return (
+            <div style={{ padding: '20px 22px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 6px' }}>
+                    <span style={pill('#FEE2E2', '#B91C1C')}>무효 처리</span>
+                </div>
+                <div style={fbTitle('#65A30D')}>학습 피드백</div>
+                <div style={box}>{INVALID_FEEDBACK_MESSAGE}</div>
+                <div style={{ ...secTitle, marginTop: 26 }}>학습 안내</div>
+                <div style={box}>{INVALID_GUIDE_MESSAGE}</div>
+                <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px dashed #CBD5E1' }}>
+                    <div style={secTitle}>AI 필기 분석</div>
+                    <div style={box}>{INVALID_HW_MESSAGE}</div>
+                </div>
+            </div>
+        );
+    };
+    // [SCR-03 v5.24] 일괄 채점 통합 — 무효 처리된 제출은 총평 · 학습 안내 · AI 필기 분석 대신 안내 문구
+    const renderFeedback = () => (scoreOnlyFeedback && selectedStudent?.invalid) ? renderInvalidFeedback() : (
         <div style={{ padding: '20px 22px' }}>
             {/* [v5.11] 점수 - 등급 — 문항 점수(AI)와 등급을 한 줄에 함께 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 6px', flexWrap: 'wrap' }}>
