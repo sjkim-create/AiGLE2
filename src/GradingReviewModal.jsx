@@ -45,7 +45,7 @@ export const PROCESS_INSUFFICIENT_MESSAGE =
     '작성된 분량이 많지 않아 학습 행동을 자세히 살펴보기는 어려웠지만, 문제에 도전한 태도 자체를 응원해요. 다음에는 풀이 과정을 한 줄이라도 더 적어보면 더 풍부한 분석이 가능해질 거예요.';
 /* [SCR-03 v5.23] 학습 안내 — 만점이라 고칠 내용이 없을 때 (AI 필기 분석의 「분석불가」 안내와 같은 자리 · 같은 말투) */
 export const GUIDE_EMPTY_MESSAGE =
-    '모든 채점 기준을 충족했어요. 지금처럼 풀이 과정을 꼼꼼히 적어 보세요.';
+    '모든 채점 기준을 충족해 따로 고칠 부분이 없어요. 지금처럼 풀이 과정을 차근차근 적는 습관을 이어가고, 한 단계 더 어려운 문제에도 도전해 보세요.';
 export const isPenDataInsufficient = (penStats) =>
     !!penStats && (penStats.strokes < PROCESS_MIN_STROKES || penStats.durationSec < PROCESS_MIN_DURATION_SEC);
 
