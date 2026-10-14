@@ -280,7 +280,9 @@ const GradingReviewModal = ({
     aiGradingLimitPerRound = 2,
     onRevisionRequest,
     // [SCR-08 v1.35] 일괄 채점 통합 — 피드백 보기에는 점수만(등급 노출 안 함). 채점 결과는 점수만 저장, 등급은 결과 발송 때 환산
-    scoreOnlyFeedback = false
+    scoreOnlyFeedback = false,
+    // [SCR-03 v5.21] 일괄 채점 통합 — 채점 결과 아래 글자 인식(OCR) 안내
+    ocrNotice = false
 }) => {
     const isProcessEvalSupported = taskSubject === '수학';
     const isStep3 = selectedStudent?.status === '결과 발송 전' || selectedStudent?.status === '결과 발송 완료';
@@ -798,6 +800,13 @@ const GradingReviewModal = ({
                                     )}
                                 </div>
                                 </>)}
+                                {/* [SCR-03 v5.21] 글자 인식(OCR) 안내 — 채점 결과 바로 아래 */}
+                                {ocrNotice && (
+                                    <div role="note" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'flex-start', padding: '12px 14px', borderRadius: T.rLg, background: '#ECFEFF', border: '1px solid #A5F3FC', color: '#0E7490', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.6 }}>
+                                        <span aria-hidden="true" style={{ flex: 'none' }}>ⓘ</span>
+                                        <span>글자 인식(OCR) 결과는 실제 답안과 다를 수 있어요. 채점 근거의 답안 인용을 누르면 원본과 비교할 수 있어요.</span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* [v5.12] AI 채점 이력 — 舊 「AI 재채점」 「채점 히스토리」 두 구역을 하나로.
