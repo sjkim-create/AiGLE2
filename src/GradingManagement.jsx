@@ -49,6 +49,8 @@ const AI_GRADING_LIMIT_PER_ROUND = 2;
  * 크래들·스캔 시나리오(중복·결석·미식별 등)가 이 명단에 맞춰 짜여 있기 때문이다. */
 const withUnifiedGroup = (on, base) => (on
   ? [...UNIFIED_GROUP_STUDENTS, ...base.filter((s) => !(s.status === '미채점' && s.grade.startsWith('1학년 1반')))]
+      // [일괄 채점 통합] 시연 — 처음부터 결과 발송 완료인 학생은 결과 발송 창을 거치지 않았으므로 기본 표시 방식 「점수」
+      .map((s) => (s.status === '결과 발송 완료' && !s.sentMode ? { ...s, sentMode: 'score' } : s))
   : base);
 
 const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
@@ -1483,7 +1485,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
       <GradingReviewModal
         scoreOnlyFeedback={isUnified}
         ocrNotice={isUnified}
-        isOpen={isModalOpen && (selectedStudent?.status === '채점 확인' || selectedStudent?.status === '결과 발송 완료')}
+        isOpen={isModalOpen && (selectedStudent?.status === '채점 확인' || selectedStudent?.status === '결과 발송 완료' || (isUnified && selectedStudent?.status === '결과 발송 전'))} // [일괄 채점 통합] 결과 발송 전 학생도 상세 → [결과발송] → 결과 발송 창
         onClose={() => setIsModalOpen(false)}
         selectedStudent={selectedStudent}
         onSelectStudent={setSelectedStudent}
