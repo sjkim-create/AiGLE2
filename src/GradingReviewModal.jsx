@@ -864,7 +864,8 @@ const GradingReviewModal = ({
                                 [v5.17] 경고는 배경·테두리 없이 빨간 글씨 설명으로만 — 상자로 두면 버튼처럼 보여 버튼과 한 묶음으로 읽히지 않는다 */}
                             {/* 카드가 스크롤돼도 늘 보이도록 카드 바닥에 붙인다 (카드 안쪽 여백 20px만큼 내려 붙임) */}
                             <div style={{ marginTop: 'auto', position: 'sticky', bottom: -20, zIndex: 2, background: 'white', padding: '10px 0 20px', marginBottom: -20, borderTop: `1px solid ${T.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {gradeFb.basis?.unreadable && (
+                                {/* [SCR-03 v5.22] 일괄 채점 통합에서는 판독 경고 삭제 — 채점 결과 아래 OCR 안내(v5.21)로 갈음 */}
+                                {gradeFb.basis?.unreadable && !ocrNotice && (
                                     <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 600, lineHeight: 1.5 }}>
                                         <span aria-hidden>⚠</span><span>판독하지 못한 글자가 있어 원본 확인이 필요할 수 있습니다.</span>
                                     </div>
