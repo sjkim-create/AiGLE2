@@ -43,6 +43,9 @@ export const PROCESS_MIN_STROKES = 80;
 export const PROCESS_MIN_DURATION_SEC = 30;
 export const PROCESS_INSUFFICIENT_MESSAGE =
     '작성된 분량이 많지 않아 학습 행동을 자세히 살펴보기는 어려웠지만, 문제에 도전한 태도 자체를 응원해요. 다음에는 풀이 과정을 한 줄이라도 더 적어보면 더 풍부한 분석이 가능해질 거예요.';
+/* [SCR-03 v5.23] 학습 안내 — 만점이라 고칠 내용이 없을 때 (AI 필기 분석의 「분석불가」 안내와 같은 자리 · 같은 말투) */
+export const GUIDE_EMPTY_MESSAGE =
+    '모든 채점 기준을 충족해 따로 고칠 부분이 없어요. 지금처럼 풀이 과정을 차근차근 적는 습관을 이어가고, 한 단계 더 어려운 문제에도 도전해 보세요.';
 export const isPenDataInsufficient = (penStats) =>
     !!penStats && (penStats.strokes < PROCESS_MIN_STROKES || penStats.durationSec < PROCESS_MIN_DURATION_SEC);
 
@@ -459,7 +462,13 @@ const GradingReviewModal = ({
                 여기는 «그래서 어떻게 고치면 되는지»를 문항의 요구 단위로 쪼개 보여준다.
                 학생이 실제로 쓴 문장을 그대로 놓고 그 옆에 고친 예시를 붙여야
                 교사가 「이 말을 이렇게 바꾸라」고 짚어줄 수 있다. */}
-            {gradeFb.guide && (
+            {/* [SCR-03 v5.23] 일괄 채점 통합 — 이 문항 AI 점수가 만점이면 고칠 내용이 없으므로 학습 안내 대신 안내 문구 */}
+            {scoreOnlyFeedback && (!gradeFb.guide?.items?.length || (activeCriteria.length > 0 && sum(activeCriteria.map((c) => c.ai)) === activeMax)) ? (
+                <div style={{ marginTop: 26 }}>
+                    <div style={secTitle}>학습 안내</div>
+                    <div style={{ background: T.surface, border: `1px solid ${T.lineSoft}`, borderRadius: T.rLg, padding: '12px 16px', fontSize: 'var(--neo-font-size-sm)', color: T.text, lineHeight: 1.7 }}>{GUIDE_EMPTY_MESSAGE}</div>
+                </div>
+            ) : gradeFb.guide && (
                 <div style={{ marginTop: 26 }}>
                     <div style={{ ...secTitle, display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         학습 안내

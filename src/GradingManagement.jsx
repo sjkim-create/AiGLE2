@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import UngradedDetailModal from './UngradedDetailModal';
-import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE, processResultFor, learningFeedbackOf } from './GradingReviewModal';
+import GradingReviewModal, { PATTERN_CHARACTERS, patternCodeOf, PROCESS_INSUFFICIENT_MESSAGE, processResultFor, learningFeedbackOf, GUIDE_EMPTY_MESSAGE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 import { formatResult, RESULT_MODE_LABEL, GRADE_NAMES } from './lib/gradingShared'; // [TSK v3.82] 과제별 채점 결과 표기(등급/점수)
 import ScanGradingModal from './ScanGradingModal';
@@ -1852,7 +1852,11 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             <div style={{ marginBottom: '0.75rem' }}>{para(fb.effort)}</div>
                             <div style={{ fontWeight: 700, color: '#2563EB', marginBottom: '0.25rem' }}>함께 성장해요</div>
                             <div style={{ marginBottom: '0.75rem' }}>{para(fb.grow)}</div>
-                            {fb.guide && (<>
+                            {isUnified && !fb.guide?.items?.length && (<>
+                              <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
+                              <div style={{ marginBottom: '0.75rem' }}>{GUIDE_EMPTY_MESSAGE}</div>
+                            </>)}
+                            {fb.guide?.items?.length > 0 && (<>
                               <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
                               <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '10px 14px', marginBottom: '0.75rem' }}>
                                 <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '4px' }}>{fb.guide.title}</div>

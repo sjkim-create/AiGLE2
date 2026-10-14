@@ -12,7 +12,7 @@
  *   · 목업의 행동 지표 · 풀이 과정 밀착 가이드는 SCR-03 v5.8에서 삭제 — 캐릭터와 총평만 남긴다
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { PATTERN_CHARACTERS, gradeFeedbackOf, PROCESS_INSUFFICIENT_MESSAGE } from './GradingReviewModal';
+import { PATTERN_CHARACTERS, gradeFeedbackOf, PROCESS_INSUFFICIENT_MESSAGE, GUIDE_EMPTY_MESSAGE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
 
 const STUDENT = { cls: '3학년 1반 1번', name: '김소리', id: 'stu2600394a1n' };
@@ -615,8 +615,14 @@ const ResultPane = ({ A, q }) => {
         ))}
       </div>
 
-      {/* 3. 학습 안내 */}
-      {g && (
+      {/* 3. 학습 안내 — [SCR-03 v5.23] 만점이라 고칠 내용이 없으면 안내 문구 */}
+      {!g?.items?.length && (
+        <div className="smt-sect">
+          <h3><span className="smt-bar" />학습 안내</h3>
+          <div className="smt-overall">{GUIDE_EMPTY_MESSAGE}</div>
+        </div>
+      )}
+      {g?.items?.length > 0 && (
         <div className="smt-sect">
           <h3><span className="smt-bar" />학습 안내</h3>
           <div className="smt-guide">
