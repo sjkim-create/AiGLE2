@@ -804,7 +804,7 @@ const GradingReviewModal = ({
                                 {ocrNotice && (
                                     <div role="note" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'flex-start', padding: '12px 14px', borderRadius: T.rLg, background: '#ECFEFF', border: '1px solid #A5F3FC', color: '#0E7490', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.6 }}>
                                         <span aria-hidden="true" style={{ flex: 'none' }}>ⓘ</span>
-                                        <span>글자 인식(OCR) 결과는 실제 답안과 다를 수 있어요. 채점 근거의 답안 인용을 누르면 원본과 비교할 수 있어요.</span>
+                                        <span>글자 인식(OCR) 결과는 실제 답안과 다를 수 있습니다.<br />채점 근거에서 원본과 비교해 보세요.</span>
                                     </div>
                                 )}
                             </div>
