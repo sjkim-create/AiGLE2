@@ -363,7 +363,7 @@ ASSIGN.mathRat = MATH_RAT_TASK;
 const CARDS = [
   { key: 'mathEq', status: 'submitted', pub: '2026-09-26', sub: '2026-09-29', point: '3점' },
   { key: 'sci', status: 'submitted', pub: '2026-09-24', sub: '2026-09-25', point: '4점' },
-  { key: 'mathRat', status: 'done', pub: '2026-10-14', sub: '2026-10-15', point: '4점' },
+  { key: 'mathRat', status: 'done', pub: '2026-10-14', sub: '2026-10-15', point: '6점' },
   { key: 'math', status: 'done', pub: '2026-09-02', sub: '2026-09-02', point: '6점' },
   { key: 'kor', status: 'done', pub: '2026-08-25', sub: '2026-08-31', point: '4점' },
   { key: 'nopass', status: 'done', pub: '2026-04-28', sub: '2026-04-28', point: '4점' },
@@ -589,9 +589,15 @@ const StudentMyTasks = () => {
                             {A.passage}
                           </div>
                         )}
-                        {A.questions.map((qq, i) => (
+                        {/* [TSK-10 v1.15] 문항 탭 — [답안 미리보기]와 같은 문항 선택을 함께 쓴다 */}
+                        <div className={`smt-atabs ${A.passage ? 'after-passage' : ''}`} role="tablist" aria-label="문항 선택">
+                          {A.questions.map((qq, i) => (
+                            <button key={i} type="button" role="tab" aria-selected={i === ansQ} className="smt-atab" onClick={() => pickAnsQ(i)}>{qq.label}</button>
+                          ))}
+                        </div>
+                        {A.questions.map((qq, i) => i !== ansQ ? null : (
                           <div key={i} className="smt-qitem">
-                            <div className="smt-seclab"><span className="smt-tag q">{qq.label}</span><span className="smt-note">{qq.point}점</span></div>
+                            <div className="smt-seclab"><span className="smt-note">배점 {qq.point}점</span></div>
                             <div className="smt-prose"><p>{qq.text}</p></div>
                           </div>
                         ))}
@@ -907,6 +913,8 @@ const CSS = `
 .smt-qitem{margin-top:24px;padding-top:20px;border-top:1px solid var(--line-soft)}
 .smt-passage + .smt-qitem{margin-top:24px}
 .smt-atabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.smt-atabs.after-passage{margin-top:24px;padding-top:20px;border-top:1px solid var(--line-soft)}
+.smt-atabs + .smt-qitem{margin-top:0;padding-top:4px;border-top:none}
 .smt-atab{height:36px;padding:0 16px;border:1px solid var(--line);border-radius:18px;background:#fff;color:var(--t3);font-size:var(--neo-font-size-sm);display:inline-flex;align-items:center;gap:6px}
 .smt-atab[aria-selected="true"]{background:var(--blue-soft);border-color:var(--blue);color:var(--blue-dark);font-weight:700}
 .smt-atab-dot{width:7px;height:7px;border-radius:50%;background:var(--blue)}

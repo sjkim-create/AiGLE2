@@ -11,7 +11,7 @@ const PEN_FROM = 14;
 export const MATH_RAT_TASK = {
   title: '[수학] 유리함수의 그래프에서 식 구하기',
   en: { subject: 'Math', cap: 'Smart pen upload · 2026.10.15 16:20' },
-  subject: '수학', full: 4, pub: '2026. 10. 14', done: '2026년 10월 15일', way: '스마트펜 업로드', cap: '스마트펜 업로드 · 2026.10.15 16:20',
+  subject: '수학', full: 6, pub: '2026. 10. 14', done: '2026년 10월 15일', way: '스마트펜 업로드', cap: '스마트펜 업로드 · 2026.10.15 16:20',
   passage: null, hasProcess: true,
   questions: [
     {
@@ -114,6 +114,40 @@ export const MATH_RAT_TASK = {
             detail: '구한 k = 1을 넣으면 y = 1/(x−2) − 1이에요. 「1/(x−2) − 1」만 쓰면 함수의 식이 아니라 식의 한쪽일 뿐이에요. 답은 언제나 「y = …」 꼴로 마무리해요.' },
         ],
         answer: ['점근선 x = 2, y = −1 → y = k/(x−2) − 1 (k ≠ 0)', '점 (3, 0) 대입: 0 = k/(3−2) − 1 → k = 1', '∴ y = 1/(x−2) − 1'],
+      },
+    },
+    /* 문항 2 — 시연용: 실제 펜 데이터가 없어 답안 글자를 쓰는 흉내로 재생한다(펜 데이터를 받으면 pen으로 교체) */
+    {
+      label: '문항 2', point: 2, score: 2, grade: 'A', chip: '매우 우수', chipCls: 'a',
+      text: '문항 1에서 구한 유리함수의 정의역과 치역을 구하시오.',
+      en: { label: 'Q2', text: 'Find the domain and range of the rational function you found in Q1.' },
+      answer: ['정의역 : x ≠ 2 인 모든 실수', '치역 : y ≠ −1 인 모든 실수'],
+      fb: [
+        '분모가 0이 되는 값과 가로 점근선을 이용해 정의역과 치역을 모두 정확하게 구했습니다.',
+        '「x ≠ 2인 모든 실수」처럼 범위를 문장으로 잘 썼습니다. 집합 기호 {x | x ≠ 2}로도 써 보면 더 깔끔해집니다.',
+        '점근선과 정의역 · 치역의 관계를 정확히 이해하고 있습니다. 다른 유리함수에서도 같은 방법을 써 보세요.',
+      ],
+      guide: { title: '', points: [], items: [] },
+      hw: { code: 'baa', summary: '두 줄을 막힘 없이 이어서 썼고 되돌아감이 없었습니다. 문항 1에서 구한 점근선을 바로 정의역과 치역으로 옮긴 흐름이 안정적입니다.' },
+      solution: {
+        level: '고1', unit: '유리함수',
+        en: {
+          level: 'Grade 10', unit: 'Rational functions',
+          concept: 'For y = k/(x−p) + q, the domain is all real x ≠ p and the range is all real y ≠ q. The two asymptotes are exactly the values left out.',
+          answer: ['Domain: {x | x ≠ 2, x real}', 'Range: {y | y ≠ −1, y real}'],
+        },
+        concept: '유리함수 y = k/(x−p) + q의 정의역은 x ≠ p, 치역은 y ≠ q인 모든 실수예요. 두 점근선이 그대로 정의역 · 치역에서 「빠지는 값」이 돼요.',
+        steps: [
+          { title: '정의역 구하기', en: { title: 'Find the domain', basic: 'You left out only x = 2, where the denominator is 0.', detail: 'A rational function cannot have a zero denominator. x − 2 = 0 means x = 2, so the domain is all real numbers except 2.' }, ok: true, line: 0,
+            cues: [{ w: '정의역 : x ≠ 2 인 모든 실수', say: '분모가 0이 되는 x = 2만 정확히 뺐어요.', sayD: '분모 x − 2가 0이 되면 안 되니까 x = 2만 빼면 돼요. 정의역은 x ≠ 2인 모든 실수예요.', en: { say: 'You left out exactly x = 2, where the denominator is 0.', sayD: 'The denominator x − 2 cannot be 0, so only x = 2 is excluded. The domain is all real x ≠ 2.' } }],
+            basic: '분모가 0이 되는 x = 2만 빼서 정의역을 구했어요.',
+            detail: '유리함수는 분모가 0이 되면 안 돼요. x − 2 = 0, 즉 x = 2만 빼면 되니까 정의역은 x ≠ 2인 모든 실수예요.' },
+          { title: '치역 구하기', en: { title: 'Find the range', basic: 'You used the horizontal asymptote y = −1 to find the range.', detail: '1/(x−2) can never be 0, so y can never be −1. The range is all real numbers except −1.' }, ok: true, line: 1,
+            cues: [{ w: '치역 : y ≠ −1 인 모든 실수', say: '가로 점근선 y = −1로 치역도 맞게 구했어요.', sayD: '1/(x−2)은 0이 될 수 없으니 y는 −1이 될 수 없어요. 그래서 치역은 y ≠ −1인 모든 실수예요.', en: { say: 'You used the horizontal asymptote y = −1 to get the range right.', sayD: '1/(x−2) is never 0, so y is never −1. The range is all real y ≠ −1.' } }],
+            basic: '가로 점근선 y = −1을 이용해 치역을 구했어요.',
+            detail: '1/(x−2)은 어떤 x를 넣어도 0이 될 수 없어요. 그래서 y = 1/(x−2) − 1은 −1이 될 수 없고, 치역은 y ≠ −1인 모든 실수예요.' },
+        ],
+        answer: ['정의역 : {x | x ≠ 2인 실수}', '치역 : {y | y ≠ −1인 실수}'],
       },
     },
   ],
