@@ -408,6 +408,7 @@ const StudentMyTasks = () => {
   const [toast, setToast] = useState(null);
   const [zoomQ, setZoomQ] = useState(null); // 답안 크게 보기 — 문항 번호
   const [replayQ, setReplayQ] = useState(null); // [풀이 과정 보기] 화면 안 재생 중인 문항 번호
+  const [stageEl, setStageEl] = useState(null); // [TSK-10 v1.11] 필기 재생을 그릴 왼쪽 답안 원본 자리
   const [asideW, setAsideW] = useState(ASIDE_W); // 오른쪽(채점 결과) 폭 — 가운데 손잡이로 조절
   const timers = useRef([]);
   const scroller = useRef(null);
@@ -601,7 +602,10 @@ const StudentMyTasks = () => {
                                 )}
                               </div>
                             </div>
-                            <div className="smt-paper">{qq.pen ? <PenStrokes pen={qq.pen} from={qq.penFrom || 0} label={`${qq.label} 답안 필기`} style={{ maxHeight: 420 }} /> : qq.answer.map((l, k) => <div key={k} className="smt-hand">{l}</div>)}</div>
+                            {/* [TSK-10 v1.11] 풀이 과정을 열면 이 원본 자리에서 필기가 다시 그려진다(장면 자막 포함) — 재생 막대 · 단계는 오른쪽 패널 */}
+                            {replayQ === i && rq
+                              ? <div className="smt-paper smt-stage srp-stage-in" ref={setStageEl} />
+                              : <div className="smt-paper">{qq.pen ? <PenStrokes pen={qq.pen} from={qq.penFrom || 0} label={`${qq.label} 답안 필기`} style={{ maxHeight: 420 }} /> : qq.answer.map((l, k) => <div key={k} className="smt-hand">{l}</div>)}</div>}
                           </div>
                         ))}
                         <div className="smt-pcap">{A.cap}</div>
@@ -617,7 +621,7 @@ const StudentMyTasks = () => {
                   <aside className={`smt-col-r ${rq ? 'has-rp' : ''}`}>
                     {rq && (
                       <div className="smt-rp-over" ref={replayRef}>
-                        <SolutionReplay key={replayQ} panel q={rq} A={A} onClose={closeReplay} />
+                        <SolutionReplay key={replayQ} panel q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} />
                       </div>
                     )}
                     <div className="smt-rtitle">채점 결과</div>
@@ -878,6 +882,7 @@ const CSS = `
 .smt-dmeta{font-size:var(--neo-font-size-sm);color:var(--t3)}
 .smt-board2{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px}
 .smt-col-r{position:relative}
+.smt-stage{padding:14px 18px;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .smt-col-r.has-rp{min-height:calc(100vh - 230px)}
 .smt-rp-over{position:absolute;inset:0;z-index:5}
 .smt-mini.blue[aria-pressed="true"]{background:#fff;color:var(--blue-dark)}

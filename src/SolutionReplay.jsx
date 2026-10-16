@@ -16,6 +16,7 @@
  *   · inline — 학생 결과 확인(TSK-10)에서 모달이 아니라 화면 안에서. 왼쪽 = 문항 · 필기 재생(답안 미리보기 자리),
  *     오른쪽 = 위에 접히는 [풀이 과정] 패널(단계 · 정리 · 개념 · 바른 풀이) + 그 아래 채점 결과(리포트 미리보기 — reportNode). 좁은 화면은 위아래 1단
  *   · panel — 학생 결과 확인(TSK-10 v1.10): 화면은 그대로 두고 오른쪽 채점 결과 위에 펼쳐져 얹히는 한 줄(세로) 패널. [✕]로 닫는다
+ *     stageTarget — 필기 재생을 그릴 바깥 자리(왼쪽 답안 미리보기의 원본). 있으면 패널에는 재생 막대 · 단계만 남는다 (v1.11)
  *   · viewer='teacher' — 교사 채점 확인(SCR-03)에서 같은 화면. 학생 이름 · 「교사 확인」 표시, 바른 풀이는 처음부터 열림, 아래 안내만 다르다
  *
  * 필기 재생 두 가지
@@ -23,6 +24,7 @@
  *   · 없음 — 답안 글자를 한 글자씩 드러내는 흉내(프로토 샘플). cue = w(쓴 글자) 단계 나누기 · 설명은 AI 채점 때 미리 만들어 두어 학생은 기다리지 않는다
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import PenStrokes, { penViewBox } from './PenStrokes';
 
 const CHAR_SEC = 0.11;   // 글자 하나 쓰는 시간(프로토)
@@ -105,7 +107,7 @@ const buildTimeline = (steps, pen, mode, lang = 'ko') => {
 
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null }) => {
+const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null, stageTarget = null }) => {
   const [fold, setFold] = useState(false); // inline — 오른쪽 위 풀이 과정 패널 접기(접으면 아래 채점 결과가 올라온다)
   const isTeacher = viewer === 'teacher';
   const sol = q.solution;
@@ -201,6 +203,32 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
     return { key: `${idx}-${k}`, s, idx, text: line.slice(c.from, c.from + c.len), shown, writing: t > c.start && t < c.writeEnd };
   }))));
 
+  /* 필기 재생(장면 자막 포함) — panel이면 stageTarget(왼쪽 답안 원본 자리)에 그린다 */
+  const paperNode = (
+            <div className={`srp-paper ${pen ? 'pen' : ''}`} aria-label="내 필기 재생">
+              <div className="srp-paper-cap">{isTeacher ? U.stuPen : U.myPen} · {tr(A, 'cap', lang)}</div>
+              {pen && (
+                <div className="srp-pen">
+                  <PenStrokes pen={pen} from={sol.penFrom || 0} viewBox={penVB} strokeState={(k) => penState.m.get(k)} tip={penState.tip} label={isTeacher ? U.stuPen : U.myPen} />
+                </div>
+              )}
+              {!pen && lines.map((parts, li) => (
+                <div key={li} className="srp-line">
+                  {parts.map(({ key, s, idx, text, shown, writing }) => (
+                    <span key={key} className={`srp-seg ${idx === cur ? 'on' : ''} ${!s.ok && t >= s.end ? 'warn' : ''}`}>
+                      {text.slice(0, shown)}
+                      {writing && <span className="srp-tip" aria-hidden="true" />}
+                      <span className="srp-ghost">{text.slice(shown)}</span>
+                    </span>
+                  ))}
+                </div>
+              ))}
+              {pausing && <div className="srp-pause">{U.paused(cue.sec || step.pauseSec)}</div>}
+              {/* 장면 자막 — 쓰는 순서에 맞춰 말하듯이 */}
+              <div className="srp-cc" aria-live="polite">{cue?.txt && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.txt}</span>}</div>
+            </div>
+  );
+
   return (
     <div className={inline ? 'srp-inline' : panel ? 'srp-panel' : 'srp-wrap'} role={inline || panel ? 'region' : 'dialog'} aria-modal={inline || panel ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
       <style>{CSS}</style>
@@ -234,28 +262,7 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
           <div className="srp-l">
             {noEn && <div className="srp-noen">{U.noEn}</div>}
             <div className="srp-qtext"><span className="srp-qtext-k">{tr(q, 'label', lang)}</span>{tr(q, 'text', lang)}</div>
-            <div className={`srp-paper ${pen ? 'pen' : ''}`} aria-label="내 필기 재생">
-              <div className="srp-paper-cap">{isTeacher ? U.stuPen : U.myPen} · {tr(A, 'cap', lang)}</div>
-              {pen && (
-                <div className="srp-pen">
-                  <PenStrokes pen={pen} from={sol.penFrom || 0} viewBox={penVB} strokeState={(k) => penState.m.get(k)} tip={penState.tip} label={isTeacher ? U.stuPen : U.myPen} />
-                </div>
-              )}
-              {!pen && lines.map((parts, li) => (
-                <div key={li} className="srp-line">
-                  {parts.map(({ key, s, idx, text, shown, writing }) => (
-                    <span key={key} className={`srp-seg ${idx === cur ? 'on' : ''} ${!s.ok && t >= s.end ? 'warn' : ''}`}>
-                      {text.slice(0, shown)}
-                      {writing && <span className="srp-tip" aria-hidden="true" />}
-                      <span className="srp-ghost">{text.slice(shown)}</span>
-                    </span>
-                  ))}
-                </div>
-              ))}
-              {pausing && <div className="srp-pause">{U.paused(cue.sec || step.pauseSec)}</div>}
-              {/* 장면 자막 — 쓰는 순서에 맞춰 말하듯이 */}
-              <div className="srp-cc" aria-live="polite">{cue?.txt && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.txt}</span>}</div>
-            </div>
+            {stageTarget ? createPortal(paperNode, stageTarget) : paperNode}
 
             <div className="srp-ctrl">
               <button type="button" className="srp-btn main" aria-label={playing ? U.pause : U.play} onClick={toggle}>{playing ? '⏸' : t >= total ? '⟲' : '▶'}</button>
@@ -336,6 +343,9 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
 export default SolutionReplay;
 
 const CSS = `
+.srp-stage-in .srp-paper{border:none;background:#fff;padding:6px 0 76px !important;min-height:0}
+.srp-stage-in .srp-paper-cap{position:static;margin-bottom:6px}
+.srp-stage-in .srp-pen svg{max-height:min(46vh,440px)}
 .srp-panel{height:100%;transform-origin:top center;animation:srp-drop .28s ease-out}
 @keyframes srp-drop{from{opacity:0;transform:translateY(-14px) scaleY(.97)}to{opacity:1;transform:none}}
 .srp-panel .srp-box{width:100%;height:100%;max-height:none;border:1px solid #C7D7FB;border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18)}
