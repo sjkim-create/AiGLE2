@@ -13,7 +13,6 @@
  *         — 펜 데이터가 부족하면(80획 미만 또는 필기 30초 미만) 진단 대신 안내 문구만 보인다
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { lookupPattern } from './handwritingPatternMatrix';
 import SolutionReplay from './SolutionReplay';
 import { MATH_RAT_TASK } from './data/solutionSamples';
@@ -297,6 +296,7 @@ const GradingReviewModal = ({
     solutionReplay = false
 }) => {
     const [replayOpen, setReplayOpen] = useState(false);
+    const [stageEl, setStageEl] = useState(null); // [SCR-03 v5.29] 원본 보기 안 필기 재생 자리
     const isProcessEvalSupported = taskSubject === '수학';
     const isStep3 = selectedStudent?.status === '결과 발송 전' || selectedStudent?.status === '결과 발송 완료';
     const isSent = selectedStudent?.status === '결과 발송 완료';
@@ -357,7 +357,7 @@ const GradingReviewModal = ({
 
     // 학생이 바뀌면 재생·탭·과정 분석 상태 초기화
     useEffect(() => {
-        setIsPlaybackMode(false); setIsPlaying(false); setRightTab('feedback');
+        setIsPlaybackMode(false); setIsPlaying(false); setRightTab('feedback'); setReplayOpen(false);
         setTeacherGrade(isStep3 && selectedStudent?.teacherGrade && selectedStudent.teacherGrade !== '-' ? selectedStudent.teacherGrade : '선택 안함');
         setTeacherScore(selectedStudent?.teacherScore ?? (isStep3 ? (gradeToPoints(selectedStudent?.teacherGrade, maxPoints) ?? '') : ''));
         setCritPicks(selectedStudent?.teacherCriteria || {});
@@ -611,6 +611,7 @@ const GradingReviewModal = ({
     );
 
     /* ── 우측: 원본 보기 (필기 재생) ── */
+    const canReplay = solutionReplay && selectedStudent?.submitType === 'pen' && !selectedStudent?.invalid; // [SCR-03 v5.29]
     const renderOriginal = () => (
         <div style={{ padding: '4px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div className="pen-canvas-box" style={isFullscreen
@@ -620,17 +621,24 @@ const GradingReviewModal = ({
                     <div className="toolbar-btn">+</div>
                     <div className="toolbar-btn">−</div>
                     <div className="toolbar-btn" onClick={() => setIsFullscreen(v => !v)} title={isFullscreen ? '전체화면 해제 (ESC)' : '전체화면'}>{isFullscreen ? '✕' : '⛶'}</div>
-                    <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
-                        {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
-                    </button>
-                    {/* [SCR-03 v5.28] 풀이 과정 — 교과 무관 · 펜 답안만(스캔은 획 정보가 없음) · 무효 처리 제외 */}
-                    {solutionReplay && selectedStudent?.submitType === 'pen' && !selectedStudent?.invalid && (
-                        <button className="toolbar-btn btn-playback" title="학생 필기를 단계별로 재생하고 단계마다 AI 설명을 봅니다 — 결과 발송 후 학생도 같은 화면을 봅니다"
-                            onClick={() => { setIsFullscreen(false); setReplayOpen(true); }}>🎬 풀이 과정</button>
+                    {/* [SCR-03 v5.29] 일괄 채점 통합 · 펜 답안 — [▶ 필기 재생] 하나로: 실제 펜 획 재생 + 장면 자막(원본 자리) + 풀이 단계 패널(왼쪽 채점 결과 위).
+                        舊 시연용 필기 재생(막대만 움직임)과 [🎬 풀이 과정] 창은 이 경우 쓰지 않는다 */}
+                    {canReplay ? (
+                        <button className="toolbar-btn btn-playback" aria-pressed={replayOpen}
+                            title="학생 필기를 실제 순서대로 다시 그리고, 왼쪽에 풀이 단계 · 정리를 엽니다 — 결과 발송 후 학생도 같은 풀이 과정을 봅니다"
+                            onClick={() => setReplayOpen((v) => !v)}>{replayOpen ? '■ 필기 재생 닫기' : '▶ 필기 재생'}</button>
+                    ) : (
+                        <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
+                            {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
+                        </button>
                     )}
                 </div>
                 {!isFullscreen && <div className="page-indicator" style={{ background: T.text }}>{currentPage}/{totalPages}</div>}
                 <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isFullscreen ? '3rem 2rem 8rem' : '3.5rem 2rem 4rem' }}>
+                    {canReplay && replayOpen ? (
+                        /* [SCR-03 v5.29] 필기 재생 — 원본 자리에서(장면 자막 · 재생 막대는 그 아래). 시연은 실제 펜 샘플이라 답안지 이미지 대신 흰 바탕에 그린다 */
+                        <div ref={setStageEl} className="srp-stage-in" style={{ width: '100%', maxWidth: isFullscreen ? 900 : 640 }} />
+                    ) : (
                     <div style={{ position: 'relative', width: '100%', maxWidth: isFullscreen ? 900 : 640 }}>
                         <img src={ANSWER_SHEET_IMG} alt="학생 답안 원본" style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }} />
                         {isPlaybackMode && (
@@ -642,6 +650,7 @@ const GradingReviewModal = ({
                             </button>
                         )}
                     </div>
+                    )}
                 </div>
 
                 {(isFullscreen || isPlaybackMode) && (
@@ -757,7 +766,15 @@ const GradingReviewModal = ({
                 {/* 본문 — 좌(채점 결과) : 우(피드백/원본) */}
                 <div style={{ flex: 1, display: 'flex', gap: 16, padding: 16, minHeight: 0 }}>
                     {/* ── 좌측 ── [v5.13] 폭을 절반으로(46% → 23%, 최소 360px) — 피드백·채점 근거를 넓게 */}
-                    <div style={{ flex: '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    <div style={{ flex: '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+                        {/* [SCR-03 v5.29] 풀이 단계 패널 — 왼쪽 채점 결과 위에 얹힌다(✕ · [■ 필기 재생 닫기]로 닫으면 채점 결과). 필기 재생은 오른쪽 원본 보기 */}
+                        {canReplay && replayOpen && (
+                            <div style={{ position: 'absolute', left: 0, right: 0, top: HEAD_H, bottom: 0, zIndex: 6 }}>
+                                <SolutionReplay panel key={selectedStudent?.id} q={MATH_RAT_TASK.questions[0]} A={MATH_RAT_TASK} viewer="teacher" studentName={selectedStudent?.name}
+                                    sampleNote="시연 샘플 필기" onClose={() => setReplayOpen(false)}
+                                    stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" />
+                            </div>
+                        )}
                         {/* [v5.18] 좌우 머리줄 높이를 같게(HEAD_H) — 아래 흰 카드의 위 끝이 좌우로 맞는다 */}
                         <div style={{ display: 'flex', gap: 4, paddingLeft: 4, height: HEAD_H, alignItems: 'flex-end', flexShrink: 0 }}>
                             {questions.map(q => (
@@ -1034,10 +1051,6 @@ const GradingReviewModal = ({
                         </div>
                     </div>
                 )}
-                {/* [SCR-03 v5.26] 풀이 과정 (교사 확인) — 시연은 실제 펜 샘플(유리함수). 포털이지만 이 컨테이너 안이라 클릭이 바깥(닫기)으로 새지 않는다 */}
-                {replayOpen && createPortal(
-                    <SolutionReplay q={MATH_RAT_TASK.questions[0]} A={MATH_RAT_TASK} viewer="teacher" studentName={selectedStudent?.name}
-                        sampleNote="시연 샘플 필기" onClose={() => setReplayOpen(false)} />, document.body)}
             </div>
         </div>
     );
