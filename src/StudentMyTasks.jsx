@@ -595,7 +595,7 @@ const StudentMyTasks = () => {
                         {A.questions.map((qq, i) => (
                           <div key={i} className="smt-aitem">
                             <div className="smt-aitem-h">
-                              <div className="smt-seclab" style={{ marginBottom: 0 }}><span className="smt-tag q">{qq.label}</span><span className="smt-note">{qq.point}점</span></div>
+                              <div className="smt-seclab" style={{ marginBottom: 0 }}><span className="smt-tag q">{qq.label}</span></div>
                               <div className="smt-aitem-btns">
                                 <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />크게 보기</button>
                                 {/* 풀이 과정 보기 — 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 */}
