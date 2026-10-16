@@ -2,8 +2,8 @@
  * SolutionReplay.jsx — 학생 모드 › 풀이 과정 보기 (docs/multi-type/풀이과정_보기_설계.md)
  *
  * Tecet 「과정을 영상처럼」을 차용하되, AI가 그린 그림이 아니라 **학생 본인 필기**를 단계별로 재생한다.
- *   · 단계마다 그 구간의 필기가 써지고, 자막(설명)이 바뀐다 — 음성 없음(자막만)
- *   · 설명 수준 = 문항 목표 학년 자동(학생이 고르지 않음) / 설명 길이 = 기본 · 자세히
+ *   · 장면 자막 — 필기가 써지는 순서에 맞춰 말하듯이 짧은 자막이 바뀐다(영상 자막처럼 필기 위). 음성 없음
+ *   · 정리 — 단계 설명을 통으로 보이는 칸. 설명 수준 = 문항 목표 학년 자동(학생이 고르지 않음) / 정리 길이 = 기본 · 자세히
  *   · 정답 잠금 — 끝까지 재생하면 바른 풀이 공개(한 번 열리면 다시 잠기지 않음)
  *   · 필기가 멈춘 구간(머뭇거림)은 「⏸ n초 멈춤」으로 짧게 보여 준다
  *   · 태블릿 — 가로는 2단(재생 · 단계), 좁은 화면은 1단. 손가락으로 누르기 쉬운 버튼 크기
@@ -14,26 +14,32 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const CHAR_SEC = 0.11;   // 글자 하나 쓰는 시간(프로토)
-const GAP_SEC = 0.7;     // 단계 사이 쉼
+const GAP_SEC = 0.5;     // 단계 사이 쉼
 const PAUSE_SHOW_SEC = 1.6; // 실제 멈춘 시간은 이 길이로 줄여 보여 준다
 const SPEEDS = [1, 1.5, 2];
+/* 자막을 읽을 시간 — 쓰는 시간보다 짧으면 쓰는 시간만큼, 길면 읽을 때까지 머문다 */
+const readSec = (say) => 1.2 + (say ? say.length : 0) * 0.07;
 
-/* steps: [{ title, ok, line, text, pauseSec?, basic, detail }] — text는 그 단계에 쓴 글자(답안 줄 안에서 순서대로) */
+/* steps: [{ title, ok, line, pauseSec?, cues[{ w? | pause? , say }], basic, detail }]
+ *   cue 하나 = 장면 하나: w(쓴 글자)를 쓰는 동안 · 쓴 뒤 읽을 시간까지 say 자막이 보인다 */
 const buildTimeline = (steps) => {
   let t = 0;
   const lineCursor = {};
   return steps.map((s, i) => {
     const start = t;
-    let pauseFrom = null;
-    if (s.pauseSec) { pauseFrom = t; t += PAUSE_SHOW_SEC; }
-    const writeFrom = t;
-    const from = lineCursor[s.line] || 0;
-    const len = s.text ? s.text.length : 0;
-    lineCursor[s.line] = from + len;
-    t += len * CHAR_SEC;
+    const cues = (s.cues || [{ w: s.text || '', say: s.basic }]).map((c) => {
+      const cs = t;
+      const w = c.w || '';
+      const from = lineCursor[s.line] || 0;
+      lineCursor[s.line] = from + w.length;
+      const writeSec = w.length * CHAR_SEC;
+      const dur = Math.max(c.pause ? PAUSE_SHOW_SEC : writeSec + 0.4, readSec(c.say));
+      t += dur;
+      return { ...c, start: cs, end: t, from, len: w.length, writeEnd: cs + writeSec };
+    });
     const end = t;
     if (i < steps.length - 1) t += GAP_SEC;
-    return { ...s, start, writeFrom, end, from, len, pauseFrom };
+    return { ...s, start, end, cues };
   });
 };
 
@@ -79,7 +85,8 @@ const SolutionReplay = ({ q, A, onClose }) => {
 
   const cur = Math.max(0, tl.findIndex((s, i) => t < (tl[i + 1]?.start ?? Infinity)));
   const step = tl[cur];
-  const pausing = step.pauseFrom != null && t >= step.pauseFrom && t < step.writeFrom;
+  const cue = step.cues.find((c) => t >= c.start && t < c.end) || (t >= step.end ? step.cues[step.cues.length - 1] : null);
+  const pausing = !!(cue?.pause && t < cue.end);
 
   const toggle = () => {
     if (t >= total) { setT(0); setPlaying(true); return; }
@@ -88,16 +95,11 @@ const SolutionReplay = ({ q, A, onClose }) => {
   const seek = (v) => { setT(v); if (v >= total) setUnlocked(true); };
   const goStep = (i) => { setT(tl[i].start); setPlaying(true); };
 
-  /* 줄마다 지금까지 쓴 글자 수 · 단계별 색 */
-  const lines = q.answer.map((line, li) => {
-    const parts = tl.filter((s) => s.line === li && s.len > 0).map((s) => {
-      const idx = tl.indexOf(s);
-      const shown = t <= s.writeFrom ? 0 : Math.min(s.len, Math.ceil((t - s.writeFrom) / CHAR_SEC));
-      return { s, idx, text: line.slice(s.from, s.from + s.len), shown };
-    });
-    return parts;
-  });
-  const writingIdx = tl.findIndex((s) => s.len > 0 && t > s.writeFrom && t < s.end);
+  /* 줄마다 지금까지 쓴 글자 — 장면(자막) 단위 조각 */
+  const lines = q.answer.map((line, li) => tl.flatMap((s, idx) => (s.line !== li ? [] : s.cues.filter((c) => c.len > 0).map((c, k) => {
+    const shown = t <= c.start ? 0 : Math.min(c.len, Math.ceil((t - c.start) / CHAR_SEC));
+    return { key: `${idx}-${k}`, s, idx, text: line.slice(c.from, c.from + c.len), shown, writing: t > c.start && t < c.writeEnd };
+  }))));
 
   return (
     <div className="srp-wrap" role="dialog" aria-modal="true" aria-label={`풀이 과정 보기 · ${q.label}`}>
@@ -121,19 +123,22 @@ const SolutionReplay = ({ q, A, onClose }) => {
               <div className="srp-paper-cap">내 필기 · {A.cap}</div>
               {lines.map((parts, li) => (
                 <div key={li} className="srp-line">
-                  {parts.map(({ s, idx, text, shown }) => (
-                    <span key={idx} className={`srp-seg ${idx === cur ? 'on' : ''} ${!s.ok && t >= s.end ? 'warn' : ''}`}>
+                  {parts.map(({ key, s, idx, text, shown, writing }) => (
+                    <span key={key} className={`srp-seg ${idx === cur ? 'on' : ''} ${!s.ok && t >= s.end ? 'warn' : ''}`}>
                       {text.slice(0, shown)}
-                      {idx === writingIdx && <span className="srp-tip" aria-hidden="true" />}
+                      {writing && <span className="srp-tip" aria-hidden="true" />}
                       <span className="srp-ghost">{text.slice(shown)}</span>
                     </span>
                   ))}
                 </div>
               ))}
               {pausing && <div className="srp-pause">⏸ 필기가 {step.pauseSec}초 멈췄어요</div>}
+              {/* 장면 자막 — 쓰는 순서에 맞춰 말하듯이 */}
+              <div className="srp-cc" aria-live="polite">{cue && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.say}</span>}</div>
             </div>
 
-            <div className={`srp-sub ${step.ok ? '' : 'warn'}`} aria-live="polite">
+            <div className={`srp-sub ${step.ok ? '' : 'warn'}`}>
+              <div className="srp-sub-k">정리</div>
               <div className="srp-sub-t"><span className="srp-no">{String(cur + 1).padStart(2, '0')}</span>{step.title}<span className={`srp-mark ${step.ok ? 'ok' : 'no'}`}>{step.ok ? '✓ 잘했어요' : '! 다시 보기'}</span></div>
               <div className="srp-sub-d">{len === 'detail' ? step.detail : step.basic}</div>
             </div>
@@ -154,7 +159,7 @@ const SolutionReplay = ({ q, A, onClose }) => {
           <div className="srp-r">
             <div className="srp-rhead">
               <b>풀이 단계</b>
-              <div className="srp-seg-btns" role="group" aria-label="설명 길이">
+              <div className="srp-seg-btns" role="group" aria-label="정리 길이" title="정리 칸의 설명 길이">
                 <button type="button" aria-pressed={len === 'basic'} onClick={() => setLen('basic')}>기본</button>
                 <button type="button" aria-pressed={len === 'detail'} onClick={() => setLen('detail')}>자세히</button>
               </div>
@@ -206,7 +211,7 @@ const CSS = `
 .srp-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:0;min-height:0;overflow-y:auto}
 .srp-l{padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
 .srp-r{padding:18px 20px;border-left:1px solid #E4EAF3;background:#FAFBFD;display:flex;flex-direction:column;gap:14px}
-.srp-paper{position:relative;min-height:220px;background:#FFFEF8;border:1px solid #E9E3CF;border-radius:12px;padding:40px 22px 26px;
+.srp-paper{position:relative;min-height:260px;padding-bottom:84px !important;background:#FFFEF8;border:1px solid #E9E3CF;border-radius:12px;padding:40px 22px 26px;
   background-image:repeating-linear-gradient(transparent 0 47px,#EDE7D3 47px 48px);background-position:0 30px}
 .srp-paper-cap{position:absolute;top:10px;left:16px;font-size:var(--neo-font-size-xs);color:#98A3B0}
 .srp-line{font-family:'Nanum Pen Script',cursive;font-size:30px;line-height:48px;color:#1E293B;word-break:keep-all;overflow-wrap:anywhere}
@@ -215,7 +220,12 @@ const CSS = `
 .srp-seg.warn{text-decoration:underline wavy #EF4444;text-decoration-thickness:1.5px;text-underline-offset:6px}
 .srp-ghost{color:transparent}
 .srp-tip{display:inline-block;width:9px;height:9px;border-radius:50%;background:#2563EB;margin:0 1px;vertical-align:middle;box-shadow:0 0 0 4px rgba(37,99,235,.18)}
-.srp-pause{position:absolute;right:14px;bottom:12px;font-size:var(--neo-font-size-sm);font-weight:700;color:#8A5A12;background:#FBF1DE;padding:6px 12px;border-radius:999px}
+.srp-pause{position:absolute;right:14px;top:8px;font-size:var(--neo-font-size-sm);font-weight:700;color:#8A5A12;background:#FBF1DE;padding:6px 12px;border-radius:999px}
+.srp-cc{position:absolute;left:12px;right:12px;bottom:12px;display:flex;justify-content:center;pointer-events:none}
+.srp-cc-t{max-width:100%;background:rgba(15,23,42,.82);color:#fff;font-size:var(--neo-font-size-base);line-height:1.55;padding:8px 14px;border-radius:10px;text-align:center;animation:srp-cc .25s ease-out}
+.srp-cc-t.warn{background:rgba(124,45,18,.88)}
+@keyframes srp-cc{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.srp-sub-k{font-size:var(--neo-font-size-xs);font-weight:700;color:#6B7684;margin-bottom:6px}
 .srp-sub{border-radius:12px;background:#EEF3FD;padding:14px 16px;min-height:96px}
 .srp-sub.warn{background:#FFF4ED}
 .srp-sub-t{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--neo-font-size-base);flex-wrap:wrap}
@@ -257,5 +267,5 @@ const CSS = `
   .srp-r{border-left:none;border-top:1px solid #E4EAF3}
   .srp-line{font-size:26px}
 }
-@media (prefers-reduced-motion: reduce){.srp-seg{transition:none}}
+@media (prefers-reduced-motion: reduce){.srp-seg{transition:none}.srp-cc-t{animation:none}}
 `;
