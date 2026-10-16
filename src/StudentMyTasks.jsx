@@ -632,7 +632,7 @@ const StudentMyTasks = () => {
                             </div>
                             {/* [TSK-10 v1.11] 풀이 과정을 열면 이 원본 자리에서 필기가 다시 그려진다(장면 자막 포함) — 재생 막대 · 단계는 오른쪽 패널 */}
                             {replayQ === i && rq
-                              ? <div className="smt-paper smt-stage srp-stage-in" ref={setStageEl} />
+                              ? <div className="smt-stage srp-stage-in" ref={setStageEl} />
                               : <div className="smt-paper">{qq.pen ? <PenStrokes pen={qq.pen} from={qq.penFrom || 0} label={`${qq.label} 답안 필기`} style={{ maxHeight: 420 }} /> : qq.answer.map((l, k) => <div key={k} className="smt-hand">{l}</div>)}</div>}
                           </div>
                         ))}
@@ -649,7 +649,7 @@ const StudentMyTasks = () => {
                   <aside className={`smt-col-r ${rq ? 'has-rp' : ''}`}>
                     {rq && (
                       <div className="smt-rp-over" ref={replayRef}>
-                        <SolutionReplay key={replayQ} panel q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} />
+                        <SolutionReplay key={replayQ} panel q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} stagePaperClass="smt-paper" stageLineClass="smt-hand" />
                       </div>
                     )}
                     <div className="smt-rtitle">채점 결과</div>
@@ -910,7 +910,7 @@ const CSS = `
 .smt-dmeta{font-size:var(--neo-font-size-sm);color:var(--t3)}
 .smt-board2{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px}
 .smt-col-r{position:relative}
-.smt-stage{padding:14px 18px;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.smt-stage{min-width:0}
 .smt-col-r.has-rp{min-height:calc(100vh - 230px);align-self:stretch} /* 왼쪽 길이만큼 늘려 패널이 따라 내려올 자리 */
 .smt-rp-over{position:absolute;inset:0;z-index:5}
 /* 아래 문항을 재생하느라 화면을 내려도 패널은 화면 안에 붙어 있다 */

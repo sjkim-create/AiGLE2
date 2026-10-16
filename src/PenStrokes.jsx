@@ -22,7 +22,7 @@ const pathOf = (pts, n) => {
   return n === 1 ? `${d}l0.01 0` : d;
 };
 
-const PenStrokes = ({ pen, from = 0, to, viewBox, strokeState, tip, width = 0.38, color = '#1E293B', style, label = '펜 필기' }) => {
+const PenStrokes = ({ pen, from = 0, to, viewBox, strokeState, tip, width = 0.38, color = '#1E293B', style, label = '펜 필기', ghost }) => {
   const last = to ?? pen.strokes.length - 1;
   const vb = viewBox || penViewBox(pen, from, last);
   const paths = [];
@@ -34,6 +34,10 @@ const PenStrokes = ({ pen, from = 0, to, viewBox, strokeState, tip, width = 0.38
   }
   return (
     <svg viewBox={vb} role="img" aria-label={label} style={{ width: '100%', height: 'auto', display: 'block', ...style }}>
+      {/* ghost — 아직 쓰지 않은 부분까지 원본 전체를 옅게 깔아 둔다(재생이 원본 위에 덧그려지는 느낌) */}
+      {ghost && <g fill="none" stroke={ghost} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">
+        {pen.strokes.slice(from, last + 1).map((st, i) => <path key={i} d={pathOf(st.p, st.p.length)} />)}
+      </g>}
       <g fill="none" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">{paths}</g>
       {tip && <circle cx={tip[0]} cy={tip[1]} r={0.75} fill="#2563EB" stroke="rgba(37,99,235,.25)" strokeWidth={1.2} />}
     </svg>

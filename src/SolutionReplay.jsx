@@ -107,7 +107,7 @@ const buildTimeline = (steps, pen, mode, lang = 'ko') => {
 
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null, stageTarget = null }) => {
+const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null, stageTarget = null, stagePaperClass = '', stageLineClass = '' }) => {
   const [fold, setFold] = useState(false); // inline — 오른쪽 위 풀이 과정 패널 접기(접으면 아래 채점 결과가 올라온다)
   const isTeacher = viewer === 'teacher';
   const sol = q.solution;
@@ -243,6 +243,31 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
             </div>
   );
 
+  /* [TSK-10 v1.17] stageTarget — 답안 미리보기의 원본 화면을 그대로 쓴다(같은 상자 · 같은 크기 · 같은 글씨).
+   *   원본 전체를 옅게 깔고 그 위에 쓰는 순서대로 덧그린다. 장면 자막은 원본을 가리지 않게 아래로 */
+  const stageNode = (
+    <>
+      <div className={`${stagePaperClass} srp-stage-paper`} aria-label={isTeacher ? U.stuPen : U.myPen}>
+        {pen
+          ? <PenStrokes pen={pen} from={sol.penFrom || 0} viewBox={penVB} strokeState={(k) => penState.m.get(k)} tip={penState.tip} ghost="#E5E9F0" label={isTeacher ? U.stuPen : U.myPen} style={{ maxHeight: 420 }} />
+          : lines.map((parts, li) => (
+            <div key={li} className={`${stageLineClass} srp-stage-line`}>
+              {parts.map(({ key, s, idx, text, shown, writing }) => (
+                <span key={key} className={`srp-seg ${idx === cur ? 'on' : ''} ${!s.ok && t >= s.end ? 'warn' : ''}`}>
+                  {text.slice(0, shown)}
+                  {writing && <span className="srp-tip" aria-hidden="true" />}
+                  <span className="srp-ghost">{text.slice(shown)}</span>
+                </span>
+              ))}
+            </div>
+          ))}
+        {pausing && <div className="srp-pause">{U.paused(cue.sec || step.pauseSec)}</div>}
+      </div>
+      <div className="srp-cc-out" aria-live="polite">{cue?.txt && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.txt}</span>}</div>
+      {ctrlNode}
+    </>
+  );
+
   return (
     <div className={inline ? 'srp-inline' : panel ? 'srp-panel' : 'srp-wrap'} role={inline || panel ? 'region' : 'dialog'} aria-modal={inline || panel ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
       <style>{CSS}</style>
@@ -276,7 +301,7 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
           <div className="srp-l">
             {noEn && <div className="srp-noen">{U.noEn}</div>}
             <div className="srp-qtext"><span className="srp-qtext-k">{tr(q, 'label', lang)}</span>{tr(q, 'text', lang)}</div>
-            {stageTarget ? createPortal(<>{paperNode}{ctrlNode}</>, stageTarget) : paperNode}
+            {stageTarget ? createPortal(stageNode, stageTarget) : paperNode}
 
             {!stageTarget && ctrlNode}
           </div>
@@ -348,7 +373,11 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
 export default SolutionReplay;
 
 const CSS = `
-.srp-stage-in .srp-ctrl{margin-top:10px}
+.srp-stage-paper{position:relative}
+.srp-stage-line .srp-ghost{color:#E5E9F0}
+.srp-cc-out{min-height:46px;display:flex;align-items:center;justify-content:center;margin-top:10px}
+.srp-cc-out:empty{min-height:46px}
+.srp-stage-in .srp-ctrl{margin-top:6px}
 .srp-stage-in .srp-paper{border:none;background:#fff;padding:6px 0 76px !important;min-height:0}
 .srp-stage-in .srp-paper-cap{position:static;margin-bottom:6px}
 .srp-stage-in .srp-pen svg{max-height:min(46vh,440px)}
