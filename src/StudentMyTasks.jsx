@@ -468,7 +468,13 @@ const StudentMyTasks = () => {
   const open = (i) => { setOpenIdx(i); setKind('content'); setAnsQ(0); setReplayQ(null); setPdf('idle'); toTop(); };
   const back = () => { setOpenIdx(null); setReplayQ(null); toTop(); };
   const openReplay = (i) => { setAnsQ(i); setReplayQ(i); };
-  const closeReplay = () => setReplayQ(null);
+  /* 닫기 — 책장이 접히는 동작(0.32초)이 끝난 뒤 패널을 뺀다 */
+  const [rpClosing, setRpClosing] = useState(false);
+  const closeReplay = () => {
+    if (replayQ == null || rpClosing) return;
+    setRpClosing(true);
+    setTimeout(() => { setReplayQ(null); setRpClosing(false); }, 320);
+  };
   /* 답안 문항 탭 — 풀이 과정이 열려 있으면 바꾼 문항으로 따라간다(그 문항에 풀이가 없으면 닫는다) */
   const pickAnsQ = (i) => {
     setAnsQ(i);
@@ -649,7 +655,7 @@ const StudentMyTasks = () => {
                   <aside className={`smt-col-r ${rq ? 'has-rp' : ''}`}>
                     {rq && (
                       <div className="smt-rp-over" ref={replayRef}>
-                        <SolutionReplay key={replayQ} panel q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} stagePaperClass="smt-paper" stageLineClass="smt-hand" />
+                        <SolutionReplay key={replayQ} panel side="right" closing={rpClosing} q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} stagePaperClass="smt-paper" stageLineClass="smt-hand" />
                       </div>
                     )}
                     <div className="smt-rtitle">채점 결과</div>

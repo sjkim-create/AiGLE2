@@ -297,6 +297,13 @@ const GradingReviewModal = ({
     solutionReplay = false
 }) => {
     const [replayOpen, setReplayOpen] = useState(false);
+    /* 닫기 — 책장이 접히는 동작(0.32초)이 끝난 뒤 패널을 뺀다 */
+    const [rpClosing, setRpClosing] = useState(false);
+    const closeReplay = () => {
+        if (!replayOpen || rpClosing) return;
+        setRpClosing(true);
+        setTimeout(() => { setReplayOpen(false); setRpClosing(false); }, 320);
+    };
     const [stageEl, setStageEl] = useState(null); // [SCR-03 v5.29] 원본 보기 안 필기 재생 자리
     /* [SCR-03 v5.31] 좌우 폭 조절(일괄 채점 통합) — 가운데 손잡이를 끌거나 ← → . 두 번 누르면 원래 폭 */
     const [leftW, setLeftW] = useState(null);
@@ -655,7 +662,7 @@ const GradingReviewModal = ({
                     {canReplay ? (
                         <button className="toolbar-btn btn-playback" aria-pressed={replayOpen}
                             title="학생 필기를 실제 순서대로 다시 그리고, 왼쪽에 풀이 단계 · 정리를 엽니다 — 결과 발송 후 학생도 같은 풀이 과정을 봅니다"
-                            onClick={() => setReplayOpen((v) => !v)}>{replayOpen ? '■ 필기 분석 닫기' : '▶ 필기 분석'}</button>
+                            onClick={() => (replayOpen ? closeReplay() : setReplayOpen(true))}>{replayOpen ? '■ 필기 분석 닫기' : '▶ 필기 분석'}</button>
                     ) : (
                         <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
                             {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
@@ -806,7 +813,7 @@ const GradingReviewModal = ({
                         {canReplay && replayOpen && (
                             <div style={{ position: 'absolute', left: 0, right: 0, top: HEAD_H, bottom: 0, zIndex: 6 }}>
                                 <SolutionReplay panel key={`${selectedStudent?.id}-${activeQuestion}`} q={replayData.q} A={replayData.A} viewer="teacher" studentName={selectedStudent?.name}
-                                    sampleNote={replayData.sample} onClose={() => setReplayOpen(false)}
+                                    sampleNote={replayData.sample} onClose={closeReplay} side="left" closing={rpClosing}
                                     stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" stageLineClass="srp-hand" />
                             </div>
                         )}

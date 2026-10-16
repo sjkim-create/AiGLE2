@@ -107,7 +107,7 @@ const buildTimeline = (steps, pen, mode, lang = 'ko') => {
 
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null, stageTarget = null, stagePaperClass = '', stageLineClass = '' }) => {
+const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null, stageTarget = null, stagePaperClass = '', stageLineClass = '', side = 'right', closing = false }) => {
   const [fold, setFold] = useState(false); // inline — 오른쪽 위 풀이 과정 패널 접기(접으면 아래 채점 결과가 올라온다)
   const isTeacher = viewer === 'teacher';
   const sol = q.solution;
@@ -269,7 +269,7 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
   );
 
   return (
-    <div className={inline ? 'srp-inline' : panel ? 'srp-panel' : 'srp-wrap'} role={inline || panel ? 'region' : 'dialog'} aria-modal={inline || panel ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
+    <div className={inline ? 'srp-inline' : panel ? `srp-panel side-${side} ${closing ? 'closing' : ''}` : 'srp-wrap'} role={inline || panel ? 'region' : 'dialog'} aria-modal={inline || panel ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
       <style>{CSS}</style>
       <div className="srp-box">
         <div className="srp-head">
@@ -383,8 +383,16 @@ const CSS = `
 .srp-stage-in .srp-paper{border:none;background:#fff;padding:6px 0 76px !important;min-height:0}
 .srp-stage-in .srp-paper-cap{position:static;margin-bottom:6px}
 .srp-stage-in .srp-pen svg{max-height:min(46vh,440px)}
-.srp-panel{height:100%;transform-origin:top center;animation:srp-drop .28s ease-out}
-@keyframes srp-drop{from{opacity:0;transform:translateY(-14px) scaleY(.97)}to{opacity:1;transform:none}}
+/* [책장 펼치기] 왼쪽 패널은 오른쪽 모서리(가운데)를 축으로 왼쪽으로, 오른쪽 패널은 왼쪽 모서리를 축으로 오른쪽으로 펼쳐진다. 닫을 때는 거꾸로 접힌다 */
+.srp-panel{height:100%;backface-visibility:hidden;will-change:transform}
+.srp-panel.side-left{transform-origin:right center;animation:srp-open-l .55s cubic-bezier(.22,.8,.24,1)}
+.srp-panel.side-right{transform-origin:left center;animation:srp-open-r .55s cubic-bezier(.22,.8,.24,1)}
+.srp-panel.side-left.closing{animation:srp-close-l .32s ease-in forwards}
+.srp-panel.side-right.closing{animation:srp-close-r .32s ease-in forwards}
+@keyframes srp-open-l{from{transform:perspective(1800px) rotateY(-88deg);opacity:.15}to{transform:perspective(1800px) rotateY(0);opacity:1}}
+@keyframes srp-open-r{from{transform:perspective(1800px) rotateY(88deg);opacity:.15}to{transform:perspective(1800px) rotateY(0);opacity:1}}
+@keyframes srp-close-l{from{transform:perspective(1800px) rotateY(0);opacity:1}to{transform:perspective(1800px) rotateY(-88deg);opacity:0}}
+@keyframes srp-close-r{from{transform:perspective(1800px) rotateY(0);opacity:1}to{transform:perspective(1800px) rotateY(88deg);opacity:0}}
 .srp-panel .srp-box{width:100%;height:100%;max-height:none;border:1px solid #C7D7FB;border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18)}
 .srp-panel .srp-head{padding:12px 16px}
 .srp-panel .srp-cols{grid-template-columns:minmax(0,1fr);overflow-y:auto;flex:1;min-height:0}
