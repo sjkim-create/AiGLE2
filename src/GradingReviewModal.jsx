@@ -623,8 +623,8 @@ const GradingReviewModal = ({
                     <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
                         {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
                     </button>
-                    {/* [SCR-03 v5.26] 풀이 과정 — 수학(과정 분석 지원 교과) · 펜 답안만(스캔은 획 정보가 없음) · 무효 처리 제외 */}
-                    {solutionReplay && isProcessEvalSupported && selectedStudent?.submitType === 'pen' && !selectedStudent?.invalid && (
+                    {/* [SCR-03 v5.28] 풀이 과정 — 교과 무관 · 펜 답안만(스캔은 획 정보가 없음) · 무효 처리 제외 */}
+                    {solutionReplay && selectedStudent?.submitType === 'pen' && !selectedStudent?.invalid && (
                         <button className="toolbar-btn btn-playback" title="학생 필기를 단계별로 재생하고 단계마다 AI 설명을 봅니다 — 결과 발송 후 학생도 같은 화면을 봅니다"
                             onClick={() => { setIsFullscreen(false); setReplayOpen(true); }}>🎬 풀이 과정</button>
                     )}
