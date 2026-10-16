@@ -9,10 +9,12 @@
  *   · 필기가 멈춘 구간(머뭇거림)은 「⏸ n초 멈춤」으로 짧게 보여 준다
  *   · 태블릿 — 가로는 2단(재생 · 단계), 좁은 화면은 1단. 손가락으로 누르기 쉬운 버튼 크기
  *
- * 프로토: 필기 획 데이터 대신 답안 글자를 한 글자씩 드러내 쓰는 순서를 흉내 낸다.
- *   실제는 펜 획(좌표 · 시각)을 그대로 재생 — 단계 = 획 구간. 단계 나누기 · 설명은 AI 채점 때 미리 만들어 두어 학생은 기다리지 않는다
+ * 필기 재생 두 가지
+ *   · sol.pen 있음 — **실제 펜 획(좌표 · 시각)** 재생. 장면 cue = 획 구간 s:[처음, 끝]. 획 안의 쓰는 속도는 실제 그대로, 획 사이 쉼은 짧게 줄인다
+ *   · 없음 — 답안 글자를 한 글자씩 드러내는 흉내(프로토 샘플). cue = w(쓴 글자) 단계 나누기 · 설명은 AI 채점 때 미리 만들어 두어 학생은 기다리지 않는다
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import PenStrokes, { penViewBox } from './PenStrokes';
 
 const CHAR_SEC = 0.11;   // 글자 하나 쓰는 시간(프로토)
 const GAP_SEC = 0.5;     // 단계 사이 쉼
@@ -20,10 +22,30 @@ const PAUSE_SHOW_SEC = 1.6; // 실제 멈춘 시간은 이 길이로 줄여 보�
 const SPEEDS = [1, 1.5, 2];
 /* 자막을 읽을 시간 — 쓰는 시간보다 짧으면 쓰는 시간만큼, 길면 읽을 때까지 머문다 */
 const readSec = (say) => 1.2 + (say ? say.length : 0) * 0.07;
+const STROKE_GAP_MAX = 0.45; // 펜: 획 사이 쉼은 최대 이만큼(초)으로 줄인다
+
+/* 펜 획 구간 [a, b]의 재생 일정 — 획마다 시작(장면 기준 초) · 점별 누적 시간 */
+const penSchedule = (pen, a, b) => {
+  let t = 0;
+  const out = [];
+  for (let k = a; k <= b; k += 1) {
+    const st = pen.strokes[k];
+    if (k > a) {
+      const prev = pen.strokes[k - 1];
+      const prevEnd = prev.t + prev.p.reduce((x, q) => x + q[2], 0);
+      t += Math.min(STROKE_GAP_MAX, Math.max(0.03, (st.t - prevEnd) / 1000));
+    }
+    let acc = 0;
+    const cum = st.p.map((q, i) => { if (i) acc += q[2] / 1000; return acc; });
+    out.push({ k, at: t, cum });
+    t += acc;
+  }
+  return { list: out, sec: t };
+};
 
 /* steps: [{ title, ok, line, pauseSec?, cues[{ w? | pause? , say }], basic, detail }]
  *   cue 하나 = 장면 하나: w(쓴 글자)를 쓰는 동안 · 쓴 뒤 읽을 시간까지 say 자막이 보인다 */
-const buildTimeline = (steps) => {
+const buildTimeline = (steps, pen) => {
   let t = 0;
   const lineCursor = {};
   return steps.map((s, i) => {
@@ -33,10 +55,11 @@ const buildTimeline = (steps) => {
       const w = c.w || '';
       const from = lineCursor[s.line] || 0;
       lineCursor[s.line] = from + w.length;
-      const writeSec = w.length * CHAR_SEC;
+      const sched = pen && c.s ? penSchedule(pen, c.s[0], c.s[1]) : null;
+      const writeSec = sched ? sched.sec : w.length * CHAR_SEC;
       const dur = Math.max(c.pause ? PAUSE_SHOW_SEC : writeSec + 0.4, readSec(c.say));
       t += dur;
-      return { ...c, start: cs, end: t, from, len: w.length, writeEnd: cs + writeSec };
+      return { ...c, start: cs, end: t, from, len: w.length, writeEnd: cs + writeSec, sched };
     });
     const end = t;
     if (i < steps.length - 1) t += GAP_SEC;
@@ -48,7 +71,9 @@ const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).pad
 
 const SolutionReplay = ({ q, A, onClose }) => {
   const sol = q.solution;
-  const tl = useMemo(() => buildTimeline(sol.steps), [sol]);
+  const pen = sol.pen || null;
+  const tl = useMemo(() => buildTimeline(sol.steps, pen), [sol, pen]);
+  const penVB = useMemo(() => (pen ? penViewBox(pen, sol.penFrom || 0) : null), [pen, sol.penFrom]);
   const total = tl[tl.length - 1].end;
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -96,6 +121,25 @@ const SolutionReplay = ({ q, A, onClose }) => {
   const seek = (v) => { setT(v); if (v >= total) setUnlocked(true); };
   const goStep = (i) => { setT(tl[i].start); setPlaying(true); };
 
+  /* 펜 — 획마다 지금까지 그린 점 수 · 색(지금 단계 파랑 · 다시 볼 부분 빨강) */
+  const penState = useMemo(() => {
+    if (!pen) return null;
+    const m = new Map();
+    let tip = null;
+    tl.forEach((s, si) => s.cues.forEach((c) => {
+      if (!c.sched) return;
+      c.sched.list.forEach(({ k, at, cum }) => {
+        const lt = t - c.start - at;
+        if (lt < 0) return;
+        let n = cum.length;
+        if (lt < cum[cum.length - 1]) { n = cum.findIndex((x) => x > lt); if (n < 1) n = 1; const pt = pen.strokes[k].p[n - 1]; tip = [pt[0], pt[1]]; }
+        const color = c.mark && t >= c.end ? '#DC2626' : si === cur ? '#1D4ED8' : '#1E293B';
+        m.set(k, { n, color });
+      });
+    }));
+    return { m, tip };
+  }, [pen, tl, t, cur]);
+
   /* 줄마다 지금까지 쓴 글자 — 장면(자막) 단위 조각 */
   const lines = q.answer.map((line, li) => tl.flatMap((s, idx) => (s.line !== li ? [] : s.cues.filter((c) => c.len > 0).map((c, k) => {
     const shown = t <= c.start ? 0 : Math.min(c.len, Math.ceil((t - c.start) / CHAR_SEC));
@@ -121,9 +165,14 @@ const SolutionReplay = ({ q, A, onClose }) => {
           {/* 좌: 문항 지문 + 내 필기 재생(장면 자막) + 재생 막대 — 정리는 오른쪽 풀이 단계 안 */}
           <div className="srp-l">
             <div className="srp-qtext"><span className="srp-qtext-k">{q.label}</span>{q.text}</div>
-            <div className="srp-paper" aria-label="내 필기 재생">
+            <div className={`srp-paper ${pen ? 'pen' : ''}`} aria-label="내 필기 재생">
               <div className="srp-paper-cap">내 필기 · {A.cap}</div>
-              {lines.map((parts, li) => (
+              {pen && (
+                <div className="srp-pen">
+                  <PenStrokes pen={pen} from={sol.penFrom || 0} viewBox={penVB} strokeState={(k) => penState.m.get(k)} tip={penState.tip} label="내 필기 재생" />
+                </div>
+              )}
+              {!pen && lines.map((parts, li) => (
                 <div key={li} className="srp-line">
                   {parts.map(({ key, s, idx, text, shown, writing }) => (
                     <span key={key} className={`srp-seg ${idx === cur ? 'on' : ''} ${!s.ok && t >= s.end ? 'warn' : ''}`}>
@@ -217,6 +266,9 @@ const CSS = `
 .srp-paper{position:relative;min-height:260px;padding-bottom:84px !important;background:#FFFEF8;border:1px solid #E9E3CF;border-radius:12px;padding:40px 22px 26px;
   background-image:repeating-linear-gradient(transparent 0 47px,#EDE7D3 47px 48px);background-position:0 30px}
 .srp-paper-cap{position:absolute;top:10px;left:16px;font-size:var(--neo-font-size-xs);color:#98A3B0}
+.srp-pen{padding:0 4px;display:flex;justify-content:center}
+.srp-pen svg{max-height:min(52vh,480px);width:auto !important;max-width:100%}
+.srp-paper.pen{background-image:none;background:#fff;border-color:#E4EAF3}
 .srp-line{font-family:'Nanum Pen Script',cursive;font-size:30px;line-height:48px;color:#1E293B;word-break:keep-all;overflow-wrap:anywhere}
 .srp-seg{transition:color .2s}
 .srp-seg.on{color:#1D4ED8}
