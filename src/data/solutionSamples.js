@@ -152,3 +152,53 @@ export const MATH_RAT_TASK = {
     },
   ],
 };
+
+/* [일괄 채점 통합 · SCR-03 v5.30] 학생 모드 유리함수 과제를 교사 쪽에도 — 같은 학생(김소리) · 같은 문항 · 같은 결과
+ *   과제 목록에 한 줄(taskKey 'rat'), 그 과제를 고르면 명단은 김소리만, 상세는 문항마다 피드백 · 채점 근거 · 원본 필기 · 필기 재생이 그 문항 것 */
+export const RAT_TEACHER_TASK = {
+  id: 'rat', taskKey: 'rat', type: '수학', title: MATH_RAT_TASK.title.replace(/^\[수학\]\s*/, ''), date: '2026.10.14', submissions: '1/1', description: '학생 모드 시연 과제', resultMode: 'score',
+  questions: MATH_RAT_TASK.questions.map((q, i) => ({ id: i + 1, title: q.label, score: q.point, sheets: 1, description: q.text })),
+};
+const ratBasis = [
+  {
+    criterion: '두 점근선과 지나는 점으로 유리함수의 식을 세우고, 그래프를 그려 식을 구하는 과정을 바르게 썼는가?',
+    summary: '그래프와 점근선으로 식의 꼴을 정하고 점 (3, 0)을 대입해 k = 1을 정확히 구했으나, 대입한 줄에 등호를 하나 더 쓰고 마지막 답에 「y =」를 빠뜨렸습니다.',
+    rows: [
+      { status: '충족', req: '그래프 그리기', reason: '두 점근선을 점선으로 먼저 그리고 점 (3, 0)을 지나는 두 갈래 곡선을 그렸습니다.', quote: '(그래프 · 점선 점근선 · (3, 0))' },
+      { status: '충족', req: '점근선으로 식의 꼴 설정', reason: '점근선 x = 2, y = −1을 이용해 y = k/(x−2) − 1 (k ≠ 0)로 두었습니다.', quote: 'y = k/(x−2) − 1 (k ≠ 0)로 둔다' },
+      { status: '충족', req: '점 대입으로 k 구하기', reason: 'x = 3, y = 0을 대입해 k = 1을 구했습니다. 대입한 줄에 「= −1」로 등호를 하나 더 쓴 표기 오류가 있습니다.', quote: '0 = k/(3−2) = −1 · 0 = k − 1 · ∴ k = 1' },
+      { status: '미충족', req: '함수식으로 답 쓰기', reason: '「y =」 없이 식의 오른쪽만 써서 함수의 식으로 답하지 못했습니다.', quote: '∴ 유리함수식 1/(x−2) − 1' },
+    ],
+    notUpper: '「함수식으로 답 쓰기」가 미충족이라 만점에 이르지 못했습니다.',
+    notLower: '식의 꼴 설정과 k 계산이 정확해 채점 기준 3개를 충족했습니다.',
+  },
+  {
+    criterion: '유리함수의 정의역과 치역을 점근선과 연결해 바르게 구했는가?',
+    summary: '분모가 0이 되는 x = 2와 가로 점근선 y = −1을 이용해 정의역과 치역을 모두 정확하게 구했습니다.',
+    rows: [
+      { status: '충족', req: '정의역 구하기', reason: '분모가 0이 되는 x = 2만 빼서 정의역을 정확히 구했습니다.', quote: '정의역 : x ≠ 2 인 모든 실수' },
+      { status: '충족', req: '치역 구하기', reason: '가로 점근선 y = −1을 이용해 치역을 정확히 구했습니다.', quote: '치역 : y ≠ −1 인 모든 실수' },
+    ],
+    notUpper: '', notLower: '채점 기준을 모두 충족했습니다.',
+  },
+];
+/* 문항마다 상세에 쓸 값 — 피드백 · 학습 안내 · 채점 근거 · 등급(점수 과제라 점수 중심) */
+export const RAT_TEACHER_QDATA = Object.fromEntries(MATH_RAT_TASK.questions.map((q, i) => [i + 1, {
+  good: q.fb[0], effort: q.fb[1], grow: q.fb[2], guide: q.guide, basis: ratBasis[i],
+  letter: q.grade, label: q.chip, scale: '5단계 기준',
+}]));
+export const RAT_TEACHER_STUDENT = {
+  id: 301, name: '김소리', grade: '3학년 1반 1번', submitType: 'pen', aiGrade: '우수', teacherGrade: '우수', status: '결과 발송 완료', sentMode: 'score',
+  taskKey: 'rat', round: 1, history: [], aiCount: { 1: 1, 2: 0 }, sheetNo: 'R-0001', penStats: { strokes: 194, durationSec: 112 },
+  aiScore: 5, teacherScore: 5,
+  qData: RAT_TEACHER_QDATA,
+  /* AI 필기 분석 — 학생 모드와 같은 결과(문항 1 기준: 심사숙고 확신형 cba · 총평) */
+  handwritingEvaluation: {
+    patternCode: 'cba',
+    systemDataLog: { processPattern: '심사숙고 확신형', metricsCode: 'Time-c, Coord-b, Hesit-a', gradeLevel: 'B' },
+    evaluationSummary: { diagnosedPattern: '심사숙고 확신형', totalEvaluation: MATH_RAT_TASK.questions[0].hw.summary },
+    finalFeedback: { whatsGood: '', whatNeedsWork: '', letsGrowTogether: '', contentBottleneckAnalysis: '' },
+  },
+  /* 원본 보기 · 필기 재생 — 문항마다 학생 모드와 같은 데이터(문항 1 = 실제 펜, 문항 2 = 글자 흉내) */
+  replayQ: Object.fromEntries(MATH_RAT_TASK.questions.map((q, i) => [i + 1, q])),
+};

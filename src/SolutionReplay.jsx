@@ -374,6 +374,7 @@ export default SolutionReplay;
 
 const CSS = `
 .srp-stage-paper{position:relative}
+.srp-hand{font-family:'Nanum Pen Script',cursive;font-size:var(--neo-font-size-xxl);color:#22325C;line-height:1.75}
 .srp-sheet{background:#fff;border:1px solid #E5E7EB;padding:20px 22px}
 .srp-stage-line .srp-ghost{color:#E5E9F0}
 .srp-cc-out{min-height:46px;display:flex;align-items:center;justify-content:center;margin-top:10px}

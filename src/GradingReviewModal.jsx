@@ -16,6 +16,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { lookupPattern } from './handwritingPatternMatrix';
 import SolutionReplay from './SolutionReplay';
 import { MATH_RAT_TASK } from './data/solutionSamples';
+import PenStrokes from './PenStrokes';
 import { formatResult, gradeToPoints, scoreToGrade } from './lib/gradingShared'; // [TSK v3.82] 과제의 채점 결과 표기(등급/점수)
 
 const ANSWER_SHEET_IMG = `${import.meta.env.BASE_URL}images/answer-sheet-sample.png`;
@@ -366,10 +367,16 @@ const GradingReviewModal = ({
     /* ── 등급평가 피드백 (공통 영역) — 편집 가능 ── */
     const hw = selectedStudent?.handwritingEvaluation;
     const hwInsufficient = !!hw?.insufficient;
-    const gradeFb = useMemo(() => gradeFeedbackOf(selectedStudent?.aiGrade), [selectedStudent?.aiGrade]);
+    // [SCR-03 v5.30] 학생에 문항별 값(qData)이 있으면 그 문항 것을 쓴다(유리함수 과제)
+    const gradeFb = useMemo(() => {
+        const base = gradeFeedbackOf(selectedStudent?.aiGrade);
+        const o = selectedStudent?.qData?.[activeQuestion];
+        return o ? { ...base, ...o } : base;
+    }, [selectedStudent?.aiGrade, selectedStudent?.qData, activeQuestion]);
     const buildDraft = () => {
         // 과정 분석이 끝나면(필기 충분) 같은 칸에 [과제 수행]=등급평가 / [학습 태도]=과정 분석 를 함께 싣는다
-        if (hw && !hwInsufficient && hw.finalFeedback) {
+        // [SCR-03 v5.30] 문항별 값이 있는 학생(유리함수)은 문항 피드백 그대로 — 시연 과정 분석 문장을 섞지 않는다
+        if (hw && !hwInsufficient && hw.finalFeedback && !selectedStudent?.qData) {
             return {
                 good: `[과제 수행] ${gradeFb.good}\n[학습 태도] ${hw.finalFeedback.whatsGood}`,
                 effort: `[과제 수행] ${gradeFb.effort}\n[학습 태도] ${hw.finalFeedback.whatNeedsWork}`,
@@ -612,6 +619,9 @@ const GradingReviewModal = ({
 
     /* ── 우측: 원본 보기 (필기 재생) ── */
     const canReplay = solutionReplay && selectedStudent?.submitType === 'pen' && !selectedStudent?.invalid; // [SCR-03 v5.29]
+    // [SCR-03 v5.30] 학생에 문항별 답안 · 풀이 데이터가 있으면(유리함수 과제) 원본 · 필기 재생 모두 그 문항 것. 없으면 시연 샘플
+    const origQ = selectedStudent?.replayQ?.[activeQuestion] || null;
+    const replayData = origQ?.solution ? { q: origQ, A: MATH_RAT_TASK, sample: null } : { q: MATH_RAT_TASK.questions[0], A: MATH_RAT_TASK, sample: '시연 샘플 필기' };
     const renderOriginal = () => (
         <div style={{ padding: '4px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div className="pen-canvas-box" style={isFullscreen
@@ -640,7 +650,13 @@ const GradingReviewModal = ({
                         <div ref={setStageEl} className="srp-stage-in" style={{ width: '100%', maxWidth: isFullscreen ? 900 : 640 }} />
                     ) : (
                     <div style={{ position: 'relative', width: '100%', maxWidth: isFullscreen ? 900 : 640 }}>
-                        <img src={ANSWER_SHEET_IMG} alt="학생 답안 원본" style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }} />
+                        {origQ ? (
+                            <div style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', padding: '20px 22px', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }}>
+                                {origQ.pen
+                                    ? <PenStrokes pen={origQ.pen} from={origQ.penFrom || 0} label="학생 답안 원본" style={{ maxHeight: 420 }} />
+                                    : origQ.answer.map((l, i) => <div key={i} style={{ fontFamily: "'Nanum Pen Script', cursive", fontSize: 'var(--neo-font-size-xxl)', color: '#22325C', lineHeight: 1.75 }}>{l}</div>)}
+                            </div>
+                        ) : <img src={ANSWER_SHEET_IMG} alt="학생 답안 원본" style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }} />}
                         {isPlaybackMode && (
                             <button
                                 onClick={() => { if (isPlaying) setIsPlaying(false); else { if (playbackProgress >= 100) setPlaybackProgress(0); setIsPlaying(true); } }}
@@ -770,9 +786,9 @@ const GradingReviewModal = ({
                         {/* [SCR-03 v5.29] 풀이 단계 패널 — 왼쪽 채점 결과 위에 얹힌다(✕ · [■ 필기 재생 닫기]로 닫으면 채점 결과). 필기 재생은 오른쪽 원본 보기 */}
                         {canReplay && replayOpen && (
                             <div style={{ position: 'absolute', left: 0, right: 0, top: HEAD_H, bottom: 0, zIndex: 6 }}>
-                                <SolutionReplay panel key={selectedStudent?.id} q={MATH_RAT_TASK.questions[0]} A={MATH_RAT_TASK} viewer="teacher" studentName={selectedStudent?.name}
-                                    sampleNote="시연 샘플 필기" onClose={() => setReplayOpen(false)}
-                                    stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" />
+                                <SolutionReplay panel key={`${selectedStudent?.id}-${activeQuestion}`} q={replayData.q} A={replayData.A} viewer="teacher" studentName={selectedStudent?.name}
+                                    sampleNote={replayData.sample} onClose={() => setReplayOpen(false)}
+                                    stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" stageLineClass="srp-hand" />
                             </div>
                         )}
                         {/* [v5.18] 좌우 머리줄 높이를 같게(HEAD_H) — 아래 흰 카드의 위 끝이 좌우로 맞는다 */}

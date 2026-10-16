@@ -23,6 +23,7 @@ import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS, UNIFIED_DATA_STATE } from 
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
 import { listWorkbooks } from './lib/itemBank'; // [TSK-15 v1.42] 문제지를 인쇄한 문제집 → 미채점 과제
 import AnswerGradingPanel from './AnswerGradingPanel';
+import { RAT_TEACHER_TASK, RAT_TEACHER_STUDENT } from './data/solutionSamples'; // [SCR-03 v5.30] 학생 모드 유리함수 과제
 
 // ─────────────────────────────────────────────
 // [SCR-06] 퇴고 — 등급 ↔ 점수 환산 및 추이 판정
@@ -153,7 +154,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const baseTasks = [
     // resultMode = 과제 등록 Step 「채점 결과」에서 고른 값 — 'grade'(등급) | 'score'(점수). 데모: 국어 과제는 점수 모드
     { id: 1, type: '국어', title: '과제테스트', date: '2024.02.23', submissions: '0/10', description: '테스트', resultMode: 'score' },
-    { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트', resultMode: 'grade' }
+    { id: 2, type: '수학', title: '오늘 테스트 과제', date: '2024.02.24', submissions: '3/3', description: '오늘 테스트', resultMode: 'grade' },
+    // [일괄 채점 통합 · SCR-03 v5.30] 학생 모드 「유리함수의 그래프에서 식 구하기」와 같은 과제 · 학생(김소리) · 결과
+    ...(isUnified ? [RAT_TEACHER_TASK] : []),
   ];
   // [TSK-15 v1.42] 정답형 문제집 · 낱말 문제집 — 그룹 문제지를 인쇄하면 채점 관리 과제 목록에 「미채점」으로 들어온다
   //   학생 = 인쇄한 그룹의 인원(프로토 샘플 이름), 정답 대조 채점은 다음 단계
@@ -177,7 +180,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
   const tasks = [...wbTasks, ...baseTasks];
   // sheets = TSK-02 「답안지 출력 장수 설정」(문항별 기준 장수).
   // 스캔 채점(SCR-05)의 결손 판정 기준으로 사용된다 — 실제 연결 장수가 이 값보다 적으면 누락으로 안내
-  const questions = [
+  // [SCR-03 v5.30] 과제에 문항이 따로 있으면(유리함수) 그것을, 아니면 시연 공통 문항
+  const currentTask = tasks.find(t => t.id === selectedTask) || baseTasks[1];
+  const questions = currentTask.questions || [
     { id: 1, title: '문항 1', score: 30, sheets: 2, description: '작품의 주제를 파악하고 자신의 생각을 서술하시오.' },
     { id: 2, title: '문항 2', score: 30, sheets: 1, description: '주요 등장인물의 심리 변화를 분석하시오.' },
     { id: 3, title: '문항 3', score: 20, sheets: 1, description: '작품의 표현 기법을 분석하시오.' }
@@ -202,14 +207,16 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
       history: [{ round: 1, aiGrade: '노력', teacherGrade: '노력', sheetNo: 'A-0007', sentAt: '2026.08.12' }] },
     // [SCR-06] v2 데모용 — 퇴고 요청 후 2차 답안 채점 대기 (1차 미채점 학생과 동일한 상태)
     { id: 13, name: '오세림', grade: '1학년 1반 9번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 2, sheetNo: 'B-0009', aiCount: { 1: 1, 2: 0 }, v2Only: true,
-      history: [{ round: 1, aiGrade: '보통', teacherGrade: '보통', sheetNo: 'A-0009', sentAt: '2026.08.13' }] }
+      history: [{ round: 1, aiGrade: '보통', teacherGrade: '보통', sheetNo: 'A-0009', sentAt: '2026.08.13' }] },
+    ...(isUnified ? [RAT_TEACHER_STUDENT] : []),
   ]));
 
   // [SCR-06] 화면에 노출할 학생 명단 — v2 전용 데모 학생(`v2Only`)은 v1(기존 채점 관리)에서 숨긴다.
   //   개별 id 조회(`students.find`)는 v1에서 해당 id가 선택될 일이 없으므로 그대로 둔다.
   const roster = React.useMemo(
-    () => (isV2 ? students : students.filter(s => !s.v2Only)),
-    [students, isV2]
+    // [SCR-03 v5.30] 과제별 명단 — 유리함수 과제(taskKey 'rat')는 그 학생만, 다른 과제에는 섞이지 않는다
+    () => (isV2 ? students : students.filter(s => !s.v2Only)).filter((s) => (s.taskKey || 'base') === (currentTask.taskKey || 'base')),
+    [students, isV2, currentTask.taskKey]
   );
 
   // [v3.19] 그룹 선택 기본값 — 미채점 학생 중 첫 번째 학생의 그룹을 자동 선택 (mount 1회)
@@ -223,7 +230,6 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const currentTask = tasks.find(t => t.id === selectedTask) || baseTasks[1];
   // [TSK v3.82] 결과 표기 — 과제가 「점수」면 등급 대신 n점 (총 배점 = 문항 배점 합)
   const resultMode = currentTask.resultMode || 'grade';
   const totalPoints = questions.reduce((sum, q) => sum + (Number(q.score) || 0), 0);
