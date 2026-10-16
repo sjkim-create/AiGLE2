@@ -14,7 +14,7 @@
  *   · 다국어(프로토) — 오른쪽 위 언어 선택(한국어 · English). 영어면 장면 자막 · 정리 · 단계 · 개념 · 바른 풀이 · 화면 글자가 영어.
  *     데이터는 항목마다 en: { ... } — 없으면 한국어로 보이고 「영어 설명이 아직 없어 한국어로 보여요」 안내
  *   · inline — 학생 결과 확인(TSK-10)에서 모달이 아니라 화면 안에서. 왼쪽 = 문항 · 필기 재생(답안 미리보기 자리),
- *     오른쪽 = 탭 [풀이 과정](단계 · 정리 · 개념 · 바른 풀이) / [채점 결과](리포트 미리보기 — reportNode). 좁은 화면은 위아래 1단
+ *     오른쪽 = 위에 접히는 [풀이 과정] 패널(단계 · 정리 · 개념 · 바른 풀이) + 그 아래 채점 결과(리포트 미리보기 — reportNode). 좁은 화면은 위아래 1단
  *   · viewer='teacher' — 교사 채점 확인(SCR-03)에서 같은 화면. 학생 이름 · 「교사 확인」 표시, 바른 풀이는 처음부터 열림, 아래 안내만 다르다
  *
  * 필기 재생 두 가지
@@ -105,7 +105,7 @@ const buildTimeline = (steps, pen, mode, lang = 'ko') => {
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, reportNode = null }) => {
-  const [side, setSide] = useState('steps'); // inline 오른쪽 탭 — steps(풀이 과정) · report(채점 결과)
+  const [fold, setFold] = useState(false); // inline — 오른쪽 위 풀이 과정 패널 접기(접으면 아래 채점 결과가 올라온다)
   const isTeacher = viewer === 'teacher';
   const sol = q.solution;
   const pen = sol.pen || null;
@@ -270,13 +270,15 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
 
           {/* 우: 단계 목록 · 설명 길이 · 정답 */}
           <div className="srp-r">
+            {/* inline — 풀이 과정 패널(접기) · 접으면 지금 단계만 한 줄 */}
             {inline && (
-              <div className="srp-rtabs" role="tablist">
-                <button type="button" role="tab" aria-selected={side === 'steps'} onClick={() => setSide('steps')}>{U.tabSteps}</button>
-                <button type="button" role="tab" aria-selected={side === 'report'} onClick={() => setSide('report')}>{U.tabReport}</button>
-              </div>
+              <button type="button" className="srp-fold-h" aria-expanded={!fold} onClick={() => setFold((v) => !v)}>
+                <b>{U.tabSteps}</b>
+                <span className="srp-fold-cur">{String(cur + 1).padStart(2, '0')} {tr(step, 'title', lang)}<span className={`srp-dot ${step.ok ? 'ok' : 'no'}`}>{step.ok ? '✓' : '!'}</span></span>
+                <span className="srp-chev" aria-hidden="true">{fold ? '▾' : '▴'}</span>
+              </button>
             )}
-            {(!inline || side === 'steps') ? (<>
+            {(!inline || !fold) && (<>
             <div className="srp-rhead">
               <b>{U.steps}</b>
               <div className="srp-seg-btns" role="group" aria-label={U.lenTip} title={U.lenTip}>
@@ -314,7 +316,13 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
                 ? tr(sol, 'answer', lang).map((l, i) => <div key={i} className="srp-ans-l">{l}</div>)
                 : <div className="srp-lock">{U.lock}</div>}
             </div>
-            </>) : <div className="srp-report">{reportNode}</div>}
+            </>)}
+            {inline && (
+              <div className="srp-rep-wrap">
+                <div className="srp-rep-t">{U.tabReport}</div>
+                <div className="srp-report">{reportNode}</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -335,6 +343,11 @@ const CSS = `
 .srp-inline .srp-paper{min-height:0}
 .srp-inline .srp-head{padding:12px 18px}
 .srp-backbtn{border:1px solid #E4EAF3;background:#fff;border-radius:8px;height:34px;padding:0 12px;font-size:var(--neo-font-size-sm);color:#3C4858;margin-bottom:8px}
+.srp-fold-h{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 14px;border:1px solid #C7D7FB;border-radius:10px;background:#EEF3FD;text-align:left;color:#17212F;font-size:var(--neo-font-size-base)}
+.srp-fold-cur{flex:1;display:flex;align-items:center;gap:8px;min-width:0;font-size:var(--neo-font-size-sm);color:#3C4858;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.srp-chev{font-size:var(--neo-font-size-sm);color:#2563EB}
+.srp-rep-wrap{margin-top:6px;padding-top:14px;border-top:1px solid #E4EAF3}
+.srp-rep-t{font-size:var(--neo-font-size-base);font-weight:700;margin-bottom:10px}
 .srp-rtabs{display:flex;gap:22px;border-bottom:1px solid #E4EAF3;margin:-4px 0 4px}
 .srp-rtabs button{border:none;background:none;padding:0 2px 10px;font-size:var(--neo-font-size-base);color:#6B7684;border-bottom:2px solid transparent;position:relative;top:1px;min-height:40px}
 .srp-rtabs button[aria-selected="true"]{color:#17212F;font-weight:700;border-bottom-color:#17212F}
