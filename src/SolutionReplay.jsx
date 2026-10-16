@@ -16,7 +16,7 @@
  *   · inline — 학생 결과 확인(TSK-10)에서 모달이 아니라 화면 안에서. 왼쪽 = 문항 · 필기 재생(답안 미리보기 자리),
  *     오른쪽 = 위에 접히는 [풀이 과정] 패널(단계 · 정리 · 개념 · 바른 풀이) + 그 아래 채점 결과(리포트 미리보기 — reportNode). 좁은 화면은 위아래 1단
  *   · panel — 학생 결과 확인(TSK-10 v1.10): 화면은 그대로 두고 오른쪽 채점 결과 위에 펼쳐져 얹히는 한 줄(세로) 패널. [✕]로 닫는다
- *     stageTarget — 필기 재생을 그릴 바깥 자리(왼쪽 답안 미리보기의 원본). 있으면 패널에는 재생 막대 · 단계만 남는다 (v1.11)
+ *     stageTarget — 필기 재생 + 재생 막대를 그릴 바깥 자리(왼쪽 답안 미리보기의 원본). 있으면 패널에는 문항 · 단계만 남는다 (v1.11~1.12)
  *   · viewer='teacher' — 교사 채점 확인(SCR-03)에서 같은 화면. 학생 이름 · 「교사 확인」 표시, 바른 풀이는 처음부터 열림, 아래 안내만 다르다
  *
  * 필기 재생 두 가지
@@ -229,6 +229,20 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
             </div>
   );
 
+  /* 재생 막대 — 필기 재생과 함께 다닌다(stageTarget이면 왼쪽 원본 아래) */
+  const ctrlNode = (
+            <div className="srp-ctrl">
+              <button type="button" className="srp-btn main" aria-label={playing ? U.pause : U.play} onClick={toggle}>{playing ? '⏸' : t >= total ? '⟲' : '▶'}</button>
+              <button type="button" className="srp-btn" aria-label={U.restart} onClick={() => { setT(0); setPlaying(true); }}>⟲</button>
+              <input className="srp-seek" type="range" min={0} max={total} step={0.01} value={t} aria-label={U.seek}
+                onChange={(e) => seek(Number(e.target.value))} />
+              <span className="srp-time">{cur + 1}/{tl.length} · {fmt(t)}</span>
+              <div className="srp-seg-btns" role="group" aria-label={U.speed}>
+                {SPEEDS.map((v) => <button key={v} type="button" aria-pressed={speed === v} onClick={() => setSpeed(v)}>{v.toFixed(1)}x</button>)}
+              </div>
+            </div>
+  );
+
   return (
     <div className={inline ? 'srp-inline' : panel ? 'srp-panel' : 'srp-wrap'} role={inline || panel ? 'region' : 'dialog'} aria-modal={inline || panel ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
       <style>{CSS}</style>
@@ -262,18 +276,9 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
           <div className="srp-l">
             {noEn && <div className="srp-noen">{U.noEn}</div>}
             <div className="srp-qtext"><span className="srp-qtext-k">{tr(q, 'label', lang)}</span>{tr(q, 'text', lang)}</div>
-            {stageTarget ? createPortal(paperNode, stageTarget) : paperNode}
+            {stageTarget ? createPortal(<>{paperNode}{ctrlNode}</>, stageTarget) : paperNode}
 
-            <div className="srp-ctrl">
-              <button type="button" className="srp-btn main" aria-label={playing ? U.pause : U.play} onClick={toggle}>{playing ? '⏸' : t >= total ? '⟲' : '▶'}</button>
-              <button type="button" className="srp-btn" aria-label={U.restart} onClick={() => { setT(0); setPlaying(true); }}>⟲</button>
-              <input className="srp-seek" type="range" min={0} max={total} step={0.01} value={t} aria-label={U.seek}
-                onChange={(e) => seek(Number(e.target.value))} />
-              <span className="srp-time">{cur + 1}/{tl.length} · {fmt(t)}</span>
-              <div className="srp-seg-btns" role="group" aria-label={U.speed}>
-                {SPEEDS.map((v) => <button key={v} type="button" aria-pressed={speed === v} onClick={() => setSpeed(v)}>{v.toFixed(1)}x</button>)}
-              </div>
-            </div>
+            {!stageTarget && ctrlNode}
           </div>
 
           {/* 우: 단계 목록 · 설명 길이 · 정답 */}
@@ -343,6 +348,7 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
 export default SolutionReplay;
 
 const CSS = `
+.srp-stage-in .srp-ctrl{margin-top:10px}
 .srp-stage-in .srp-paper{border:none;background:#fff;padding:6px 0 76px !important;min-height:0}
 .srp-stage-in .srp-paper-cap{position:static;margin-bottom:6px}
 .srp-stage-in .srp-pen svg{max-height:min(46vh,440px)}
