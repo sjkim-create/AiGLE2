@@ -18,7 +18,8 @@ import SolutionReplay from './SolutionReplay';
 import PenStrokes from './PenStrokes';
 import { MATH_RAT_TASK } from './data/solutionSamples';
 
-const STUDENT = { cls: '3학년 1반 1번', name: '김소리', id: 'stu2600394a1n' };
+const STUDENT = { school: '네오중학교', cls: '3학년 1반 1번', name: '김소리', id: 'stu2600394a1n' };
+const ASIDE_W = 520; // [TSK-10 v1.8] 오른쪽 채점 결과 기본 폭
 
 /* ── 지문 ── */
 const MATH_PASSAGE = (
@@ -402,18 +403,20 @@ const StudentMyTasks = () => {
   const [filter, setFilter] = useState('done');
   const [query, setQuery] = useState('');
   const [openIdx, setOpenIdx] = useState(null);
-  const [qIdx, setQIdx] = useState(0);
-  const [kind, setKind] = useState('result');
+  const [kind, setKind] = useState('content'); // [TSK-10 v1.8] 왼쪽 탭 — content(과제 내용) · answer(답안 미리보기)
   const [pdf, setPdf] = useState('idle'); // idle · saving · done
   const [toast, setToast] = useState(null);
-  const [zoom, setZoom] = useState(false);
-  const [replay, setReplay] = useState(false); // [풀이 과정 보기] 내 필기 단계 재생
-  const [asideW, setAsideW] = useState(420); // 우측(제출 정보 · 답안 미리보기) 폭 — 가운데 손잡이로 조절
+  const [zoomQ, setZoomQ] = useState(null); // 답안 크게 보기 — 문항 번호
+  const [replayQ, setReplayQ] = useState(null); // [풀이 과정 보기] 화면 안 재생 중인 문항 번호
+  const [asideW, setAsideW] = useState(ASIDE_W); // 오른쪽(채점 결과) 폭 — 가운데 손잡이로 조절
   const timers = useRef([]);
   const scroller = useRef(null);
   const colsRef = useRef(null);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  /* 풀이 과정을 열면 재생 영역이 화면 위에 오도록 — 재생 막대까지 한눈에 */
+  const replayRef = useRef(null);
+  useEffect(() => { if (replayQ != null) replayRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [replayQ]);
 
   /* 좌우 폭 조절 — 좌측 최소 400px, 우측 300px ~ 전체의 60% */
   const startResize = (e) => {
@@ -422,7 +425,7 @@ const StudentMyTasks = () => {
     if (!box) return;
     const move = (ev) => {
       const w = box.right - ev.clientX;
-      setAsideW(Math.round(Math.max(300, Math.min(w, box.width * 0.6, box.width - 400))));
+      setAsideW(Math.round(Math.max(360, Math.min(w, box.width * 0.65, box.width - 400))));
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -439,7 +442,7 @@ const StudentMyTasks = () => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
     const width = colsRef.current?.getBoundingClientRect().width || 1200;
-    setAsideW((w) => Math.round(Math.max(300, Math.min(w + (e.key === 'ArrowLeft' ? 24 : -24), width * 0.6, width - 400))));
+    setAsideW((w) => Math.round(Math.max(360, Math.min(w + (e.key === 'ArrowLeft' ? 24 : -24), width * 0.65, width - 400))));
   };
   const toTop = () => { if (scroller.current) scroller.current.scrollTop = 0; };
 
@@ -450,11 +453,12 @@ const StudentMyTasks = () => {
     return { ...base, status: c.status, title: c.title || base.title, subject: c.subject || base.subject, pub: c.detailPub || base.pub };
   })();
   const isDone = A?.status === 'done';
-  const q = A ? A.questions[qIdx] : null;
+  const zq = A && zoomQ != null ? A.questions[zoomQ] : null;
 
-  const open = (i) => { setOpenIdx(i); setQIdx(0); setKind('result'); setPdf('idle'); toTop(); };
-  const back = () => { setOpenIdx(null); toTop(); };
-  const pickQ = (i) => { setQIdx(i); toTop(); };
+  const open = (i) => { setOpenIdx(i); setKind('content'); setReplayQ(null); setPdf('idle'); toTop(); };
+  const back = () => { setOpenIdx(null); setReplayQ(null); toTop(); };
+  const openReplay = (i) => setReplayQ(i);
+  const closeReplay = () => { setReplayQ(null); setKind('answer'); };
 
   const savePdf = () => {
     if (pdf !== 'idle') return;
@@ -532,6 +536,7 @@ const StudentMyTasks = () => {
           </section>
         ) : (
           <section>
+            {/* [TSK-10 v1.8] 머리글 — 왼쪽 과제 정보, 오른쪽 제출일 · 제출 방법 + [리포트 PDF 다운로드] */}
             <div className="smt-dhead">
               <div className="smt-dhead-l">
                 <button type="button" className="smt-back" aria-label="목록으로 돌아가기" onClick={back}><IcoBack /></button>
@@ -543,86 +548,89 @@ const StudentMyTasks = () => {
                   </div>
                 </div>
               </div>
-              <div className="smt-btns">
-                <button type="button" className="smt-ghost" onClick={back}>목록으로</button>
-                {/* 리포트는 결과가 발송된 뒤에만 받을 수 있다 */}
-                {isDone && <button type="button" className={`smt-solid ${pdf === 'saving' ? 'saving' : ''} ${pdf === 'done' ? 'done' : ''}`} disabled={pdf !== 'idle'} onClick={savePdf}>
-                  <span className="smt-btn-ico">{pdf === 'saving' ? <IcoSpin /> : pdf === 'done' ? <IcoCheck /> : <IcoDown />}</span>
-                  <span>{pdf === 'saving' ? '다운로드 중…' : pdf === 'done' ? '다운로드 완료' : '리포트 PDF 다운로드'}</span>
-                </button>}
+              <div className="smt-dhead-r">
+                <div className="smt-dmeta">제출일 : {A.done}<span className="smt-sep">|</span>제출 방법 : {A.way}</div>
+                <div className="smt-btns">
+                  <button type="button" className="smt-ghost" onClick={back}>목록으로</button>
+                  {/* 리포트는 결과가 발송된 뒤에만 받을 수 있다 */}
+                  {isDone && <button type="button" className={`smt-solid ${pdf === 'saving' ? 'saving' : ''} ${pdf === 'done' ? 'done' : ''}`} disabled={pdf !== 'idle'} onClick={savePdf}>
+                    <span className="smt-btn-ico">{pdf === 'saving' ? <IcoSpin /> : pdf === 'done' ? <IcoCheck /> : <IcoDown />}</span>
+                    <span>{pdf === 'saving' ? '다운로드 중…' : pdf === 'done' ? '다운로드 완료' : '리포트 PDF 다운로드'}</span>
+                  </button>}
+                </div>
               </div>
             </div>
 
-            <div className="smt-qtabs" role="tablist" aria-label="문항 선택">
-              {A.questions.map((qq, i) => (
-                <button key={i} type="button" className="smt-qtab" role="tab" aria-selected={i === qIdx} onClick={() => pickQ(i)}>
-                  {qq.label}<span className="smt-qpt">{qq.point}점</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="smt-board">
-              <div className="smt-subtabs" role="tablist" aria-label="상세 보기">
-                <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'content'} onClick={() => setKind('content')}>과제 내용</button>
-                <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'result'} onClick={() => setKind('result')}>채점 결과</button>
+            {/* [TSK-10 v1.8] 풀이 과정 보기 — 모달이 아니라 이 화면 안에서. 왼쪽 필기 재생 · 오른쪽 [풀이 과정 | 채점 결과] */}
+            {replayQ != null && A.questions[replayQ]?.solution ? (
+              <div className="smt-replay-wrap" ref={replayRef}>
+                <SolutionReplay inline q={A.questions[replayQ]} A={A} onClose={closeReplay}
+                  reportNode={<ReportPreview A={A} />} />
               </div>
+            ) : (
+              <div className="smt-board2">
+                <div className="smt-cols" ref={colsRef} style={{ '--aside-w': `${asideW}px` }}>
+                  {/* 왼쪽 — [과제 내용] [답안 미리보기] */}
+                  <div className="smt-col-l">
+                    <div className="smt-subtabs" role="tablist" aria-label="과제 보기">
+                      <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'content'} onClick={() => setKind('content')}>과제 내용</button>
+                      <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'answer'} onClick={() => setKind('answer')}>답안 미리보기</button>
+                    </div>
+                    {kind === 'content' ? (
+                      <div>
+                        {/* 지문은 과제 등록 시 선택 항목이라, 없으면 영역째 빠지고 문항만 남는다 */}
+                        {A.passage && (
+                          <div className="smt-passage">
+                            <div className="smt-seclab"><span className="smt-tag p">지문</span></div>
+                            {A.passage}
+                          </div>
+                        )}
+                        {A.questions.map((qq, i) => (
+                          <div key={i} className="smt-qitem">
+                            <div className="smt-seclab"><span className="smt-tag q">{qq.label}</span><span className="smt-note">{qq.point}점</span></div>
+                            <div className="smt-prose"><p>{qq.text}</p></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div>
+                        {A.questions.map((qq, i) => (
+                          <div key={i} className="smt-aitem">
+                            <div className="smt-aitem-h">
+                              <div className="smt-seclab" style={{ marginBottom: 0 }}><span className="smt-tag q">{qq.label}</span><span className="smt-note">{qq.point}점</span></div>
+                              <div className="smt-aitem-btns">
+                                <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />크게 보기</button>
+                                {/* 풀이 과정 보기 — 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 */}
+                                {isDone && qq.solution && (
+                                  <button type="button" className="smt-mini blue" onClick={() => openReplay(i)}>▶ 풀이 과정 보기</button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="smt-paper">{qq.pen ? <PenStrokes pen={qq.pen} from={qq.penFrom || 0} label={`${qq.label} 답안 필기`} style={{ maxHeight: 420 }} /> : qq.answer.map((l, k) => <div key={k} className="smt-hand">{l}</div>)}</div>
+                          </div>
+                        ))}
+                        <div className="smt-pcap">{A.cap}</div>
+                      </div>
+                    )}
+                  </div>
 
-              <div className="smt-cols" ref={colsRef} style={{ '--aside-w': `${asideW}px` }}>
-                <div className="smt-col-l">
-                  {kind === 'result' ? (
-                    isDone ? <ResultPane A={A} q={q} /> : (
+                  <div className="smt-resizer" role="separator" aria-orientation="vertical" aria-label="좌우 화면 폭 조절" tabIndex={0}
+                    title="끌어서 좌우 폭을 조절합니다 (두 번 누르면 원래 폭)"
+                    onPointerDown={startResize} onKeyDown={nudgeResize} onDoubleClick={() => setAsideW(ASIDE_W)}><span /></div>
+
+                  {/* 오른쪽 — 채점 결과(리포트 미리보기) */}
+                  <aside className="smt-col-r">
+                    <div className="smt-rtitle">채점 결과</div>
+                    {isDone ? <ReportPreview A={A} /> : (
                       /* 제출 완료(채점중) — 결과가 발송되면 결과 확인으로 바뀌고 채점 결과가 채워진다 */
                       <div className="smt-notice">
                         <b>선생님이 채점하고 있어요.</b> 채점 결과가 발송되면 이 과제가 「결과 확인」으로 바뀌고, 채점 결과와 리포트를 볼 수 있어요.
                       </div>
-                    )
-                  ) : (
-                    <div>
-                      {/* 지문은 과제 등록 시 선택 항목이라, 없으면 영역째 빠지고 문항만 남는다 */}
-                      {A.passage && (
-                        <div className="smt-passage">
-                          <div className="smt-seclab"><span className="smt-tag p">지문</span></div>
-                          {A.passage}
-                        </div>
-                      )}
-                      <div className={A.passage ? 'smt-question' : ''}>
-                        <div className="smt-seclab"><span className="smt-tag q">{q.label}</span><span className="smt-note">배점 {q.point}점</span></div>
-                        <div className="smt-qbox smt-prose"><p>{q.text}</p></div>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </aside>
                 </div>
-
-                <div className="smt-resizer" role="separator" aria-orientation="vertical" aria-label="좌우 화면 폭 조절" tabIndex={0}
-                  title="끌어서 좌우 폭을 조절합니다 (두 번 누르면 원래 폭)"
-                  onPointerDown={startResize} onKeyDown={nudgeResize} onDoubleClick={() => setAsideW(420)}><span /></div>
-
-                <aside className="smt-col-r">
-                  <div className="smt-darkcard">
-                    {isDone
-                      ? <div className="smt-dh"><IcoCheck color="#7DD3A0" w={19} />채점 완료</div>
-                      : <div className="smt-dh"><IcoCheck color="#93C5FD" w={19} />제출 완료 · 채점중</div>}
-                    <div className="smt-rows">
-                      <div><span>제출일</span><span>{A.done}</span></div>
-                      <div><span>제출 방법</span><span>{A.way}</span></div>
-                    </div>
-                  </div>
-                  <div className="smt-prev-head">
-                    <h3>답안 미리보기 · {q.label}</h3>
-                    <button type="button" className="smt-mini" onClick={() => setZoom(true)}><IcoExpand />크게 보기</button>
-                  </div>
-                  <div className="smt-paper">{q.pen ? <PenStrokes pen={q.pen} from={q.penFrom || 0} label={`${q.label} 답안 필기`} /> : q.answer.map((l, i) => <div key={i} className="smt-hand">{l}</div>)}</div>
-                  <div className="smt-pcap">{A.cap}</div>
-                  {/* [풀이 과정 보기] 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 — 내 필기를 단계별로 다시 보기 */}
-                  {isDone && q.solution && (
-                    <button type="button" className="smt-replay" onClick={() => setReplay(true)}>
-                      <span className="smt-replay-ico" aria-hidden="true">▶</span>
-                      <span><b>풀이 과정 보기</b><span className="smt-replay-s">내 필기를 단계별로 다시 보고, 어디서 놓쳤는지 확인해요</span></span>
-                    </button>
-                  )}
-                </aside>
               </div>
-            </div>
+            )}
           </section>
         )}
       </div>
@@ -632,17 +640,15 @@ const StudentMyTasks = () => {
         <span className="smt-dot">|</span><span>© 2026 NeoLAB Convergence Inc. All Rights Reserved.</span>
       </div>
 
-      {replay && q?.solution && <SolutionReplay q={q} A={A} onClose={() => setReplay(false)} />}
-
       {/* 답안 크게 보기 */}
-      {zoom && q && (
-        <div className="smt-zoom" onClick={() => setZoom(false)} role="dialog" aria-label="답안 크게 보기">
+      {zq && (
+        <div className="smt-zoom" onClick={() => setZoomQ(null)} role="dialog" aria-label="답안 크게 보기">
           <div className="smt-zoom-in" onClick={(e) => e.stopPropagation()}>
             <div className="smt-zoom-head">
-              <b>답안 · {q.label}</b>
-              <button type="button" className="smt-ghost" onClick={() => setZoom(false)}>닫기</button>
+              <b>답안 · {zq.label}</b>
+              <button type="button" className="smt-ghost" onClick={() => setZoomQ(null)}>닫기</button>
             </div>
-            <div className="smt-paper big">{q.pen ? <PenStrokes pen={q.pen} from={q.penFrom || 0} width={0.3} label={`${q.label} 답안 필기`} style={{ maxHeight: '72vh' }} /> : q.answer.map((l, i) => <div key={i} className="smt-hand">{l}</div>)}</div>
+            <div className="smt-paper big">{zq.pen ? <PenStrokes pen={zq.pen} from={zq.penFrom || 0} width={0.3} label={`${zq.label} 답안 필기`} style={{ maxHeight: '72vh' }} /> : zq.answer.map((l, i) => <div key={i} className="smt-hand">{l}</div>)}</div>
             <div className="smt-pcap">{A.cap}</div>
           </div>
         </div>
@@ -658,6 +664,38 @@ const StudentMyTasks = () => {
     </div>
   );
 };
+
+/* ── [TSK-10 v1.8] 채점 결과 = 리포트 미리보기 — 리포트 PDF(POP-19)와 같은 내용 · 순서를 한 화면에 (문항 탭 없음)
+ *   머리 정보 → 문항별 성취도 → 문항마다 등급 평가 · 학습 피드백 · 학습 안내 · AI 필기 분석 ── */
+const ReportPreview = ({ A }) => (
+  <div className="smt-report">
+    <div className="smt-rpage">— PAGE 1 — 본문</div>
+    <div className="smt-rcard">
+      <div className="smt-rhead">채점 결과 리포트</div>
+      <div className="smt-rinfo">
+        <div><span>학교명</span><b>{STUDENT.school}</b></div>
+        <div><span>학년/반/번호</span><b>{STUDENT.cls}</b></div>
+        <div><span>학생이름</span><b>{STUDENT.name}</b></div>
+        <div><span>과제명</span><b>{A.title}</b></div>
+        <div><span>교과</span><b>{A.subject}</b></div>
+        <div><span>출제일자</span><b>{A.pub}</b></div>
+      </div>
+    </div>
+    <div className="smt-rsec">◆ 문항별 성취도</div>
+    <table className="smt-rtable">
+      <thead><tr><th scope="col">문항</th><th scope="col">배점</th><th scope="col">점수</th><th scope="col">등급</th></tr></thead>
+      <tbody>{A.questions.map((qq, i) => (
+        <tr key={i}><td>{qq.label}</td><td>{qq.point}</td><td>{qq.score} / {qq.point}점</td><td><span className={`smt-chip ${qq.chipCls}`}>{qq.grade} · {qq.chip}</span></td></tr>
+      ))}</tbody>
+    </table>
+    {A.questions.map((qq, i) => (
+      <div key={i} className="smt-rq">
+        <div className="smt-rsec">◆ {qq.label}</div>
+        <ResultPane A={A} q={qq} />
+      </div>
+    ))}
+  </div>
+);
 
 /* ── [채점 결과] — 리포트(POP-19) 순서: 등급(점수) → 학습 피드백 → 학습 안내 → AI 필기 분석 ── */
 const ResultPane = ({ A, q }) => {
@@ -837,6 +875,37 @@ const CSS = `
 .smt-qtab:hover{background:#F4F7FB}
 .smt-qtab[aria-selected="true"]{background:#fff;color:var(--t1);font-weight:700;height:48px}
 .smt-qpt{font-size:var(--neo-font-size-xs);font-weight:400;color:var(--t4);margin-left:7px}
+.smt-dhead-r{display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0}
+.smt-dmeta{font-size:var(--neo-font-size-sm);color:var(--t3)}
+.smt-board2{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px}
+.smt-replay-wrap{margin-top:20px}
+.smt-qitem{margin-top:24px;padding-top:20px;border-top:1px solid var(--line-soft)}
+.smt-passage + .smt-qitem{margin-top:24px}
+.smt-aitem + .smt-aitem{margin-top:22px;padding-top:20px;border-top:1px solid var(--line-soft)}
+.smt-aitem-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.smt-aitem-btns{display:flex;gap:6px}
+.smt-mini.blue{border-color:var(--blue);background:var(--blue);color:#fff;font-weight:700}
+.smt-rtitle{font-size:var(--neo-font-size-base);font-weight:700;margin-bottom:12px}
+.smt-report{border:1px solid var(--line);border-radius:10px;background:#F8FAFD;padding:14px;max-height:calc(100vh - 260px);min-height:420px;overflow-y:auto}
+.smt-rpage{font-size:var(--neo-font-size-xs);color:var(--t4);margin-bottom:8px}
+.smt-rcard{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.smt-rhead{text-align:center;font-weight:700;font-size:var(--neo-font-size-base);margin-bottom:12px}
+.smt-rinfo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
+.smt-rinfo div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.smt-rinfo span{font-size:var(--neo-font-size-xs);color:var(--t4)}
+.smt-rinfo b{font-size:var(--neo-font-size-sm);font-weight:700;color:var(--t1);overflow-wrap:anywhere}
+.smt-rsec{margin:18px 0 8px;font-size:var(--neo-font-size-sm);font-weight:700;color:var(--blue-dark)}
+table.smt-rtable{width:100%;border-collapse:collapse;background:#fff;font-size:var(--neo-font-size-sm)}
+table.smt-rtable th,table.smt-rtable td{border:1px solid var(--line);padding:8px 10px;text-align:left}
+table.smt-rtable th{background:#F1F4F9;font-weight:500;color:var(--t2)}
+.smt-rq{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.smt-rq .smt-rsec{margin-top:0}
+.smt-report .smt-fb{flex-direction:column;gap:4px;padding:10px 0}
+.smt-report .smt-lab{width:auto}
+.smt-report .smt-sect{margin-top:18px}
+.smt-report .smt-evalsec-p{margin-top:22px;padding-top:18px}
+.smt-report .smt-pattern{flex-wrap:wrap}
+.smt-report .smt-char{width:72px;height:72px}
 .smt-board{background:#fff;border:1px solid var(--line);border-radius:0 12px 12px 12px;padding:24px 26px}
 .smt-cols{display:grid;grid-template-columns:minmax(0,1fr) 24px var(--aside-w,420px);align-items:stretch}
 .smt-col-l{min-width:0}
@@ -846,8 +915,9 @@ const CSS = `
 .smt-resizer:hover span,.smt-resizer:focus-visible span{background:#A9C4F7}
 .smt-resizer::after{content:"";position:absolute;top:40px;left:50%;width:6px;height:36px;margin-left:-3px;border-radius:3px;background:#D5DBE5}
 .smt-resizer:hover::after,.smt-resizer:focus-visible::after{background:var(--blue)}
-@media (max-width:1180px){.smt-cols{grid-template-columns:minmax(0,1fr)}.smt-resizer{display:none}.smt-col-r{margin-top:24px}}
-.smt-subtabs{display:flex;gap:26px;border-bottom:1px solid var(--line);margin-bottom:20px}
+@media (max-width:1180px){.smt-cols{grid-template-columns:minmax(0,1fr)}.smt-resizer{display:none}.smt-col-r{margin-top:24px}.smt-report{max-height:none}}
+@media (max-width:760px){.smt-dhead{flex-direction:column}.smt-dhead-r{align-items:flex-start}.smt-rinfo{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.smt-subtabs{display:flex;gap:26px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .smt-subtab{padding:0 2px 13px;background:none;border:none;border-bottom:2px solid transparent;font-size:var(--neo-font-size-base);color:var(--t3);position:relative;top:1px}
 .smt-subtab[aria-selected="true"]{color:var(--t1);font-weight:700;border-bottom-color:var(--t1)}
 
