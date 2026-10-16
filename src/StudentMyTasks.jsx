@@ -626,7 +626,7 @@ const StudentMyTasks = () => {
                                 <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />크게 보기</button>
                                 {/* 풀이 과정 보기 — 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 */}
                                 {isDone && qq.solution && (
-                                  <button type="button" className="smt-mini blue" aria-pressed={replayQ === i} onClick={() => (replayQ === i ? closeReplay() : openReplay(i))}>{replayQ === i ? '✕ 풀이 과정 닫기' : '▶ 풀이 과정 보기'}</button>
+                                  <button type="button" className="smt-mini blue" aria-pressed={replayQ === i} onClick={() => (replayQ === i ? closeReplay() : openReplay(i))}>{replayQ === i ? '✕ 필기 분석 닫기' : '▶ 필기 분석'}</button>
                                 )}
                               </div>
                             </div>

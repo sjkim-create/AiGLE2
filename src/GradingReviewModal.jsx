@@ -298,6 +298,25 @@ const GradingReviewModal = ({
 }) => {
     const [replayOpen, setReplayOpen] = useState(false);
     const [stageEl, setStageEl] = useState(null); // [SCR-03 v5.29] 원본 보기 안 필기 재생 자리
+    /* [SCR-03 v5.31] 좌우 폭 조절(일괄 채점 통합) — 가운데 손잡이를 끌거나 ← → . 두 번 누르면 원래 폭 */
+    const [leftW, setLeftW] = useState(null);
+    const rowRef = React.useRef(null);
+    const clampLeft = (w) => { const box = rowRef.current?.getBoundingClientRect(); const max = box ? box.width - 520 : 900; return Math.round(Math.max(320, Math.min(w, max))); };
+    const startResize = (e) => {
+        e.preventDefault();
+        const box = rowRef.current?.getBoundingClientRect();
+        if (!box) return;
+        const move = (ev) => setLeftW(clampLeft(ev.clientX - box.left - 16));
+        const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+        document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+        window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    };
+    const nudgeResize = (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        const cur = leftW ?? (e.currentTarget.previousSibling?.getBoundingClientRect().width || 360);
+        setLeftW(clampLeft(cur + (e.key === 'ArrowRight' ? 24 : -24)));
+    };
     const isProcessEvalSupported = taskSubject === '수학';
     const isStep3 = selectedStudent?.status === '결과 발송 전' || selectedStudent?.status === '결과 발송 완료';
     const isSent = selectedStudent?.status === '결과 발송 완료';
@@ -636,7 +655,7 @@ const GradingReviewModal = ({
                     {canReplay ? (
                         <button className="toolbar-btn btn-playback" aria-pressed={replayOpen}
                             title="학생 필기를 실제 순서대로 다시 그리고, 왼쪽에 풀이 단계 · 정리를 엽니다 — 결과 발송 후 학생도 같은 풀이 과정을 봅니다"
-                            onClick={() => setReplayOpen((v) => !v)}>{replayOpen ? '■ 필기 재생 닫기' : '▶ 필기 재생'}</button>
+                            onClick={() => setReplayOpen((v) => !v)}>{replayOpen ? '■ 필기 분석 닫기' : '▶ 필기 분석'}</button>
                     ) : (
                         <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
                             {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
@@ -780,10 +799,10 @@ const GradingReviewModal = ({
                 </header>
 
                 {/* 본문 — 좌(채점 결과) : 우(피드백/원본) */}
-                <div style={{ flex: 1, display: 'flex', gap: 16, padding: 16, minHeight: 0 }}>
+                <div ref={rowRef} style={{ flex: 1, display: 'flex', gap: solutionReplay ? 0 : 16, padding: 16, minHeight: 0 }}>
                     {/* ── 좌측 ── [v5.13] 폭을 절반으로(46% → 23%, 최소 360px) — 피드백·채점 근거를 넓게 */}
-                    <div style={{ flex: '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
-                        {/* [SCR-03 v5.29] 풀이 단계 패널 — 왼쪽 채점 결과 위에 얹힌다(✕ · [■ 필기 재생 닫기]로 닫으면 채점 결과). 필기 재생은 오른쪽 원본 보기 */}
+                    <div style={{ flex: solutionReplay && leftW ? `0 0 ${leftW}px` : '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+                        {/* [SCR-03 v5.29] 풀이 단계 패널 — 왼쪽 채점 결과 위에 얹힌다(✕ · [■ 필기 분석 닫기]로 닫으면 채점 결과). 필기 재생은 오른쪽 원본 보기 */}
                         {canReplay && replayOpen && (
                             <div style={{ position: 'absolute', left: 0, right: 0, top: HEAD_H, bottom: 0, zIndex: 6 }}>
                                 <SolutionReplay panel key={`${selectedStudent?.id}-${activeQuestion}`} q={replayData.q} A={replayData.A} viewer="teacher" studentName={selectedStudent?.name}
@@ -953,6 +972,16 @@ const GradingReviewModal = ({
 
                     </div>
 
+                    {/* [SCR-03 v5.31] 좌우 폭 조절 손잡이 — 일괄 채점 통합만 */}
+                    {solutionReplay && (
+                        <div role="separator" aria-orientation="vertical" aria-label="좌우 화면 폭 조절" tabIndex={0}
+                            title="끌어서 좌우 폭을 조절합니다 (두 번 누르면 원래 폭)"
+                            onPointerDown={startResize} onKeyDown={nudgeResize} onDoubleClick={() => setLeftW(null)}
+                            className="grm-resizer"
+                            style={{ flex: '0 0 16px', cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', outline: 'none' }}>
+                            <span style={{ width: 6, height: 40, borderRadius: 3, background: '#CBD5E1' }} />
+                        </div>
+                    )}
                     {/* ── 우측 ── */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, height: HEAD_H, flexShrink: 0 }}>
