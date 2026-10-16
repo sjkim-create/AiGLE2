@@ -14,6 +14,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PATTERN_CHARACTERS, gradeFeedbackOf, PROCESS_INSUFFICIENT_MESSAGE, GUIDE_EMPTY_MESSAGE } from './GradingReviewModal';
 import { lookupPattern } from './handwritingPatternMatrix';
+import SolutionReplay from './SolutionReplay';
 
 const STUDENT = { cls: '3학년 1반 1번', name: '김소리', id: 'stu2600394a1n' };
 
@@ -65,6 +66,26 @@ const ASSIGN = {
         /* 채점 확인 상세 · 리포트가 쓰는 같은 문항의 학습 안내를 그대로 */
         guide: gradeFeedbackOf('우수').guide,
         hw: { code: 'cba', summary: '확정 등급 B를 받은 이번 답안은 문항이 요구한 ‘일차방정식’의 형태를 갖추는 데 있어 핵심적인 수치 하나를 놓친 아쉬움이 있습니다. 풀이 과정에서 불필요한 되돌아감 없이 논리적으로 식을 세워나갔으나, 지문에 명시된 현재 잔액(4240원)을 등식의 결과로 연결하지 못했습니다. 풀이 중간에 발생한 장시간의 정지는 전체적인 식의 구조를 잡는 과정에서의 고민으로 보입니다.' },
+        /* [풀이 과정 보기] 내 필기를 단계로 나눈 설명 — AI 채점 때 미리 만든다(학생은 기다리지 않음). text = 그 단계에 쓴 글자(답안 줄 순서대로) */
+        solution: {
+          level: '중1', unit: '일차방정식의 활용',
+          concept: '일차방정식은 「미지수가 들어 있는 등식」이에요. 문장 속 관계를 식으로 옮긴 뒤, 반드시 등호(=)로 두 값을 연결해야 방정식이 됩니다.',
+          steps: [
+            { title: '미지수 정하기', ok: true, line: 0, text: '지하철을 a회 이용하면 ',
+              basic: '이용 횟수를 a로 정했어요. 무엇을 미지수로 둘지 먼저 밝힌 점이 좋아요.',
+              detail: '문제에서 모르는 값은 「지하철을 이용한 횟수」예요. 이것을 a회라고 먼저 밝혀 두었기 때문에, 뒤에 나오는 식에서 a가 무엇을 뜻하는지 헷갈리지 않아요. 문장제는 이렇게 미지수부터 선언하고 시작하면 좋아요.' },
+            { title: '요금을 식으로 옮기기', ok: true, line: 0, text: '요금은 720a원 이므로 ',
+              basic: '청소년 요금 720원을 a번 냈으니 720a원 — 정확하게 옮겼어요.',
+              detail: '요금표에서 민아에게 맞는 「청소년 720원」을 골랐고, 한 번에 720원씩 a번 냈으니 모두 720 × a = 720a원이에요. 어른·어린이 요금과 헷갈리지 않고 바른 값을 골랐어요.' },
+            { title: '남은 금액 나타내기', ok: true, line: 0, text: '남은 잔액은 10000 − 720a',
+              basic: '처음 10000원에서 쓴 돈 720a원을 빼서 잔액을 나타냈어요.',
+              detail: '충전한 10000원에서 지하철 요금으로 쓴 720a원을 빼면 남은 돈이 돼요. 10000 − 720a는 「남은 잔액」을 a로 나타낸 식이에요. 여기까지는 모두 맞아요.' },
+            { title: '방정식 완성하기', ok: false, line: 1, pauseSec: 14, text: '∴ 교통카드 잔액 = 10000 − 720a  (a = 8)',
+              basic: '남은 잔액 4240원을 등호로 연결하지 않았어요. 10000 − 720a = 4240 으로 써야 방정식이 돼요.',
+              detail: '여기서 필기가 14초 정도 멈췄어요. 지문에 나온 실제 잔액 4240원을 식과 연결해야 하는데, 「교통카드 잔액 = 10000 − 720a」처럼 말로만 이어 썼어요. 방정식이 되려면 10000 − 720a = 4240처럼 숫자끼리 등호로 연결해야 해요. a = 8은 맞았지만, 어떻게 구했는지 계산 과정도 함께 적어 보세요.' },
+          ],
+          answer: ['10000 − 720a = 4240', '720a = 5760', '∴ a = 8 (8회)'],
+        },
       },
       {
         label: '문항 2', point: 2, score: 2, grade: 'A', chip: '매우 우수', chipCls: 'a',
@@ -94,6 +115,22 @@ const ASSIGN = {
           ],
         },
         hw: { code: 'baa', summary: '조건을 식으로 옮기는 단계에서 망설임이 거의 없었고, 식을 세운 직후 곧바로 정리와 계산으로 이어져 흐름이 끊기지 않았습니다. 되돌아감이 전혀 없고 평균 획 간격도 안정적이어서 문제 구조를 먼저 파악한 뒤 필기를 시작한 것으로 보입니다.' },
+        solution: {
+          level: '중1', unit: '일차방정식의 활용',
+          concept: '「몇 배」 관계가 있으면 기준이 되는 값 하나만 미지수로 두고, 다른 값은 그 미지수로 나타내요.',
+          steps: [
+            { title: '미지수 정하기', ok: true, line: 0, text: '청소년 입장료를 x라 하면 ',
+              basic: '기준이 되는 청소년 입장료를 x로 정했어요.',
+              detail: '어른 입장료는 청소년 입장료의 2배라서, 청소년 입장료를 x로 두면 어른 입장료는 2x로 바로 나타낼 수 있어요. 기준을 잘 골랐어요.' },
+            { title: '방정식 세우기', ok: true, line: 0, text: '8x + 2x = 20000',
+              basic: '청소년 8명은 8x, 어른 1명은 2x — 더해서 20000원과 등호로 연결했어요.',
+              detail: '「1인 요금 × 인원」을 사람 종류마다 세웠어요. 청소년 8명 = 8 × x = 8x, 어른 1명 = 1 × 2x = 2x. 둘을 더한 값이 낸 돈 20000원과 같으니 8x + 2x = 20000이에요.' },
+            { title: '계산해서 답 구하기', ok: true, line: 1, text: '10x = 20000   ∴ x = 2000원',
+              basic: '같은 x끼리 모아 10x로 정리하고, x = 2000원을 구했어요.',
+              detail: '8x + 2x = 10x로 정리한 뒤 양변을 10으로 나눠 x = 2000을 구했어요. 단위(원)까지 붙여 마무리했어요. 검산: 8 × 2000 + 2 × 2000 = 20000 ✓' },
+          ],
+          answer: ['8x + 2x = 20000', '10x = 20000', '∴ x = 2000 (2000원)'],
+        },
       },
       {
         label: '문항 3', point: 2, score: 1, grade: 'C', chip: '보통', chipCls: 'c',
@@ -131,6 +168,25 @@ const ASSIGN = {
           ],
         },
         hw: { code: 'cbc', summary: '조건을 식으로 옮기는 앞부분에 시간을 충분히 썼고 그 결과 등식의 좌변과 우변 모두 정확합니다. 다만 식을 완성한 시점에서 필기가 멈추었고, 이후 15초 이상 입력이 없다가 제출로 이어졌습니다. 계산 단계로 넘어가지 못하고 종료된 패턴입니다.' },
+        solution: {
+          level: '중1', unit: '일차방정식의 활용',
+          concept: '방정식은 세우는 것에서 끝나지 않아요. 미지수의 값을 구하고 단위를 붙여 문장으로 답해야 풀이가 완성돼요.',
+          steps: [
+            { title: '미지수 정하기', ok: true, line: 0, text: '선생님 나이를 y라 하면 ',
+              basic: '선생님의 현재 나이를 y로 정했어요.',
+              detail: '구하려는 값인 「선생님의 현재 나이」를 y로 두었어요. 시점이 「지금」인지 「6년 후」인지 구분해서 정한 점이 좋아요.' },
+            { title: '6년 후 나이', ok: true, line: 0, text: 'y + 6 ',
+              basic: '6년 후 선생님 나이를 y + 6으로 나타냈어요.',
+              detail: '지금 y살이면 6년 후에는 6살을 더해 y + 6살이에요. 시점을 바꿔 정확하게 옮겼어요.' },
+            { title: '조건을 식으로 연결', ok: true, line: 0, text: '= 2 × 16 − 5',
+              basic: '「민아 나이의 2배보다 5살 적다」를 2 × 16 − 5로 옮겼어요.',
+              detail: '말로 된 관계를 순서대로 옮겼어요. 민아 나이 16의 2배는 2 × 16, 거기서 5가 적으니 − 5. 그래서 y + 6 = 2 × 16 − 5가 돼요. 식은 맞아요.' },
+            { title: '값 구하기', ok: false, line: 0, pauseSec: 15, text: '',
+              basic: '식을 세운 뒤 멈췄어요. 우변을 27로 계산하고 y를 구하는 단계가 빠졌어요.',
+              detail: '식을 다 세운 뒤 15초 넘게 필기가 없다가 제출했어요. 남은 단계는 두 가지예요. ① 우변 계산: 2 × 16 − 5 = 27 → y + 6 = 27 ② 이항: y = 27 − 6 = 21. 마지막에 「선생님의 나이는 21살이다」로 마무리해요.' },
+          ],
+          answer: ['y + 6 = 2 × 16 − 5', 'y + 6 = 27', '∴ y = 21 (21살)'],
+        },
       },
     ],
   },
@@ -343,6 +399,7 @@ const StudentMyTasks = () => {
   const [pdf, setPdf] = useState('idle'); // idle · saving · done
   const [toast, setToast] = useState(null);
   const [zoom, setZoom] = useState(false);
+  const [replay, setReplay] = useState(false); // [풀이 과정 보기] 내 필기 단계 재생
   const [asideW, setAsideW] = useState(420); // 우측(제출 정보 · 답안 미리보기) 폭 — 가운데 손잡이로 조절
   const timers = useRef([]);
   const scroller = useRef(null);
@@ -548,6 +605,13 @@ const StudentMyTasks = () => {
                   </div>
                   <div className="smt-paper">{q.answer.map((l, i) => <div key={i} className="smt-hand">{l}</div>)}</div>
                   <div className="smt-pcap">{A.cap}</div>
+                  {/* [풀이 과정 보기] 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 — 내 필기를 단계별로 다시 보기 */}
+                  {isDone && q.solution && (
+                    <button type="button" className="smt-replay" onClick={() => setReplay(true)}>
+                      <span className="smt-replay-ico" aria-hidden="true">▶</span>
+                      <span><b>풀이 과정 보기</b><span className="smt-replay-s">내 필기를 단계별로 다시 보고, 어디서 놓쳤는지 확인해요</span></span>
+                    </button>
+                  )}
                 </aside>
               </div>
             </div>
@@ -559,6 +623,8 @@ const StudentMyTasks = () => {
         <a href="#none" onClick={(e) => e.preventDefault()}>이용약관</a><a href="#none" onClick={(e) => e.preventDefault()}>개인정보 처리방침</a>
         <span className="smt-dot">|</span><span>© 2026 NeoLAB Convergence Inc. All Rights Reserved.</span>
       </div>
+
+      {replay && q?.solution && <SolutionReplay q={q} A={A} onClose={() => setReplay(false)} />}
 
       {/* 답안 크게 보기 */}
       {zoom && q && (
@@ -683,6 +749,11 @@ const CSS = `
   --ok:#2E6B32;--ok-bg:#EAF6E9;--mid:#8A5A12;--mid-bg:#FBF1DE;
   flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;background:var(--page);color:var(--t1);font-size:var(--neo-font-size-sm)}
 .smt-root *{box-sizing:border-box}
+.smt-replay{margin-top:14px;width:100%;min-height:56px;display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:1px solid #C7D7FB;border-radius:12px;background:var(--blue-soft);color:var(--t1)}
+.smt-replay:hover{border-color:var(--blue)}
+.smt-replay-ico{width:36px;height:36px;flex:none;border-radius:50%;background:var(--blue);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:var(--neo-font-size-sm)}
+.smt-replay b{display:block;font-size:var(--neo-font-size-base);color:var(--blue-dark)}
+.smt-replay-s{display:block;font-size:var(--neo-font-size-xs);color:var(--t3);margin-top:2px}
 .smt-root button{font-family:inherit;cursor:pointer}
 .smt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .smt-content{flex-grow:1;padding:24px 32px 36px}
