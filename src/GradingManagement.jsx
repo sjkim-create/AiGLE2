@@ -1485,6 +1485,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
       <GradingReviewModal
         scoreOnlyFeedback={isUnified}
         ocrNotice={isUnified}
+        solutionReplay={isUnified}
         isOpen={isModalOpen && (selectedStudent?.status === '채점 확인' || selectedStudent?.status === '결과 발송 완료' || (isUnified && selectedStudent?.status === '결과 발송 전'))} // [일괄 채점 통합] 결과 발송 전 학생도 상세 → [결과발송] → 결과 발송 창
         onClose={() => setIsModalOpen(false)}
         selectedStudent={selectedStudent}

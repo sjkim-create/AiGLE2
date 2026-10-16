@@ -11,6 +11,7 @@
  *   · 정답 잠금 — 끝까지 재생하면 바른 풀이 공개(한 번 열리면 다시 잠기지 않음)
  *   · 필기가 멈춘 구간(머뭇거림)은 「⏸ n초 멈춤」으로 짧게 보여 준다
  *   · 태블릿 — 가로는 2단(재생 · 단계), 좁은 화면은 1단. 손가락으로 누르기 쉬운 버튼 크기
+ *   · viewer='teacher' — 교사 채점 확인(SCR-03)에서 같은 화면. 학생 이름 · 「교사 확인」 표시, 바른 풀이는 처음부터 열림, 아래 안내만 다르다
  *
  * 필기 재생 두 가지
  *   · sol.pen 있음 — **실제 펜 획(좌표 · 시각)** 재생. 장면 cue = 획 구간 s:[처음, 끝]. 획 안의 쓰는 속도는 실제 그대로, 획 사이 쉼은 짧게 줄인다
@@ -76,7 +77,8 @@ const buildTimeline = (steps, pen, mode) => {
 
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-const SolutionReplay = ({ q, A, onClose }) => {
+const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote }) => {
+  const isTeacher = viewer === 'teacher';
   const sol = q.solution;
   const pen = sol.pen || null;
   const [len, setLen] = useState('basic'); // basic(간단히) · detail(자세히) — 자막 · 정리 함께
@@ -86,7 +88,7 @@ const SolutionReplay = ({ q, A, onClose }) => {
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const [unlocked, setUnlocked] = useState(false);
+  const [unlocked, setUnlocked] = useState(isTeacher); // 교사는 잠그지 않는다
   const raf = useRef(0);
   const last = useRef(0);
 
@@ -168,6 +170,9 @@ const SolutionReplay = ({ q, A, onClose }) => {
           <div className="srp-head-l">
             <div className="srp-ttl">풀이 과정 보기 <span className="srp-q">{q.label}</span></div>
             <div className="srp-tags">
+              {isTeacher && <span className="srp-tag-t">교사 확인</span>}
+              {isTeacher && studentName && <span>학생 {studentName}</span>}
+              {sampleNote && <span className="srp-tag-s">{sampleNote}</span>}
               <span>{A.subject}</span><span>{sol.unit}</span>
               <span title="설명 수준은 문항의 목표 학년에 맞춰 정해집니다">설명 수준 · {sol.level} 눈높이</span>
             </div>
@@ -180,7 +185,7 @@ const SolutionReplay = ({ q, A, onClose }) => {
           <div className="srp-l">
             <div className="srp-qtext"><span className="srp-qtext-k">{q.label}</span>{q.text}</div>
             <div className={`srp-paper ${pen ? 'pen' : ''}`} aria-label="내 필기 재생">
-              <div className="srp-paper-cap">내 필기 · {A.cap}</div>
+              <div className="srp-paper-cap">{isTeacher ? '학생 필기' : '내 필기'} · {A.cap}</div>
               {pen && (
                 <div className="srp-pen">
                   <PenStrokes pen={pen} from={sol.penFrom || 0} viewBox={penVB} strokeState={(k) => penState.m.get(k)} tip={penState.tip} label="내 필기 재생" />
@@ -256,7 +261,9 @@ const SolutionReplay = ({ q, A, onClose }) => {
           </div>
         </div>
 
-        <div className="srp-foot">풀이 설명은 AI가 내 필기를 단계로 나눠 만들고, 선생님이 채점 결과와 함께 보낸 내용이에요. 궁금한 점은 선생님께 여쭤보세요.</div>
+        <div className="srp-foot">{isTeacher
+          ? '교사 확인용 — 단계 · 장면 자막 · 정리는 AI가 학생 필기를 보고 만든 내용입니다. 결과를 발송하면 학생도 결과 확인 화면에서 같은 풀이 과정을 봅니다(바른 풀이는 학생이 끝까지 봐야 열림).'
+          : '풀이 설명은 AI가 내 필기를 단계로 나눠 만들고, 선생님이 채점 결과와 함께 보낸 내용이에요. 궁금한 점은 선생님께 여쭤보세요.'}</div>
       </div>
     </div>
   );
@@ -265,7 +272,9 @@ const SolutionReplay = ({ q, A, onClose }) => {
 export default SolutionReplay;
 
 const CSS = `
-.srp-wrap{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.srp-tags .srp-tag-t{color:#fff;background:#3C4858;border-color:#3C4858;font-weight:700}
+.srp-tags .srp-tag-s{color:#8A5A12;background:#FBF1DE;border-color:#F3DDB3}
+.srp-wrap{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}
 .srp-box{background:#fff;border-radius:16px;width:min(1180px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.25);color:#17212F}
 .srp-box button{font-family:inherit;cursor:pointer}
 .srp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 20px;border-bottom:1px solid #E4EAF3}

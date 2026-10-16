@@ -13,7 +13,10 @@
  *         — 펜 데이터가 부족하면(80획 미만 또는 필기 30초 미만) 진단 대신 안내 문구만 보인다
  */
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { lookupPattern } from './handwritingPatternMatrix';
+import SolutionReplay from './SolutionReplay';
+import { MATH_RAT_TASK } from './data/solutionSamples';
 import { formatResult, gradeToPoints, scoreToGrade } from './lib/gradingShared'; // [TSK v3.82] 과제의 채점 결과 표기(등급/점수)
 
 const ANSWER_SHEET_IMG = `${import.meta.env.BASE_URL}images/answer-sheet-sample.png`;
@@ -289,8 +292,11 @@ const GradingReviewModal = ({
     // [SCR-08 v1.35] 일괄 채점 통합 — 피드백 보기에는 점수만(등급 노출 안 함). 채점 결과는 점수만 저장, 등급은 결과 발송 때 환산
     scoreOnlyFeedback = false,
     // [SCR-03 v5.21] 일괄 채점 통합 — 채점 결과 아래 글자 인식(OCR) 안내
-    ocrNotice = false
+    ocrNotice = false,
+    // [SCR-03 v5.26] 일괄 채점 통합 — 원본 보기 [🎬 풀이 과정] (학생 모드 「풀이 과정 보기」와 같은 화면, 교사 확인용)
+    solutionReplay = false
 }) => {
+    const [replayOpen, setReplayOpen] = useState(false);
     const isProcessEvalSupported = taskSubject === '수학';
     const isStep3 = selectedStudent?.status === '결과 발송 전' || selectedStudent?.status === '결과 발송 완료';
     const isSent = selectedStudent?.status === '결과 발송 완료';
@@ -617,6 +623,11 @@ const GradingReviewModal = ({
                     <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
                         {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
                     </button>
+                    {/* [SCR-03 v5.26] 풀이 과정 — 수학(과정 분석 지원 교과) · 펜 답안만(스캔은 획 정보가 없음) · 무효 처리 제외 */}
+                    {solutionReplay && isProcessEvalSupported && selectedStudent?.submitType === 'pen' && !selectedStudent?.invalid && (
+                        <button className="toolbar-btn btn-playback" title="학생 필기를 단계별로 재생하고 단계마다 AI 설명을 봅니다 — 결과 발송 후 학생도 같은 화면을 봅니다"
+                            onClick={() => { setIsFullscreen(false); setReplayOpen(true); }}>🎬 풀이 과정</button>
+                    )}
                 </div>
                 {!isFullscreen && <div className="page-indicator" style={{ background: T.text }}>{currentPage}/{totalPages}</div>}
                 <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isFullscreen ? '3rem 2rem 8rem' : '3.5rem 2rem 4rem' }}>
@@ -1023,6 +1034,10 @@ const GradingReviewModal = ({
                         </div>
                     </div>
                 )}
+                {/* [SCR-03 v5.26] 풀이 과정 (교사 확인) — 시연은 실제 펜 샘플(유리함수). 포털이지만 이 컨테이너 안이라 클릭이 바깥(닫기)으로 새지 않는다 */}
+                {replayOpen && createPortal(
+                    <SolutionReplay q={MATH_RAT_TASK.questions[0]} A={MATH_RAT_TASK} viewer="teacher" studentName={selectedStudent?.name}
+                        sampleNote="시연 샘플 필기" onClose={() => setReplayOpen(false)} />, document.body)}
             </div>
         </div>
     );
