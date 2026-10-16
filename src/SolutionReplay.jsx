@@ -3,7 +3,8 @@
  *
  * Tecet 「과정을 영상처럼」을 차용하되, AI가 그린 그림이 아니라 **학생 본인 필기**를 단계별로 재생한다.
  *   · 장면 자막 — 필기가 써지는 순서에 맞춰 말하듯이 짧은 자막이 바뀐다(영상 자막처럼 필기 위). 음성 없음
- *   · 정리 — 단계 설명을 통으로 보이는 칸. 설명 수준 = 문항 목표 학년 자동(학생이 고르지 않음) / 정리 길이 = 기본 · 자세히
+ *   · 왼쪽 = 문항 지문 + 내 필기(장면 자막) + 재생 막대만. 장면이 바뀔 때마다 아래에 설명이 바뀌면 읽기에 방해되므로
+ *   · 정리 — 단계 설명은 오른쪽 풀이 단계에서 지금 단계가 펼쳐질 때 그 안에 보인다. 설명 수준 = 문항 목표 학년 자동(학생이 고르지 않음) / 정리 길이 = 기본 · 자세히
  *   · 정답 잠금 — 끝까지 재생하면 바른 풀이 공개(한 번 열리면 다시 잠기지 않음)
  *   · 필기가 멈춘 구간(머뭇거림)은 「⏸ n초 멈춤」으로 짧게 보여 준다
  *   · 태블릿 — 가로는 2단(재생 · 단계), 좁은 화면은 1단. 손가락으로 누르기 쉬운 버튼 크기
@@ -117,8 +118,9 @@ const SolutionReplay = ({ q, A, onClose }) => {
         </div>
 
         <div className="srp-cols">
-          {/* 좌: 내 필기 재생 + 자막 + 재생 막대 */}
+          {/* 좌: 문항 지문 + 내 필기 재생(장면 자막) + 재생 막대 — 정리는 오른쪽 풀이 단계 안 */}
           <div className="srp-l">
+            <div className="srp-qtext"><span className="srp-qtext-k">{q.label}</span>{q.text}</div>
             <div className="srp-paper" aria-label="내 필기 재생">
               <div className="srp-paper-cap">내 필기 · {A.cap}</div>
               {lines.map((parts, li) => (
@@ -135,12 +137,6 @@ const SolutionReplay = ({ q, A, onClose }) => {
               {pausing && <div className="srp-pause">⏸ 필기가 {step.pauseSec}초 멈췄어요</div>}
               {/* 장면 자막 — 쓰는 순서에 맞춰 말하듯이 */}
               <div className="srp-cc" aria-live="polite">{cue && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.say}</span>}</div>
-            </div>
-
-            <div className={`srp-sub ${step.ok ? '' : 'warn'}`}>
-              <div className="srp-sub-k">정리</div>
-              <div className="srp-sub-t"><span className="srp-no">{String(cur + 1).padStart(2, '0')}</span>{step.title}<span className={`srp-mark ${step.ok ? 'ok' : 'no'}`}>{step.ok ? '✓ 잘했어요' : '! 다시 보기'}</span></div>
-              <div className="srp-sub-d">{len === 'detail' ? step.detail : step.basic}</div>
             </div>
 
             <div className="srp-ctrl">
@@ -166,12 +162,19 @@ const SolutionReplay = ({ q, A, onClose }) => {
             </div>
             <ol className="srp-steps">
               {tl.map((s, i) => (
-                <li key={i}>
-                  <button type="button" className={`srp-step ${i === cur ? 'on' : ''} ${t >= s.end ? 'done' : ''}`} onClick={() => goStep(i)}>
+                <li key={i} className={`srp-li ${i === cur ? 'open' : ''} ${s.ok ? '' : 'warn'}`}>
+                  <button type="button" className={`srp-step ${i === cur ? 'on' : ''} ${t >= s.end ? 'done' : ''}`} aria-expanded={i === cur} onClick={() => goStep(i)}>
                     <span className="srp-no">{String(i + 1).padStart(2, '0')}</span>
                     <span className="srp-step-t">{s.title}</span>
                     <span className={`srp-dot ${s.ok ? 'ok' : 'no'}`} aria-label={s.ok ? '잘했어요' : '다시 보기'}>{s.ok ? '✓' : '!'}</span>
                   </button>
+                  {/* 정리 — 지금 단계가 펼쳐질 때만 */}
+                  {i === cur && (
+                    <div className="srp-sum">
+                      <div className="srp-sum-k">정리<span className={`srp-mark ${s.ok ? 'ok' : 'no'}`}>{s.ok ? '✓ 잘했어요' : '! 다시 보기'}</span></div>
+                      <div className="srp-sum-d">{len === 'detail' ? s.detail : s.basic}</div>
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>
@@ -243,6 +246,15 @@ const CSS = `
 .srp-seg-btns button{border:none;background:none;min-width:48px;height:40px;padding:0 10px;font-size:var(--neo-font-size-sm);font-weight:700;color:#6B7684}
 .srp-seg-btns button[aria-pressed="true"]{background:#2563EB;color:#fff}
 .srp-rhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.srp-qtext{font-size:var(--neo-font-size-base);line-height:1.7;color:#17212F;background:#F8FAFC;border:1px solid #E4EAF3;border-radius:12px;padding:12px 16px}
+.srp-qtext-k{display:inline-block;margin-right:8px;font-size:var(--neo-font-size-xs);font-weight:700;color:#fff;background:#3C4858;border-radius:6px;padding:1px 8px;vertical-align:1px}
+.srp-li{border-radius:10px}
+.srp-li.open{background:#fff;box-shadow:0 0 0 1px #2563EB, 0 0 0 3px rgba(37,99,235,.15)}
+.srp-li.open .srp-step{border-color:transparent;box-shadow:none}
+.srp-sum{padding:0 12px 12px 12px;border-top:1px dashed #E4EAF3;margin:0 4px}
+.srp-sum-k{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:var(--neo-font-size-xs);font-weight:700;color:#6B7684}
+.srp-sum-d{margin-top:6px;font-size:var(--neo-font-size-sm);line-height:1.7;color:#3C4858}
+.srp-li.open.warn .srp-sum{background:#FFF8F3;border-radius:8px;border-top:none;padding-top:2px}
 .srp-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .srp-step{width:100%;min-height:48px;display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #E4EAF3;border-radius:10px;background:#fff;text-align:left;font-size:var(--neo-font-size-sm);color:#3C4858}
 .srp-step .srp-no{background:#98A3B0}
