@@ -3,6 +3,9 @@
  *
  * Tecet 「과정을 영상처럼」을 차용하되, AI가 그린 그림이 아니라 **학생 본인 필기**를 단계별로 재생한다.
  *   · 장면 자막 — 필기가 써지는 순서에 맞춰 말하듯이 짧은 자막이 바뀐다(영상 자막처럼 필기 위). 음성 없음
+ *     「~를 썼어요」 같은 행동 중계는 쓰지 않는다(재생이 이미 보여 준다) — 실수 · 멈춤 · 판단 · 이유만
+ *   · 간단히 · 자세히 — 자막과 정리를 함께 바꾼다. 간단히 = 실수 · 멈춤 · 단계 핵심 한마디(평범한 구간은 자막 없이 재생)
+ *     자세히 = 간단히 + 이유 · 개념 · 잘한 점. cue.lv = 'detail'이면 자세히에만, cue.sayD = 자세히에서 바꿔 보일 문장
  *   · 왼쪽 = 문항 지문 + 내 필기(장면 자막) + 재생 막대만. 장면이 바뀔 때마다 아래에 설명이 바뀌면 읽기에 방해되므로
  *   · 정리 — 단계 설명은 오른쪽 풀이 단계에서 지금 단계가 펼쳐질 때 그 안에 보인다. 설명 수준 = 문항 목표 학년 자동(학생이 고르지 않음) / 정리 길이 = 기본 · 자세히
  *   · 정답 잠금 — 끝까지 재생하면 바른 풀이 공개(한 번 열리면 다시 잠기지 않음)
@@ -45,7 +48,9 @@ const penSchedule = (pen, a, b) => {
 
 /* steps: [{ title, ok, line, pauseSec?, cues[{ w? | pause? , say }], basic, detail }]
  *   cue 하나 = 장면 하나: w(쓴 글자)를 쓰는 동안 · 쓴 뒤 읽을 시간까지 say 자막이 보인다 */
-const buildTimeline = (steps, pen) => {
+const cueText = (c, mode) => (mode === 'detail' ? (c.sayD || c.say) : (c.lv === 'detail' ? null : c.say)) || null;
+
+const buildTimeline = (steps, pen, mode) => {
   let t = 0;
   const lineCursor = {};
   return steps.map((s, i) => {
@@ -57,10 +62,12 @@ const buildTimeline = (steps, pen) => {
       lineCursor[s.line] = from + w.length;
       const sched = pen && c.s ? penSchedule(pen, c.s[0], c.s[1]) : null;
       const writeSec = sched ? sched.sec : w.length * CHAR_SEC;
-      const dur = Math.max(c.pause ? PAUSE_SHOW_SEC : writeSec + 0.4, readSec(c.say));
+      const txt = cueText(c, mode);
+      const base = c.pause ? PAUSE_SHOW_SEC : writeSec > 0 ? writeSec + 0.3 : 0;
+      const dur = txt ? Math.max(base, readSec(txt)) : base;
       t += dur;
-      return { ...c, start: cs, end: t, from, len: w.length, writeEnd: cs + writeSec, sched };
-    });
+      return { ...c, txt, start: cs, end: t, from, len: w.length, writeEnd: cs + writeSec, sched };
+    }).filter((c) => c.end > c.start);
     const end = t;
     if (i < steps.length - 1) t += GAP_SEC;
     return { ...s, start, end, cues };
@@ -72,13 +79,13 @@ const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).pad
 const SolutionReplay = ({ q, A, onClose }) => {
   const sol = q.solution;
   const pen = sol.pen || null;
-  const tl = useMemo(() => buildTimeline(sol.steps, pen), [sol, pen]);
+  const [len, setLen] = useState('basic'); // basic(간단히) · detail(자세히) — 자막 · 정리 함께
+  const tl = useMemo(() => buildTimeline(sol.steps, pen, len), [sol, pen, len]);
   const penVB = useMemo(() => (pen ? penViewBox(pen, sol.penFrom || 0) : null), [pen, sol.penFrom]);
   const total = tl[tl.length - 1].end;
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const [len, setLen] = useState('basic'); // basic · detail
   const [unlocked, setUnlocked] = useState(false);
   const raf = useRef(0);
   const last = useRef(0);
@@ -119,6 +126,13 @@ const SolutionReplay = ({ q, A, onClose }) => {
     setPlaying((p) => !p);
   };
   const seek = (v) => { setT(v); if (v >= total) setUnlocked(true); };
+  /* 간단히 ↔ 자세히 — 시간표가 바뀌므로 지금 단계의 처음으로 맞춘다 */
+  const changeLen = (v) => {
+    if (v === len) return;
+    const nt = buildTimeline(sol.steps, pen, v);
+    setLen(v);
+    setT(t >= total ? nt[nt.length - 1].end : nt[cur].start);
+  };
   const goStep = (i) => { setT(tl[i].start); setPlaying(true); };
 
   /* 펜 — 획마다 지금까지 그린 점 수 · 색(지금 단계 파랑 · 다시 볼 부분 빨강) */
@@ -183,9 +197,9 @@ const SolutionReplay = ({ q, A, onClose }) => {
                   ))}
                 </div>
               ))}
-              {pausing && <div className="srp-pause">⏸ 필기가 {step.pauseSec}초 멈췄어요</div>}
+              {pausing && <div className="srp-pause">⏸ 필기가 {cue.sec || step.pauseSec}초 멈췄어요</div>}
               {/* 장면 자막 — 쓰는 순서에 맞춰 말하듯이 */}
-              <div className="srp-cc" aria-live="polite">{cue && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.say}</span>}</div>
+              <div className="srp-cc" aria-live="polite">{cue?.txt && <span key={`${cur}-${cue.start}`} className={`srp-cc-t ${step.ok ? '' : 'warn'}`}>{cue.txt}</span>}</div>
             </div>
 
             <div className="srp-ctrl">
@@ -204,9 +218,9 @@ const SolutionReplay = ({ q, A, onClose }) => {
           <div className="srp-r">
             <div className="srp-rhead">
               <b>풀이 단계</b>
-              <div className="srp-seg-btns" role="group" aria-label="정리 길이" title="정리 칸의 설명 길이">
-                <button type="button" aria-pressed={len === 'basic'} onClick={() => setLen('basic')}>기본</button>
-                <button type="button" aria-pressed={len === 'detail'} onClick={() => setLen('detail')}>자세히</button>
+              <div className="srp-seg-btns" role="group" aria-label="설명 길이 — 자막 · 정리" title="장면 자막과 정리를 함께 간단히 · 자세히">
+                <button type="button" aria-pressed={len === 'basic'} onClick={() => changeLen('basic')}>간단히</button>
+                <button type="button" aria-pressed={len === 'detail'} onClick={() => changeLen('detail')}>자세히</button>
               </div>
             </div>
             <ol className="srp-steps">
