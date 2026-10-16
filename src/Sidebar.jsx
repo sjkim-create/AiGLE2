@@ -270,7 +270,11 @@ const Sidebar = ({
                             <div className="nav-sub-menu">
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '내 과제' ? 'active' : ''}`}
-                                    onClick={() => setActiveSubMenu('내 과제')}
+                                    onClick={() => {
+                                        setActiveSubMenu('내 과제');
+                                        // [TSK-10 v1.16] 과제 상세를 보고 있어도 「내 과제」를 누르면 목록으로
+                                        window.dispatchEvent(new CustomEvent('aigle:student-tasks-list'));
+                                    }}
                                 >
                                     ⊙ 내 과제
                                 </div>

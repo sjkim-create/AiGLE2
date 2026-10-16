@@ -419,6 +419,12 @@ const StudentMyTasks = () => {
   /* 풀이 과정을 열면 재생 영역이 화면 위에 오도록 — 재생 막대까지 한눈에 */
   const replayRef = useRef(null);
   useEffect(() => { if (replayQ != null) replayRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [replayQ]);
+  /* [TSK-10 v1.16] 왼쪽 메뉴 「내 과제」 → 상세를 닫고 목록으로(필터 · 검색은 유지) */
+  useEffect(() => {
+    const toList = () => { setOpenIdx(null); setReplayQ(null); setZoomQ(null); if (scroller.current) scroller.current.scrollTop = 0; };
+    window.addEventListener('aigle:student-tasks-list', toList);
+    return () => window.removeEventListener('aigle:student-tasks-list', toList);
+  }, []);
   /* 문항을 바꿔 열면 왼쪽 재생 원본이 보이도록 */
   useEffect(() => { stageEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [stageEl]);
 
