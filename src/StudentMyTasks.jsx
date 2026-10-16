@@ -408,6 +408,7 @@ const StudentMyTasks = () => {
   const [toast, setToast] = useState(null);
   const [zoomQ, setZoomQ] = useState(null); // 답안 크게 보기 — 문항 번호
   const [replayQ, setReplayQ] = useState(null); // [풀이 과정 보기] 화면 안 재생 중인 문항 번호
+  const [ansQ, setAnsQ] = useState(0); // [TSK-10 v1.14] 답안 미리보기 문항 탭
   const [stageEl, setStageEl] = useState(null); // [TSK-10 v1.11] 필기 재생을 그릴 왼쪽 답안 원본 자리
   const [asideW, setAsideW] = useState(ASIDE_W); // 오른쪽(채점 결과) 폭 — 가운데 손잡이로 조절
   const timers = useRef([]);
@@ -458,10 +459,15 @@ const StudentMyTasks = () => {
   const isDone = A?.status === 'done';
   const zq = A && zoomQ != null ? A.questions[zoomQ] : null;
 
-  const open = (i) => { setOpenIdx(i); setKind('content'); setReplayQ(null); setPdf('idle'); toTop(); };
+  const open = (i) => { setOpenIdx(i); setKind('content'); setAnsQ(0); setReplayQ(null); setPdf('idle'); toTop(); };
   const back = () => { setOpenIdx(null); setReplayQ(null); toTop(); };
-  const openReplay = (i) => setReplayQ(i);
+  const openReplay = (i) => { setAnsQ(i); setReplayQ(i); };
   const closeReplay = () => setReplayQ(null);
+  /* 답안 문항 탭 — 풀이 과정이 열려 있으면 바꾼 문항으로 따라간다(그 문항에 풀이가 없으면 닫는다) */
+  const pickAnsQ = (i) => {
+    setAnsQ(i);
+    if (replayQ != null && replayQ !== i) setReplayQ(A?.questions[i]?.solution ? i : null);
+  };
   const rq = A && replayQ != null && A.questions[replayQ]?.solution ? A.questions[replayQ] : null;
 
   const savePdf = () => {
@@ -592,10 +598,18 @@ const StudentMyTasks = () => {
                       </div>
                     ) : (
                       <div>
-                        {A.questions.map((qq, i) => (
+                        {/* [TSK-10 v1.14] 문항 탭 — 한 번에 한 문항의 답안 */}
+                        <div className="smt-atabs" role="tablist" aria-label="문항 선택">
+                          {A.questions.map((qq, i) => (
+                            <button key={i} type="button" role="tab" aria-selected={i === ansQ} className="smt-atab" onClick={() => pickAnsQ(i)}>
+                              {qq.label}{replayQ === i && <span className="smt-atab-dot" aria-label="풀이 과정 재생 중" />}
+                            </button>
+                          ))}
+                        </div>
+                        {A.questions.map((qq, i) => i !== ansQ ? null : (
                           <div key={i} className="smt-aitem">
                             <div className="smt-aitem-h">
-                              <div className="smt-seclab" style={{ marginBottom: 0 }}><span className="smt-tag q">{qq.label}</span></div>
+                              <div />
                               <div className="smt-aitem-btns">
                                 <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />크게 보기</button>
                                 {/* 풀이 과정 보기 — 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 */}
@@ -892,7 +906,10 @@ const CSS = `
 .smt-mini.blue[aria-pressed="true"]{background:#fff;color:var(--blue-dark)}
 .smt-qitem{margin-top:24px;padding-top:20px;border-top:1px solid var(--line-soft)}
 .smt-passage + .smt-qitem{margin-top:24px}
-.smt-aitem + .smt-aitem{margin-top:22px;padding-top:20px;border-top:1px solid var(--line-soft)}
+.smt-atabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.smt-atab{height:36px;padding:0 16px;border:1px solid var(--line);border-radius:18px;background:#fff;color:var(--t3);font-size:var(--neo-font-size-sm);display:inline-flex;align-items:center;gap:6px}
+.smt-atab[aria-selected="true"]{background:var(--blue-soft);border-color:var(--blue);color:var(--blue-dark);font-weight:700}
+.smt-atab-dot{width:7px;height:7px;border-radius:50%;background:var(--blue)}
 .smt-aitem-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .smt-aitem-btns{display:flex;gap:6px}
 .smt-mini.blue{border-color:var(--blue);background:var(--blue);color:#fff;font-weight:700}
