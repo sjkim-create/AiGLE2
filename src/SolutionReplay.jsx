@@ -15,6 +15,7 @@
  *     데이터는 항목마다 en: { ... } — 없으면 한국어로 보이고 「영어 설명이 아직 없어 한국어로 보여요」 안내
  *   · inline — 학생 결과 확인(TSK-10)에서 모달이 아니라 화면 안에서. 왼쪽 = 문항 · 필기 재생(답안 미리보기 자리),
  *     오른쪽 = 위에 접히는 [풀이 과정] 패널(단계 · 정리 · 개념 · 바른 풀이) + 그 아래 채점 결과(리포트 미리보기 — reportNode). 좁은 화면은 위아래 1단
+ *   · panel — 학생 결과 확인(TSK-10 v1.10): 화면은 그대로 두고 오른쪽 채점 결과 위에 펼쳐져 얹히는 한 줄(세로) 패널. [✕]로 닫는다
  *   · viewer='teacher' — 교사 채점 확인(SCR-03)에서 같은 화면. 학생 이름 · 「교사 확인」 표시, 바른 풀이는 처음부터 열림, 아래 안내만 다르다
  *
  * 필기 재생 두 가지
@@ -104,7 +105,7 @@ const buildTimeline = (steps, pen, mode, lang = 'ko') => {
 
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, reportNode = null }) => {
+const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sampleNote, inline = false, panel = false, reportNode = null }) => {
   const [fold, setFold] = useState(false); // inline — 오른쪽 위 풀이 과정 패널 접기(접으면 아래 채점 결과가 올라온다)
   const isTeacher = viewer === 'teacher';
   const sol = q.solution;
@@ -201,7 +202,7 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
   }))));
 
   return (
-    <div className={inline ? 'srp-inline' : 'srp-wrap'} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
+    <div className={inline ? 'srp-inline' : panel ? 'srp-panel' : 'srp-wrap'} role={inline || panel ? 'region' : 'dialog'} aria-modal={inline || panel ? undefined : 'true'} aria-label={`${U.title} · ${tr(q, 'label', lang)}`} lang={lang}>
       <style>{CSS}</style>
       <div className="srp-box">
         <div className="srp-head">
@@ -335,6 +336,17 @@ const SolutionReplay = ({ q, A, onClose, viewer = 'student', studentName, sample
 export default SolutionReplay;
 
 const CSS = `
+.srp-panel{height:100%;transform-origin:top center;animation:srp-drop .28s ease-out}
+@keyframes srp-drop{from{opacity:0;transform:translateY(-14px) scaleY(.97)}to{opacity:1;transform:none}}
+.srp-panel .srp-box{width:100%;height:100%;max-height:none;border:1px solid #C7D7FB;border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.18)}
+.srp-panel .srp-head{padding:12px 16px}
+.srp-panel .srp-cols{grid-template-columns:minmax(0,1fr);overflow-y:auto;flex:1;min-height:0}
+.srp-panel .srp-l{padding:14px 16px}
+.srp-panel .srp-r{border-left:none;border-top:1px solid #E4EAF3;padding:14px 16px}
+.srp-panel .srp-pen svg{max-height:min(30vh,290px)}
+.srp-panel .srp-paper{min-height:0}
+.srp-panel .srp-qtext{font-size:var(--neo-font-size-sm);padding:10px 12px}
+.srp-panel .srp-foot{padding:8px 16px}
 .srp-inline{display:block}
 .srp-inline .srp-box{width:100%;max-height:none;box-shadow:none;border:1px solid #E4EAF3;border-radius:12px}
 .srp-inline .srp-cols{grid-template-columns:minmax(0,1.15fr) minmax(340px,1fr);overflow:visible}
@@ -440,5 +452,5 @@ const CSS = `
   .srp-r{border-left:none;border-top:1px solid #E4EAF3}
   .srp-line{font-size:26px}
 }
-@media (prefers-reduced-motion: reduce){.srp-seg{transition:none}.srp-cc-t{animation:none}}
+@media (prefers-reduced-motion: reduce){.srp-seg{transition:none}.srp-cc-t{animation:none}.srp-panel{animation:none}}
 `;

@@ -416,7 +416,7 @@ const StudentMyTasks = () => {
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   /* 풀이 과정을 열면 재생 영역이 화면 위에 오도록 — 재생 막대까지 한눈에 */
   const replayRef = useRef(null);
-  useEffect(() => { if (replayQ != null) replayRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [replayQ]);
+  useEffect(() => { if (replayQ != null) replayRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [replayQ]);
 
   /* 좌우 폭 조절 — 좌측 최소 400px, 우측 300px ~ 전체의 60% */
   const startResize = (e) => {
@@ -458,7 +458,8 @@ const StudentMyTasks = () => {
   const open = (i) => { setOpenIdx(i); setKind('content'); setReplayQ(null); setPdf('idle'); toTop(); };
   const back = () => { setOpenIdx(null); setReplayQ(null); toTop(); };
   const openReplay = (i) => setReplayQ(i);
-  const closeReplay = () => { setReplayQ(null); setKind('answer'); };
+  const closeReplay = () => setReplayQ(null);
+  const rq = A && replayQ != null && A.questions[replayQ]?.solution ? A.questions[replayQ] : null;
 
   const savePdf = () => {
     if (pdf !== 'idle') return;
@@ -561,13 +562,7 @@ const StudentMyTasks = () => {
               </div>
             </div>
 
-            {/* [TSK-10 v1.8] 풀이 과정 보기 — 모달이 아니라 이 화면 안에서. 왼쪽 필기 재생 · 오른쪽 [풀이 과정 | 채점 결과] */}
-            {replayQ != null && A.questions[replayQ]?.solution ? (
-              <div className="smt-replay-wrap" ref={replayRef}>
-                <SolutionReplay inline q={A.questions[replayQ]} A={A} onClose={closeReplay}
-                  reportNode={<ReportPreview A={A} />} />
-              </div>
-            ) : (
+            {/* [TSK-10 v1.10] 풀이 과정 보기 — 화면은 그대로, 오른쪽 채점 결과 위에 패널이 펼쳐져 얹힌다(✕로 닫으면 채점 결과) */}
               <div className="smt-board2">
                 <div className="smt-cols" ref={colsRef} style={{ '--aside-w': `${asideW}px` }}>
                   {/* 왼쪽 — [과제 내용] [답안 미리보기] */}
@@ -602,7 +597,7 @@ const StudentMyTasks = () => {
                                 <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />크게 보기</button>
                                 {/* 풀이 과정 보기 — 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 */}
                                 {isDone && qq.solution && (
-                                  <button type="button" className="smt-mini blue" onClick={() => openReplay(i)}>▶ 풀이 과정 보기</button>
+                                  <button type="button" className="smt-mini blue" aria-pressed={replayQ === i} onClick={() => (replayQ === i ? closeReplay() : openReplay(i))}>{replayQ === i ? '✕ 풀이 과정 닫기' : '▶ 풀이 과정 보기'}</button>
                                 )}
                               </div>
                             </div>
@@ -619,7 +614,12 @@ const StudentMyTasks = () => {
                     onPointerDown={startResize} onKeyDown={nudgeResize} onDoubleClick={() => setAsideW(ASIDE_W)}><span /></div>
 
                   {/* 오른쪽 — 채점 결과(리포트 미리보기) */}
-                  <aside className="smt-col-r">
+                  <aside className={`smt-col-r ${rq ? 'has-rp' : ''}`}>
+                    {rq && (
+                      <div className="smt-rp-over" ref={replayRef}>
+                        <SolutionReplay key={replayQ} panel q={rq} A={A} onClose={closeReplay} />
+                      </div>
+                    )}
                     <div className="smt-rtitle">채점 결과</div>
                     {isDone ? <ReportPreview A={A} /> : (
                       /* 제출 완료(채점중) — 결과가 발송되면 결과 확인으로 바뀌고 채점 결과가 채워진다 */
@@ -630,7 +630,6 @@ const StudentMyTasks = () => {
                   </aside>
                 </div>
               </div>
-            )}
           </section>
         )}
       </div>
@@ -878,7 +877,10 @@ const CSS = `
 .smt-dhead-r{display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0}
 .smt-dmeta{font-size:var(--neo-font-size-sm);color:var(--t3)}
 .smt-board2{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px}
-.smt-replay-wrap{margin-top:20px}
+.smt-col-r{position:relative}
+.smt-col-r.has-rp{min-height:calc(100vh - 230px)}
+.smt-rp-over{position:absolute;inset:0;z-index:5}
+.smt-mini.blue[aria-pressed="true"]{background:#fff;color:var(--blue-dark)}
 .smt-qitem{margin-top:24px;padding-top:20px;border-top:1px solid var(--line-soft)}
 .smt-passage + .smt-qitem{margin-top:24px}
 .smt-aitem + .smt-aitem{margin-top:22px;padding-top:20px;border-top:1px solid var(--line-soft)}
