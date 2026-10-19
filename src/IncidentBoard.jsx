@@ -38,7 +38,7 @@ const btn = (extra = {}) => ({ padding: '7px 12px', borderRadius: 8, border: '1p
 const label = { fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', marginBottom: 4 };
 
 /* ── 목록 ─────────────────────────────────────────────── */
-const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast }) => {
+const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast, title = '장애신고' }) => {
   const [filter, setFilter] = useState('전체');
   // [v2.3] 선택 삭제 — 체크박스로 고른 신고를 확인창을 거쳐 지운다 (게시판 기록만, Jira 이슈는 유지)
   const [selected, setSelected] = useState(() => new Set());
@@ -80,7 +80,7 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast }) => {
   return (
     <div className="content-container" style={{ padding: 24, height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>🚨 장애신고</h1>
+        <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>🚨 {title}</h1>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>교사 화면에서 접수된 장애 신고 — 행을 누르면 상세에서 확인·답변합니다</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           {selected.size > 0 && (
@@ -436,7 +436,7 @@ const IncidentDetail = ({ item, index, onBack, showToast }) => {
 };
 
 /* ── 컨테이너 ─────────────────────────────────────────── */
-const IncidentBoard = ({ showToast }) => {
+const IncidentBoard = ({ showToast, title }) => { // [v2.4] title — 2.4는 「이용불편신고」
   const [items, setItems] = useState(() => listIncidents());
   const [openId, setOpenId] = useState(null);
   useEffect(() => subscribeIncidents((list) => setItems(list.slice())), []);
@@ -452,7 +452,7 @@ const IncidentBoard = ({ showToast }) => {
   };
   useEffect(() => { syncAll(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (openId && idx >= 0) return <IncidentDetail item={items[idx]} index={idx} onBack={() => setOpenId(null)} showToast={showToast} />;
-  return <IncidentList items={items} onOpen={setOpenId} onSyncAll={() => syncAll(false)} syncing={syncing} showToast={showToast} />;
+  return <IncidentList items={items} onOpen={setOpenId} onSyncAll={() => syncAll(false)} syncing={syncing} showToast={showToast} title={title} />;
 };
 
 export default IncidentBoard;

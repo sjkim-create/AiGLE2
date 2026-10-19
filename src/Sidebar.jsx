@@ -6,6 +6,7 @@
  */
 import React, { useState } from 'react';
 import { FORM_LISTS, SIDEBAR_REGISTER_HISTORY, ANSWER_SUBS, isAnswerSub } from './registerMenu';
+import { isMenuVisible, isSubVisible, firstVisibleSub, homeOf } from './lib/appVersion'; // [v2.4] 버전별 메뉴 노출
 
 const Sidebar = ({
     activeMenu,
@@ -27,7 +28,12 @@ const Sidebar = ({
     registrationMode = null, // 지금 열린 등록 화면 (메뉴 강조용)
     listOrigin = '과제 관리', // 등록 화면을 연 목록 (서·논술형 과제 / 정답형 과제 / 과제 관리)
     formCounts,              // { essay, answer } 형태별 과제 수
+    appVersion = '2.3',      // [v2.4] 버전 트리거 — 2.4에서 빠지는 메뉴는 lib/appVersion.js REMOVED
+    appRole = 'admin',       // [v2.4] 사용자 모드 — 모드별 메뉴는 lib/appVersion.js ROLES
 }) => {
+  const showMenu = (m) => isMenuVisible(appVersion, m, appRole);
+  const showSub = (m, sub) => isSubVisible(appVersion, m, sub, appRole);
+  const subFor = (m, preferred) => firstVisibleSub(appVersion, m, preferred, appRole);
   const [historyOpen, setHistoryOpen] = useState(false); // 이전 메뉴 (history) 펼침
   const onRegisterScreen = activeSubMenu === '과제 등록';
   // 같은 화면을 여는 메뉴가 둘(새 메뉴 · 이전 메뉴)일 수 있어, 마지막으로 누른 메뉴만 강조한다
@@ -42,6 +48,16 @@ const Sidebar = ({
     setActiveMenu(menu);
     if (setShowAnalysis) setShowAnalysis(false);
   };
+  /* 펼침 메뉴(회원 관리 · 과제 관리 · 채점 관리 · 게시판 · 학생 모드 · 아이글 채점 테스트) — 모든 모드 공통. 펼친 메뉴를 다시 누르면 접고, 한 번 더 누르면 편다(보던 화면은 그대로).
+   *   다른 메뉴를 누르면 그 메뉴가 펼쳐진 채로 열린다 */
+  const [folded, setFolded] = useState(null);
+  React.useEffect(() => { setFolded(null); }, [activeMenu]);
+  const toggleMenu = (menu, sub) => {
+    if (activeMenu === menu) { setFolded((f) => (f === menu ? null : menu)); return; }
+    handleMenuChange(menu);
+    setActiveSubMenu(sub);
+  };
+  const isOpen = (menu) => activeMenu === menu && folded !== menu;
   /* [상용 헤더 정렬] 舊 renderSetupBadge — 「설정 필요」 배지는 상단 ⚙️ 아이콘의 빨간 점으로 옮겼다 */
 
     return (
@@ -56,7 +72,9 @@ const Sidebar = ({
                 onClick={() => {
                     setIsSettingsMode(false);
                     setIsProfileDropdownOpen(false);
-                    handleMenuChange('대시보드');
+                    const home = homeOf(appVersion, appRole); // [v2.4] 모드의 첫 화면
+                    handleMenuChange(home.menu);
+                    setActiveSubMenu(home.sub);
                 }}
             >
                 <img src="/images/logo.svg" alt="AiGLE" style={{ height: '30px' }} />
@@ -69,81 +87,100 @@ const Sidebar = ({
             <nav className="nav-menu">
                 {!isSettingsMode ? (
                     <>
+                        {showMenu('대시보드') && (
                         <div className={`nav-item ${activeMenu === '대시보드' ? 'active' : ''}`} onClick={() => handleMenuChange('대시보드')}>
                             📊 대시보드
                         </div>
+                        )}
+                        {showMenu('교사 대시보드') && (
                         <div className={`nav-item ${activeMenu === '교사 대시보드' ? 'active' : ''}`} onClick={() => handleMenuChange('교사 대시보드')}>
                             👩‍🏫 교사 대시보드
                         </div>
+                        )}
+                        {showMenu('학교 대시보드') && (
                         <div className={`nav-item ${activeMenu === '학교 대시보드' ? 'active' : ''}`} onClick={() => handleMenuChange('학교 대시보드')}>
                             🏫 학교 대시보드
                         </div>
+                        )}
+                        {showMenu('교육청 대시보드') && (
                         <div className={`nav-item ${activeMenu === '교육청 대시보드' ? 'active' : ''}`} onClick={() => handleMenuChange('교육청 대시보드')}>
                             🏛 교육청 대시보드
                         </div>
+                        )}
+                        {showMenu('회원 관리') && (<>
                         <div
-                            className={`nav-item ${activeMenu === '회원 관리' ? 'active' : ''}`}
-                            onClick={() => {
-                                handleMenuChange('회원 관리');
-                                if (activeMenu !== '회원 관리') setActiveSubMenu('교사 관리');
-                            }}
+                            className={`nav-item ${activeMenu === '회원 관리' ? 'active' : ''} ${folded === '회원 관리' ? 'folded' : ''}`}
+                            aria-expanded={isOpen('회원 관리')}
+                            onClick={() => toggleMenu('회원 관리', subFor('회원 관리', '교사 관리'))}
                         >
                             🛡️ 회원 관리 <span className="arrow">▼</span>
                         </div>
 
-                        {activeMenu === '회원 관리' && (
+                        {isOpen('회원 관리') && (
                             <div className="nav-sub-menu">
+                                {showSub('회원 관리', '교사 관리') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '교사 관리' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('교사 관리')}
                                 >
                                     ⊙ 교사 관리
                                 </div>
+                                )}
+                                {showSub('회원 관리', '교사관리(학교모드)') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '교사관리(학교모드)' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('교사관리(학교모드)')}
                                 >
-                                    ⊙ 교사관리(학교모드)
+                                    ⊙ {appVersion === '2.4' && appRole === 'school' ? '교사 관리' : '교사관리(학교모드)'}
                                 </div>
+                                )}
+                                {showSub('회원 관리', '학교 관리') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '학교 관리' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('학교 관리')}
                                 >
                                     ⊙ 학교 관리
                                 </div>
+                                )}
+                                {showSub('회원 관리', '학생 관리') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '학생 관리' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('학생 관리')}
                                 >
                                     ⊙ 학생 관리 <span className="n-badge" style={{ background: 'var(--success)' }}>N</span> <span className="badge">1,540</span>
                                 </div>
+                                )}
+                                {showSub('회원 관리', '그룹 관리') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '그룹 관리' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('그룹 관리')}
                                 >
                                     ⊙ 그룹 관리 <span className="n-badge" style={{ background: 'var(--success)' }}>N</span> <span className="badge">500</span>
                                 </div>
+                                )}
                             </div>
                         )}
+                        </>)}
                         {/* [v4.7] 「과제 및 채점관리」 단일 메뉴 → 「과제 관리」 / 「채점 관리」 두 메뉴로 분리 */}
+                        {showMenu('과제 관리') && (<>
                         <div
-                            className={`nav-item ${activeMenu === '과제 관리' ? 'active' : ''}`}
-                            onClick={() => {
-                                handleMenuChange('과제 관리');
-                                if (activeMenu !== '과제 관리') setActiveSubMenu('과제 관리');
-                            }}
+                            className={`nav-item ${activeMenu === '과제 관리' ? 'active' : ''} ${folded === '과제 관리' ? 'folded' : ''}`}
+                            aria-expanded={isOpen('과제 관리')}
+                            onClick={() => toggleMenu('과제 관리', subFor('과제 관리', '과제 관리'))}
                         >
                             📂 과제 관리 <span className="arrow">▼</span>
                         </div>
 
-                        {activeMenu === '과제 관리' && (
+                        {isOpen('과제 관리') && (
                             <div className="nav-sub-menu">
+                                {showSub('과제 관리', '과제 관리') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '과제 관리' || (onRegisterScreen && !historyActive && !FORM_LISTS.some((f) => f.sub === listOrigin) && !isAnswerSub(listOrigin)) ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('과제 관리')}
                                 >
                                     ⊙ 과제 관리 <span className="n-badge">N</span> <span className="badge">{taskCount ?? 0}</span>
                                 </div>
+                                )}
                                 {/* [TSK-15 v1.4] 형태별 과제 목록 — 등록은 목록의 [+ 새 과제 등록]에서 직접 등록 / 스마트 등록 */}
                                 {FORM_LISTS.map((f) => {
                                     const isAnswer = f.form === 'answer';
@@ -179,7 +216,7 @@ const Sidebar = ({
                                     ⊙ 공유된 과제 <span className="n-badge" style={{ background: 'var(--success)' }}>N</span>
                                 </div>
                                 {/* 이전 메뉴 (history) — 정리 전 등록 메뉴. 같은 화면으로 연결 */}
-                                {onRegister && (
+                                {onRegister && showSub('과제 관리', '이전 메뉴') && (
                                     <>
                                         <div className="nav-sub-item" onClick={() => setHistoryOpen((v) => !v)} aria-expanded={historyOpen}
                                             style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-xs)' }}>
@@ -195,25 +232,27 @@ const Sidebar = ({
                                 )}
                             </div>
                         )}
+                        </>)}
 
+                        {showMenu('채점 관리') && (<>
                         <div
-                            className={`nav-item ${activeMenu === '채점 관리' ? 'active' : ''}`}
-                            onClick={() => {
-                                handleMenuChange('채점 관리');
-                                if (activeMenu !== '채점 관리') setActiveSubMenu('채점 관리');
-                            }}
+                            className={`nav-item ${activeMenu === '채점 관리' ? 'active' : ''} ${folded === '채점 관리' ? 'folded' : ''}`}
+                            aria-expanded={isOpen('채점 관리')}
+                            onClick={() => toggleMenu('채점 관리', subFor('채점 관리', '채점 관리'))}
                         >
                             📝 채점 관리 <span className="arrow">▼</span>
                         </div>
 
-                        {activeMenu === '채점 관리' && (
+                        {isOpen('채점 관리') && (
                             <div className="nav-sub-menu">
+                                {showSub('채점 관리', '채점 관리') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '채점 관리' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('채점 관리')}
                                 >
                                     ⊙ 채점 관리
                                 </div>
+                                )}
                                 {/* [SCR-06] 퇴고 지원판 — 기존 채점 관리와 구분하기 위해 별도 메뉴로 노출 */}
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '채점 관리 2' ? 'active' : ''}`}
@@ -230,43 +269,54 @@ const Sidebar = ({
                                 </div>
                             </div>
                         )}
+                        </>)}
                         {/* [BRD-16] 게시판 — 공지사항 / 장애신고(시스템 관리자) */}
+                        {showMenu('게시판') && (<>
                         <div
-                            className={`nav-item ${activeMenu === '게시판' ? 'active' : ''}`}
-                            onClick={() => {
-                                handleMenuChange('게시판');
-                                if (activeMenu !== '게시판') setActiveSubMenu('공지사항');
-                            }}
+                            className={`nav-item ${activeMenu === '게시판' ? 'active' : ''} ${folded === '게시판' ? 'folded' : ''}`}
+                            aria-expanded={isOpen('게시판')}
+                            onClick={() => toggleMenu('게시판', subFor('게시판', '공지사항'))}
                         >
                             📋 게시판 <span className="n-badge" style={{ background: 'var(--success)' }}>N</span> <span className="arrow">▼</span>
                         </div>
-                        {activeMenu === '게시판' && (
+                        {isOpen('게시판') && (
                             <div className="nav-sub-menu">
                                 <div
-                                    className={`nav-sub-item ${activeSubMenu !== '장애신고' ? 'active' : ''}`}
+                                    className={`nav-sub-item ${activeSubMenu !== '장애신고' && activeSubMenu !== 'Q&A' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('공지사항')}
                                 >
                                     ⊙ 공지사항
                                 </div>
+                                {/* Q&A — 2.3 · 2.4 공통(2.4는 모드별 허용에 따름) */}
+                                {showSub('게시판', 'Q&A') && (
+                                <div
+                                    className={`nav-sub-item ${activeSubMenu === 'Q&A' ? 'active' : ''}`}
+                                    onClick={() => setActiveSubMenu('Q&A')}
+                                >
+                                    ⊙ Q&A
+                                </div>
+                                )}
+                                {showSub('게시판', '장애신고') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '장애신고' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('장애신고')}
                                 >
-                                    ⊙ 장애신고 <span className="n-badge" style={{ background: '#DC2626' }}>N</span>{incidentOpenCount > 0 && <span className="badge">{incidentOpenCount}</span>}
+                                    ⊙ {appVersion === '2.4' ? '이용불편신고' : '장애신고'} <span className="n-badge" style={{ background: '#DC2626' }}>N</span>{incidentOpenCount > 0 && <span className="badge">{incidentOpenCount}</span>}
                                 </div>
+                                )}
                             </div>
                         )}
+                        </>)}
                         {/* [TSK-06·09·10] 학생 모드 — 학생 화면(내 과제) 미리보기 */}
+                        {showMenu('학생 모드') && (<>
                         <div
-                            className={`nav-item ${activeMenu === '학생 모드' ? 'active' : ''}`}
-                            onClick={() => {
-                                handleMenuChange('학생 모드');
-                                if (activeMenu !== '학생 모드') setActiveSubMenu('내 과제');
-                            }}
+                            className={`nav-item ${activeMenu === '학생 모드' ? 'active' : ''} ${folded === '학생 모드' ? 'folded' : ''}`}
+                            aria-expanded={isOpen('학생 모드')}
+                            onClick={() => toggleMenu('학생 모드', '내 과제')}
                         >
                             🎒 학생 모드 <span className="arrow">▼</span>
                         </div>
-                        {activeMenu === '학생 모드' && (
+                        {isOpen('학생 모드') && (
                             <div className="nav-sub-menu">
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '내 과제' ? 'active' : ''}`}
@@ -280,25 +330,29 @@ const Sidebar = ({
                                 </div>
                             </div>
                         )}
+                        </>)}
+                        {showMenu('스마트펜 모니터링') && (
                         <div className={`nav-item ${activeMenu === '스마트펜 모니터링' ? 'active' : ''}`} onClick={() => handleMenuChange('스마트펜 모니터링')}>
                             📡 스마트펜 모니터링
                         </div>
+                        )}
+                        {showMenu('화면 명세서') && (
                         <div className={`nav-item ${activeMenu === '화면 명세서' ? 'active' : ''}`} onClick={() => handleMenuChange('화면 명세서')}>
                             🗂️ 화면 명세서
                         </div>
+                        )}
                         {/* [v3.57] AI 채점 PoC 메뉴 삭제 — 「아이글 채점 테스트」로 통합됨 */}
                         {/* [v2.85] 메뉴 「Prompt Studio」 폐기 → 「아이글 채점 테스트」로 대체. 서브: 아이글 채점 테스트 + 아이글 채점 테스트 아카이브 */}
+                        {showMenu('아이글 채점 테스트') && (<>
                         <div
-                            className={`nav-item ${activeMenu === '아이글 채점 테스트' ? 'active' : ''}`}
-                            onClick={() => {
-                                handleMenuChange('아이글 채점 테스트');
-                                if (activeMenu !== '아이글 채점 테스트') setActiveSubMenu('아이글 채점 테스트');
-                            }}
+                            className={`nav-item ${activeMenu === '아이글 채점 테스트' ? 'active' : ''} ${folded === '아이글 채점 테스트' ? 'folded' : ''}`}
+                            aria-expanded={isOpen('아이글 채점 테스트')}
+                            onClick={() => toggleMenu('아이글 채점 테스트', '아이글 채점 테스트')}
                         >
                             ⚗️ 아이글 채점 테스트 <span className="arrow">▼</span>
                         </div>
 
-                        {activeMenu === '아이글 채점 테스트' && (
+                        {isOpen('아이글 채점 테스트') && (
                             <div className="nav-sub-menu">
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '아이글 채점 테스트' ? 'active' : ''}`}
@@ -314,6 +368,7 @@ const Sidebar = ({
                                 </div>
                             </div>
                         )}
+                        </>)}
                     </>
                 ) : (
                     <>

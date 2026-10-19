@@ -211,6 +211,11 @@ body {
   transform: rotate(180deg);
 }
 
+/* 펼친 메뉴를 다시 눌러 접으면 화살표도 접힌 모양 */
+.nav-item.active.folded .arrow {
+  transform: none;
+}
+
 .nav-sub-menu {
   background: #F8F9FA;
   padding: 0.25rem 0;

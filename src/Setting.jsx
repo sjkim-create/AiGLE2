@@ -43,7 +43,8 @@ const INCIDENT_TASK_OPTIONS = [
   { title: '세계 시민으로서의 역할 에세이', groups: ['2학년 1반', '2학년 2반', '2학년 3반'] },
 ];
 import { listSessions as listPenRawSessions, subscribe as subscribePenRaw, PEN_RAW_KEEP } from './lib/penRawStore'; // [BRD-16 v1.7] 펜 원본 진단 파일 보관 현황
-import IncidentBoard from './IncidentBoard'; // [BRD-16] 시스템 관리자 > 게시판 > 장애신고
+import IncidentBoard from './IncidentBoard';
+import QnaBoard from './QnaBoard'; // [v2.4] 게시판 › Q&A // [BRD-16] 시스템 관리자 > 게시판 > 장애신고
 import { openCount as incidentOpenCount, subscribeIncidents } from './lib/incidentStore';
 import TeacherRegistration from './TeacherRegistration';
 import SpecViewer from './SpecViewer';
@@ -52,6 +53,7 @@ import TaskDetail from './TaskDetail';
 import TaskDeleteDialog from './TaskDeleteDialog';
 import MyInfo from './MyInfo';
 import StudentMyTasks from './StudentMyTasks'; // [TSK-06·09·10] 학생 모드 › 내 과제
+import { getInitialVersion, persistVersion, getInitialRole, persistRole, homeOf, isMenuVisible, isSubVisible, firstVisibleSub } from './lib/appVersion'; // [v2.4] 버전 트리거
 import { REGISTER_GROUPS, isAnswerSub, answerTabOf, answerSubOf } from './registerMenu';
 
 // ─────────────────────────────────────────────
@@ -63,6 +65,7 @@ const HASH_ROUTES = {
   '#/dashboard':            { menu: '대시보드', sub: '채점 관리' },
   '#/teacher-dashboard':    { menu: '교사 대시보드', sub: '채점 관리' },
   '#/school-dashboard':     { menu: '학교 대시보드', sub: '채점 관리' },
+  '#/edu-dashboard':        { menu: '교육청 대시보드', sub: '채점 관리' }, // [v2.4] 교육청 모드 첫 화면
   '#/smartpen-monitor':     { menu: '스마트펜 모니터링', sub: '채점 관리' },
   '#/spec-viewer':          { menu: '화면 명세서', sub: '채점 관리' },
   '#/prompt-studio':        { menu: 'Prompt Studio', sub: 'Prompt Studio' },
@@ -90,6 +93,7 @@ const HASH_ROUTES = {
   // [BRD-16] 게시판
   '#/notice':               { menu: '게시판', sub: '공지사항' },
   '#/incident-board':       { menu: '게시판', sub: '장애신고' },
+  '#/qna':                  { menu: '게시판', sub: 'Q&A' }, // [v2.4]
   // [TSK-06·09·10] 학생 모드
   '#/student-my-tasks':     { menu: '학생 모드', sub: '내 과제' },
 };
@@ -109,6 +113,25 @@ function Setting() {
   const initialRoute = HASH_ROUTES[(typeof window !== 'undefined' && window.location.hash) || ''];
   const [activeMenu, setActiveMenu] = useState(initialRoute?.menu || '대시보드');
   const [activeSubMenu, setActiveSubMenu] = useState(initialRoute?.sub || '채점 관리');
+  // [v2.4] 버전 트리거 — 2.3 / 2.4. 2.4에서 빠지는 메뉴는 lib/appVersion.js 에 모아 둔다
+  const [appVersion, setAppVersion] = useState(getInitialVersion);
+  const changeVersion = (v) => { persistVersion(v); setAppVersion(v); };
+  // [v2.4] 사용자 모드 — 시스템 관리자 · 교사 · 학교 · 교육청 · 학생. 바꾸면 그 모드의 첫 화면으로 간다
+  const [appRole, setAppRole] = useState(getInitialRole);
+  const changeRole = (r) => {
+    persistRole(r); setAppRole(r);
+    const home = homeOf(appVersion, r);
+    setIsSettingsMode(false); setActiveMenu(home.menu); setActiveSubMenu(home.sub);
+  };
+  // 현재 버전·모드에서 숨겨진 메뉴에 머물러 있으면(해시 진입·전환·화면 안 이동) 보이는 메뉴로 옮긴다
+  useEffect(() => {
+    if (!isMenuVisible(appVersion, activeMenu, appRole)) {
+      const home = homeOf(appVersion, appRole);
+      setActiveMenu(home.menu); setActiveSubMenu(home.sub);
+    } else if (!isSubVisible(appVersion, activeMenu, activeSubMenu, appRole)) {
+      setActiveSubMenu(firstVisibleSub(appVersion, activeMenu, activeSubMenu, appRole));
+    }
+  }, [appVersion, appRole, activeMenu, activeSubMenu]);
   // [TCH-09] 교사 등록 진입 시 모드 구분 (school | system)
   const [teacherRegMode, setTeacherRegMode] = useState('school');
 
@@ -574,6 +597,8 @@ function Setting() {
         taskCount={BASE_TASKS.length + copiedTasks.length + registeredTasks.length}
         settingsBadgeCount={settingsBadgeCount}
         incidentOpenCount={incidentBadge}
+        appVersion={appVersion}
+        appRole={appRole}
       />
 
       <main className="main-wrapper" style={activeMenu === '아이글 채점 테스트' ? { padding: 0, overflow: 'hidden' } : {}}>
@@ -581,6 +606,10 @@ function Setting() {
         <AppTopBar
           settingsBadgeCount={settingsBadgeCount}
           showToast={showToast}
+          appVersion={appVersion}
+          onChangeVersion={changeVersion}
+          appRole={appRole}
+          onChangeRole={changeRole}
           onNavigate={guardNav((menu) => { setIsSettingsMode(false); setActiveMenu(menu); })}
           onGoSettings={guardNav((m) => { setIsSettingsMode(true); setActiveSettingsMenu(m); })}
           onOpenPenReset={guardNav(() => { setIsSettingsMode(true); setActiveSettingsMenu('환경설정'); setIsResetModalOpen(true); })}
@@ -798,7 +827,7 @@ function Setting() {
           <SmartpenMonitor />
         ) : activeMenu === '게시판' ? (
           /* [BRD-16] 게시판 — 공지사항 / 장애신고 */
-          activeSubMenu === '장애신고' ? <IncidentBoard showToast={showToast} /> : <NoticePopupDemo />
+          activeSubMenu === '장애신고' ? <IncidentBoard showToast={showToast} title={appVersion === '2.4' ? '이용불편신고' : undefined} /> : activeSubMenu === 'Q&A' ? <QnaBoard showToast={showToast} /> : <NoticePopupDemo />
         ) : activeMenu === '대시보드' ? (
           <Dashboard onNavigate={setActiveMenu} />
         ) : activeMenu === '교사 대시보드' ? (

@@ -11,6 +11,7 @@
  * 각 아이콘은 드롭다운을 열고, 환경설정만 바로 이동한다.
  */
 import React, { useState, useEffect, useRef } from 'react';
+import { APP_VERSIONS, ROLES, ROLE_KEYS, isMenuVisible } from './lib/appVersion';
 
 const ITEM = {
   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
@@ -27,8 +28,12 @@ const AppTopBar = ({
   onGoSettings,        // (settingsMenu) => void — 환경설정 모드로 이동
   onOpenPenReset,      // () => void — 환경설정 > 펜 데이터 초기화 열기
   showToast,
+  appVersion = '2.3',  // [v2.4] 버전 트리거 — 좌측 칩으로 2.3/2.4 전환
+  onChangeVersion,     // (version) => void
+  appRole = 'admin',   // [v2.4] 사용자 모드 — 2.4에서만 칩이 보인다
+  onChangeRole,        // (role) => void
 }) => {
-  const [open, setOpen] = useState(null); // 'pen' | 'help' | 'lang' | 'profile' | null
+  const [open, setOpen] = useState(null); // 'ver' | 'role' | 'pen' | 'help' | 'lang' | 'profile' | null
   const [lang, setLang] = useState('ko');
   const barRef = useRef(null);
 
@@ -83,12 +88,68 @@ const AppTopBar = ({
       padding: '8px 20px', borderBottom: '1px solid #F1F5F9', background: 'white',
       borderTopLeftRadius: 24, borderTopRightRadius: 24,
     }}>
+      {/* ⓪ 버전 트리거 — 왼쪽 끝. 2.4에서 빠지는 메뉴는 lib/appVersion.js 에 모아 둔다 */}
+      <div style={{ position: 'relative', marginRight: appVersion === '2.4' ? 6 : 'auto' }}>
+        <button type="button" onClick={() => toggle('ver')} aria-haspopup="menu" aria-expanded={open === 'ver'} title="프로토 버전 전환"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
+            border: `1px solid ${appVersion === '2.4' ? '#C4B5FD' : '#BFDBFE'}`,
+            background: appVersion === '2.4' ? '#F5F3FF' : '#EFF6FF',
+            color: appVersion === '2.4' ? '#6D28D9' : '#1D4ED8',
+            fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
+          }}>
+          v{appVersion} <span aria-hidden>▾</span>
+        </button>
+        {open === 'ver' && (
+          <div role="menu" style={{
+            position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: 150, zIndex: 80,
+            background: 'white', border: '1px solid #E2E8F0', borderRadius: 10,
+            boxShadow: '0 12px 28px rgba(15,23,42,0.14)', padding: '5px 0', overflow: 'hidden',
+          }}>
+            {APP_VERSIONS.map((v) => (
+              <React.Fragment key={v}>
+                {menuItem(`버전 ${v}`, () => onChangeVersion && onChangeVersion(v),
+                  appVersion === v ? <span style={{ color: '#2A75F3', fontWeight: 800 }}>✓</span> : null)}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ⓪-2 [v2.4] 사용자 모드 — 모드별 메뉴는 lib/appVersion.js ROLES */}
+      {appVersion === '2.4' && (
+        <div style={{ position: 'relative', marginRight: 'auto' }}>
+          <button type="button" onClick={() => toggle('role')} aria-haspopup="menu" aria-expanded={open === 'role'} title="사용자 모드 전환"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
+              border: '1px solid #E2E8F0', background: '#F8FAFC', color: '#334155',
+              fontSize: 'var(--neo-font-size-xs)', fontWeight: 800,
+            }}>
+            {ROLES[appRole]?.label} 모드 <span aria-hidden>▾</span>
+          </button>
+          {open === 'role' && (
+            <div role="menu" style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: 170, zIndex: 80,
+              background: 'white', border: '1px solid #E2E8F0', borderRadius: 10,
+              boxShadow: '0 12px 28px rgba(15,23,42,0.14)', padding: '5px 0', overflow: 'hidden',
+            }}>
+              {ROLE_KEYS.map((k) => (
+                <React.Fragment key={k}>
+                  {menuItem(`${ROLES[k].label} 모드`, () => onChangeRole && onChangeRole(k),
+                    appRole === k ? <span style={{ color: '#2A75F3', fontWeight: 800 }}>✓</span> : null)}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ① 펜 — 스마트펜 모니터링 · 펜 초기화 */}
       <div style={{ position: 'relative' }}>
         {iconBtn('pen', '🖊', '스마트펜')}
         {open === 'pen' && menu(
           <>
-            {menuItem('스마트펜 모니터링', () => onNavigate && onNavigate('스마트펜 모니터링'))}
+            {isMenuVisible(appVersion, '스마트펜 모니터링') && menuItem('스마트펜 모니터링', () => onNavigate && onNavigate('스마트펜 모니터링'))}
             {menuItem('펜 초기화', () => onOpenPenReset && onOpenPenReset())}
           </>
         )}
