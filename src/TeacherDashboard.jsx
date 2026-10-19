@@ -1265,8 +1265,8 @@ const TeacherDashboard = ({ onNavigate }) => {
         ))}
       </div>
 
-      {/* 공지사항 + Q&A */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+      {/* 공지사항 + Q&A + 단계별 진행 현황 — 단계별 진행을 게시판 줄로 옮겨 점수 분포표와 나눈다 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         <section style={{ background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: 'var(--shadow)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>공지사항 ›</h3>
@@ -1283,21 +1283,19 @@ const TeacherDashboard = ({ onNavigate }) => {
             <button style={{ padding: '4px 12px', border: '1px solid #E2E8F0', borderRadius: '6px', fontSize: 'var(--neo-font-size-sm)', background: 'white', color: '#4A5568', fontWeight: 600 }}>+ 새 질문</button>
           </div>
           {faqs.map(item => (
-            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0', borderBottom: '1px solid #F1F5F9' }}>
-              <span style={{ fontSize: 'var(--neo-font-size-base)', color: '#1E293B', fontWeight: 500 }}>{item.question}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '0.75rem 0', borderBottom: '1px solid #F1F5F9' }}>
+              <span style={{ fontSize: 'var(--neo-font-size-base)', color: '#1E293B', fontWeight: 500, minWidth: 0 }}>{item.question}</span>
+              {/* 세 칸 줄로 폭이 줄어도 날짜 · 답변 상태는 한 줄로 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, whiteSpace: 'nowrap' }}>
                 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8' }}>{item.date}</span>
                 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: item.status === '답변완료' ? '#10B981' : '#F59E0B', background: item.status === '답변완료' ? '#D1FAE5' : '#FEF3C7', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>{item.status}</span>
               </div>
             </div>
           ))}
         </section>
-      </div>
 
-      {/* 단계별 진행 + 그룹 점수 분포 (이전 화면 동일 — 단순화) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
         <section style={{ background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: 'var(--shadow)' }}>
-          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: '0.25rem' }}>단계별 진행 현황</h3>
+          <h3 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: '0.25rem' }}>단계별 진행 현황</h3>
           <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', marginBottom: '1rem' }}>전 단계의 진행 현황의 통계를 확인할 수 있습니다.</p>
           <svg viewBox="0 0 400 280" style={{ width: '100%', height: 'auto' }}>
             {buildDonut(progressData, 200, 130, 90).map((a, i) => (
@@ -1317,7 +1315,10 @@ const TeacherDashboard = ({ onNavigate }) => {
             ))}
           </div>
         </section>
+      </div>
 
+      {/* 그룹 점수 분포 — 한 줄 전체 폭(단계별 진행 현황은 위 게시판 줄로 옮김) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '1.5rem', marginBottom: '1.5rem' }}>
         <section style={{ background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: 'var(--shadow)' }}>
           <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: '0.25rem' }}>그룹 과제 개인 점수 분포표</h3>
           <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', marginBottom: '0.75rem' }}>과제를 선택하고 셀을 클릭하면 학생 정보가 표시됩니다.</p>

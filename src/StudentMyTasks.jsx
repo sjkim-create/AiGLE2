@@ -17,6 +17,10 @@ import { lookupPattern } from './handwritingPatternMatrix';
 import SolutionReplay from './SolutionReplay';
 import PenStrokes from './PenStrokes';
 import { MATH_RAT_TASK } from './data/solutionSamples';
+import DontGetIt from './DontGetIt';
+import InkedPen, { InkNote } from './TeacherInk';
+import { inkKey } from './lib/teacherInk';
+import { ACTIVE_LANGS, BASE_LANG, tr, hasLang, uiOf, useStudentLang } from './lib/i18n';
 
 const STUDENT = { school: '네오중학교', cls: '3학년 1반 1번', name: '김소리', id: 'stu2600394a1n' };
 const ASIDE_W = 520; // [TSK-10 v1.8] 오른쪽 채점 결과 기본 폭
@@ -390,6 +394,65 @@ const FB_ROWS = [
   { label: '함께 성장해요', cls: 'grow' },
 ];
 
+/* ── [다국어] 화면 글자 — lib/i18n.js (지금은 한국어 · 영어). 없는 글자는 한국어로 ── */
+const UI = {
+  ko: {
+    mode: '학생 모드', copyId: '학생 아이디 복사', lang: '화면 언어',
+    listT: '내 과제', listS: '배포된 과제를 확인하고 답안을 제출하세요.',
+    filters: { all: '전체', todo: '미제출', submitted: '채점중', done: '결과 확인' },
+    status: { todo: '미제출', submitted: '채점중', done: '결과 확인' },
+    search: '과제명으로 검색', detailOf: (t) => `${t} 상세 보기`, pub: '배포일', subject: '과목', point: '배점', sub: '제출일',
+    empty: { search: '검색 결과가 없습니다.', todo: '제출할 과제가 없습니다.', submitted: '채점 중인 과제가 없습니다.', done: '결과가 나온 과제가 없습니다.', all: '배포된 과제가 없습니다.' },
+    back: '목록으로 돌아가기', toList: '목록으로', total: (n) => <>총 <b>{n}문항</b></>, full: (n) => <>배점 <b>{n}점</b></>,
+    subDate: '제출일', way: '제출 방법', pdf: '리포트 PDF 다운로드', pdfIng: '다운로드 중…', pdfDone: '다운로드 완료',
+    pdfToast: '채점 리포트를 다운로드했습니다', pdfName: '채점리포트',
+    viewTabs: '과제 보기', content: '과제 내용', answers: '필기 분석', passage: '지문', pickQ: '문항 선택', pt: (n) => `배점 ${n}점`,
+    inkNote: '✎ 선생님 첨삭이 함께 보여요',
+    zoom: '크게 보기', zoomT: '답안 크게 보기', replayOn: '▶ 필기 분석', replayOff: '✕ 필기 분석 닫기', replaying: '풀이 과정 재생 중', penOf: (l) => `${l} 답안 필기`,
+    resize: '좌우 화면 폭 조절', resizeTip: '끌어서 좌우 폭을 조절합니다 (두 번 누르면 원래 폭)',
+    result: '채점 결과', grading: <><b>선생님이 채점하고 있어요.</b> 채점 결과가 발송되면 이 과제가 「결과 확인」으로 바뀌고, 채점 결과와 리포트를 볼 수 있어요.</>,
+    answerOf: (l) => `답안 · ${l}`, close: '닫기', terms: '이용약관', privacy: '개인정보 처리방침',
+    rPage: '— PAGE 1 — 본문', rHead: '채점 결과 리포트', rSchool: '학교명', rCls: '학년/반/번호', rName: '학생이름', rTask: '과제명', rSubj: '교과', rPub: '출제일자',
+    rByQ: '◆ 문항별 성취도', thQ: '문항', thPt: '배점', thScore: '점수', thGrade: '등급', scoreOf: (s, p) => `${s} / ${p}점`,
+    evalT: '등급 평가', score: '점수', scale: '평가 기준', scale5: '5단계 기준', scoreV: (s, p) => <><b>{s}</b> / {p}점</>,
+    fb: '학습 피드백', fbRows: ['이런 점이 좋아요', '조금만 더 노력해볼까요', '함께 성장해요'],
+    guide: '학습 안내', guideEmpty: GUIDE_EMPTY_MESSAGE, written: '학생이 작성한 내용', tryIt: '이렇게 해봐요', check: '확인',
+    hwT: 'AI 필기 분석', hwS: '필기 과정에서 나타난 학습 행동을 분석합니다', hwPat: '진단된 학습 행동 패턴', hwSum: '총평', hwNone: PROCESS_INSUFFICIENT_MESSAGE,
+    chip: {},
+    noLang: '이 과제는 선택한 언어의 채점 결과가 아직 없어 한국어로 보여요.',
+  },
+  en: {
+    mode: 'Student', copyId: 'Copy student ID', lang: 'Screen language',
+    listT: 'My assignments', listS: 'Check your assignments and submit your answers.',
+    filters: { all: 'All', todo: 'Not submitted', submitted: 'Grading', done: 'Results' },
+    status: { todo: 'Not submitted', submitted: 'Grading', done: 'Results' },
+    search: 'Search by title', detailOf: (t) => `Open ${t}`, pub: 'Assigned', subject: 'Subject', point: 'Points', sub: 'Submitted',
+    empty: { search: 'No results found.', todo: 'No assignments to submit.', submitted: 'No assignments being graded.', done: 'No results yet.', all: 'No assignments yet.' },
+    back: 'Back to the list', toList: 'Back to list', total: (n) => <><b>{n}</b> question{n === 1 ? '' : 's'}</>, full: (n) => <><b>{n}</b> points</>,
+    subDate: 'Submitted', way: 'Method', pdf: 'Download report PDF', pdfIng: 'Downloading…', pdfDone: 'Downloaded',
+    pdfToast: 'Your grading report was downloaded', pdfName: 'report',
+    viewTabs: 'View', content: 'Assignment', answers: 'Handwriting analysis', passage: 'Passage', pickQ: 'Choose a question', pt: (n) => `${n} points`,
+    inkNote: '✎ Includes your teacher’s notes',
+    zoom: 'Enlarge', zoomT: 'Enlarged answer', replayOn: '▶ Writing replay', replayOff: '✕ Close replay', replaying: 'Replaying', penOf: (l) => `${l} handwriting`,
+    resize: 'Resize panels', resizeTip: 'Drag to resize (double-click to reset)',
+    result: 'Results', grading: <><b>Your teacher is grading.</b> Once results are sent, this assignment moves to “Results” and you can see your results and report.</>,
+    answerOf: (l) => `Answer · ${l}`, close: 'Close', terms: 'Terms of use', privacy: 'Privacy policy',
+    rPage: '— PAGE 1 — Main', rHead: 'Grading report', rSchool: 'School', rCls: 'Grade/Class/No.', rName: 'Student', rTask: 'Assignment', rSubj: 'Subject', rPub: 'Assigned',
+    rByQ: '◆ Results by question', thQ: 'Question', thPt: 'Points', thScore: 'Score', thGrade: 'Grade', scoreOf: (s, p) => `${s} / ${p}`,
+    evalT: 'Grade', score: 'Score', scale: 'Scale', scale5: '5-level scale', scoreV: (s, p) => <><b>{s}</b> / {p}</>,
+    fb: 'Feedback', fbRows: ['What you did well', 'What to work on', 'Let’s grow together'],
+    guide: 'Study guide', guideEmpty: 'You met every grading criterion, so there is nothing to fix. Keep organizing your thinking step by step, and try a harder task next.',
+    written: 'What you wrote', tryIt: 'Try this', check: 'Check',
+    hwT: 'AI handwriting analysis', hwS: 'How you worked, read from your handwriting process', hwPat: 'Your learning pattern', hwSum: 'Summary',
+    hwNone: 'There wasn’t enough writing to look closely at how you worked, but we’re cheering you on for trying. Next time, write down even one more line of your process for a richer analysis.',
+    chip: { '매우 우수': 'Excellent', '우수': 'Very good', '보통': 'Good', '노력': 'Needs work', '매우 노력': 'Needs more work' },
+    noLang: 'Results for this assignment are not available in this language yet — shown in Korean.',
+  },
+};
+const chipOf = (U, chip) => U.chip[chip] || chip;
+/* 과제에 그 언어 채점 결과가 없는 문항이 있으면 한국어로 보이고 안내 */
+const missingLang = (A, lang) => lang !== BASE_LANG && A.questions.some((qq) => !hasLang(qq, lang) || qq[lang].fb == null);
+
 /* ── 아이콘 ── */
 const IcoBack = () => <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6" /></svg>;
 const IcoDown = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
@@ -400,6 +463,8 @@ const IcoExpand = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="no
 const IcoCopy = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>;
 
 const StudentMyTasks = () => {
+  const [lang, setLang] = useStudentLang(); // [다국어] 학생 화면 언어 — 결과 · 풀이 과정 · 모르겠어요 답변까지
+  const U = uiOf(UI, lang);
   const [filter, setFilter] = useState('done');
   const [query, setQuery] = useState('');
   const [openIdx, setOpenIdx] = useState(null);
@@ -410,6 +475,7 @@ const StudentMyTasks = () => {
   const [replayQ, setReplayQ] = useState(null); // [풀이 과정 보기] 화면 안 재생 중인 문항 번호
   const [ansQ, setAnsQ] = useState(0); // [TSK-10 v1.14] 답안 미리보기 문항 탭
   const [stageEl, setStageEl] = useState(null); // [TSK-10 v1.11] 필기 재생을 그릴 왼쪽 답안 원본 자리
+  const [qBtnEl, setQBtnEl] = useState(null); // [풀이 과정] 「문항 보기」 버튼 자리 — 문항 탭 이름 옆
   const [asideW, setAsideW] = useState(ASIDE_W); // 오른쪽(채점 결과) 폭 — 가운데 손잡이로 조절
   const timers = useRef([]);
   const scroller = useRef(null);
@@ -465,7 +531,8 @@ const StudentMyTasks = () => {
   const isDone = A?.status === 'done';
   const zq = A && zoomQ != null ? A.questions[zoomQ] : null;
 
-  const open = (i) => { setOpenIdx(i); setKind('content'); setAnsQ(0); setReplayQ(null); setPdf('idle'); toTop(); };
+  /* 결과 확인(done) 과제는 「필기 분석」 탭으로 열고, 그 밖(채점중)은 「과제 내용」 탭으로 연다 */
+  const open = (i) => { setOpenIdx(i); setKind(CARDS[i].status === 'done' ? 'answer' : 'content'); setAnsQ(0); setReplayQ(null); setPdf('idle'); toTop(); };
   const back = () => { setOpenIdx(null); setReplayQ(null); toTop(); };
   const openReplay = (i) => { setAnsQ(i); setReplayQ(i); };
   /* 닫기 — 책장이 접히는 동작(0.32초)이 끝난 뒤 패널을 뺀다 */
@@ -489,14 +556,14 @@ const StudentMyTasks = () => {
     setPdf('saving');
     timers.current.push(setTimeout(() => {
       setPdf('done');
-      const t = (A?.title || '채점리포트').replace(/[\\/:*?"<>|]/g, '').trim();
-      setToast(`${t}_${STUDENT.name}_채점리포트.pdf`);
+      const t = (tr(A, 'title', lang) || U.pdfName).replace(/[\\/:*?"<>|]/g, '').trim();
+      setToast(`${t}_${STUDENT.name}_${U.pdfName}.pdf`);
       timers.current.push(setTimeout(() => setToast(null), 3200));
       timers.current.push(setTimeout(() => setPdf('idle'), 1900));
     }, 1400));
   };
 
-  const cards = CARDS.map((c, i) => ({ ...c, i, title: c.title || ASSIGN[c.key].title, subject: c.subject || ASSIGN[c.key].subject }))
+  const cards = CARDS.map((c, i) => ({ ...c, i, title: c.title || tr(ASSIGN[c.key], 'title', lang), subject: c.subject || tr(ASSIGN[c.key], 'subject', lang) }))
     .filter((c) => (filter === 'all' || c.status === filter))
     .filter((c) => !query.trim() || c.title.includes(query.trim()));
 
@@ -506,45 +573,54 @@ const StudentMyTasks = () => {
       <div className="smt-content">
         {/* 학생 정보 — 학생 화면에서는 좌측 사이드바 상단에 놓이는 블록 */}
         <div className="smt-who">
-          <span className="smt-who-tag">학생 모드</span>
+          <span className="smt-who-tag">{U.mode}</span>
           <span className="smt-who-cls">[{STUDENT.cls}]</span>
           <span className="smt-who-nm">{STUDENT.name}</span>
           <span className="smt-who-id">{STUDENT.id}</span>
-          <button type="button" className="smt-icobtn" aria-label="학생 아이디 복사"
+          <button type="button" className="smt-icobtn" aria-label={U.copyId}
             onClick={() => { try { navigator.clipboard?.writeText(STUDENT.id); } catch { /* 복사 미지원 */ } }}><IcoCopy /></button>
+          {/* [다국어] 화면 언어 — 켜진 언어가 둘 이상일 때만(lib/i18n.js ACTIVE_LANGS) */}
+          {ACTIVE_LANGS.length > 1 && (
+            <label className="smt-lang" title={U.lang}>
+              <span aria-hidden="true">🌐</span>
+              <select value={lang} aria-label={U.lang} onChange={(e) => setLang(e.target.value)}>
+                {ACTIVE_LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+              </select>
+            </label>
+          )}
         </div>
 
         {!A ? (
           <section>
             <div className="smt-head">
-              <h1>내 과제</h1>
-              <p>배포된 과제를 확인하고 답안을 제출하세요.</p>
+              <h1>{U.listT}</h1>
+              <p>{U.listS}</p>
             </div>
             <div className="smt-filters">
               {FILTERS.map((f) => (
                 <button key={f.key} type="button" className="smt-pill" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
-                  {f.label}({countOf(f.key)})
+                  {U.filters[f.key]}({countOf(f.key)})
                 </button>
               ))}
               <div className="smt-searchbox">
                 <IcoSearch />
-                <label htmlFor="smt-q" className="smt-sr">과제명으로 검색</label>
-                <input id="smt-q" type="search" placeholder="과제명으로 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <label htmlFor="smt-q" className="smt-sr">{U.search}</label>
+                <input id="smt-q" type="search" placeholder={U.search} value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
             </div>
             {cards.length ? (
               <div className="smt-cards">
                 {cards.map((c) => (
-                  <article key={c.i} className="smt-card" tabIndex={0} role="button" aria-label={`${c.title} 상세 보기`}
+                  <article key={c.i} className="smt-card" tabIndex={0} role="button" aria-label={U.detailOf(c.title)}
                     onClick={() => open(c.i)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(c.i); } }}>
                     <div className="smt-card-in">
-                      <div className="smt-card-top"><span className={`smt-badge ${STATUS[c.status].cls}`}>{STATUS[c.status].label}</span><span className="smt-card-date">배포일 : {c.pub}</span></div>
+                      <div className="smt-card-top"><span className={`smt-badge ${STATUS[c.status].cls}`}>{U.status[c.status]}</span><span className="smt-card-date">{U.pub} : {c.pub}</span></div>
                       <div className="smt-card-title">{c.title}</div>
                       <div className="smt-meta">
-                        <div><span>과목</span><span>{c.subject}</span></div>
-                        <div><span>배점</span><span>{c.point}</span></div>
-                        <div><span>제출일</span><span>{c.sub}</span></div>
+                        <div><span>{U.subject}</span><span>{c.subject}</span></div>
+                        <div><span>{U.point}</span><span>{lang === BASE_LANG ? c.point : c.point.replace('점', '')}</span></div>
+                        <div><span>{U.sub}</span><span>{c.sub}</span></div>
                       </div>
                     </div>
                   </article>
@@ -552,7 +628,7 @@ const StudentMyTasks = () => {
               </div>
             ) : (
               <div className="smt-empty">
-                {query.trim() ? '검색 결과가 없습니다.' : filter === 'todo' ? '제출할 과제가 없습니다.' : filter === 'submitted' ? '채점 중인 과제가 없습니다.' : filter === 'done' ? '결과가 나온 과제가 없습니다.' : '배포된 과제가 없습니다.'}
+                {query.trim() ? U.empty.search : U.empty[filter]}
               </div>
             )}
           </section>
@@ -561,23 +637,23 @@ const StudentMyTasks = () => {
             {/* [TSK-10 v1.8] 머리글 — 왼쪽 과제 정보, 오른쪽 제출일 · 제출 방법 + [리포트 PDF 다운로드] */}
             <div className="smt-dhead">
               <div className="smt-dhead-l">
-                <button type="button" className="smt-back" aria-label="목록으로 돌아가기" onClick={back}><IcoBack /></button>
+                <button type="button" className="smt-back" aria-label={U.back} onClick={back}><IcoBack /></button>
                 <div>
-                  <div className="smt-ttl"><span className={`smt-badge ${STATUS[A.status].cls}`}>{STATUS[A.status].label}</span><span className="smt-nm">{A.title}</span></div>
+                  <div className="smt-ttl"><span className={`smt-badge ${STATUS[A.status].cls}`}>{U.status[A.status]}</span><span className="smt-nm">{tr(A, 'title', lang)}</span></div>
                   <div className="smt-sub">
-                    과목 <b>{A.subject}</b><span className="smt-sep">|</span>배포일 <b>{A.pub}</b>
-                    <span className="smt-sep">|</span>총 <b>{A.questions.length}문항</b><span className="smt-sep">|</span>배점 <b>{A.full}점</b>
+                    {U.subject} <b>{tr(A, 'subject', lang)}</b><span className="smt-sep">|</span>{U.pub} <b>{tr(A, 'pub', lang)}</b>
+                    <span className="smt-sep">|</span>{U.total(A.questions.length)}<span className="smt-sep">|</span>{U.full(A.full)}
                   </div>
                 </div>
               </div>
               <div className="smt-dhead-r">
-                <div className="smt-dmeta">제출일 : {A.done}<span className="smt-sep">|</span>제출 방법 : {A.way}</div>
+                <div className="smt-dmeta">{U.subDate} : {tr(A, 'done', lang)}<span className="smt-sep">|</span>{U.way} : {tr(A, 'way', lang)}</div>
                 <div className="smt-btns">
-                  <button type="button" className="smt-ghost" onClick={back}>목록으로</button>
+                  <button type="button" className="smt-ghost" onClick={back}>{U.toList}</button>
                   {/* 리포트는 결과가 발송된 뒤에만 받을 수 있다 */}
                   {isDone && <button type="button" className={`smt-solid ${pdf === 'saving' ? 'saving' : ''} ${pdf === 'done' ? 'done' : ''}`} disabled={pdf !== 'idle'} onClick={savePdf}>
                     <span className="smt-btn-ico">{pdf === 'saving' ? <IcoSpin /> : pdf === 'done' ? <IcoCheck /> : <IcoDown />}</span>
-                    <span>{pdf === 'saving' ? '다운로드 중…' : pdf === 'done' ? '다운로드 완료' : '리포트 PDF 다운로드'}</span>
+                    <span>{pdf === 'saving' ? U.pdfIng : pdf === 'done' ? U.pdfDone : U.pdf}</span>
                   </button>}
                 </div>
               </div>
@@ -588,82 +664,84 @@ const StudentMyTasks = () => {
                 <div className="smt-cols" ref={colsRef} style={{ '--aside-w': `${asideW}px` }}>
                   {/* 왼쪽 — [과제 내용] [답안 미리보기] */}
                   <div className="smt-col-l">
-                    <div className="smt-subtabs" role="tablist" aria-label="과제 보기">
-                      <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'content'} onClick={() => setKind('content')}>과제 내용</button>
-                      <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'answer'} onClick={() => setKind('answer')}>답안 미리보기</button>
+                    <div className="smt-subtabs" role="tablist" aria-label={U.viewTabs}>
+                      <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'content'} onClick={() => setKind('content')}>{U.content}</button>
+                      <button type="button" className="smt-subtab" role="tab" aria-selected={kind === 'answer'} onClick={() => setKind('answer')}>{U.answers}</button>
                     </div>
                     {kind === 'content' ? (
                       <div>
                         {/* 지문은 과제 등록 시 선택 항목이라, 없으면 영역째 빠지고 문항만 남는다 */}
                         {A.passage && (
                           <div className="smt-passage">
-                            <div className="smt-seclab"><span className="smt-tag p">지문</span></div>
+                            <div className="smt-seclab"><span className="smt-tag p">{U.passage}</span></div>
                             {A.passage}
                           </div>
                         )}
                         {/* [TSK-10 v1.15] 문항 탭 — [답안 미리보기]와 같은 문항 선택을 함께 쓴다 */}
-                        <div className={`smt-atabs ${A.passage ? 'after-passage' : ''}`} role="tablist" aria-label="문항 선택">
+                        <div className={`smt-atabs ${A.passage ? 'after-passage' : ''}`} role="tablist" aria-label={U.pickQ}>
                           {A.questions.map((qq, i) => (
-                            <button key={i} type="button" role="tab" aria-selected={i === ansQ} className="smt-atab" onClick={() => pickAnsQ(i)}>{qq.label}</button>
+                            <button key={i} type="button" role="tab" aria-selected={i === ansQ} className="smt-atab" onClick={() => pickAnsQ(i)}>{tr(qq, 'label', lang)}</button>
                           ))}
+                          {rq && <span ref={setQBtnEl} className="smt-qslot" />}
                         </div>
                         {A.questions.map((qq, i) => i !== ansQ ? null : (
                           <div key={i} className="smt-qitem">
-                            <div className="smt-seclab"><span className="smt-note">배점 {qq.point}점</span></div>
-                            <div className="smt-prose"><p>{qq.text}</p></div>
+                            <div className="smt-seclab"><span className="smt-note">{U.pt(qq.point)}</span></div>
+                            <div className="smt-prose"><p>{tr(qq, 'text', lang)}</p></div>
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div>
                         {/* [TSK-10 v1.14] 문항 탭 — 한 번에 한 문항의 답안 */}
-                        <div className="smt-atabs" role="tablist" aria-label="문항 선택">
+                        <div className="smt-atabs" role="tablist" aria-label={U.pickQ}>
                           {A.questions.map((qq, i) => (
                             <button key={i} type="button" role="tab" aria-selected={i === ansQ} className="smt-atab" onClick={() => pickAnsQ(i)}>
-                              {qq.label}{replayQ === i && <span className="smt-atab-dot" aria-label="풀이 과정 재생 중" />}
+                              {tr(qq, 'label', lang)}{replayQ === i && <span className="smt-atab-dot" aria-label={U.replaying} />}
                             </button>
                           ))}
+                          {/* [풀이 과정] 「문항 보기」 — 풀이 과정이 열려 있을 때 문항 탭 이름 옆 */}
+                          {rq && <span ref={setQBtnEl} className="smt-qslot" />}
                         </div>
                         {A.questions.map((qq, i) => i !== ansQ ? null : (
                           <div key={i} className="smt-aitem">
                             <div className="smt-aitem-h">
-                              <div />
+                              {/* [교사 첨삭] 선생님이 「보이기」로 둔 첨삭이 있으면 표시 */}
+                              <div>{isDone && qq.pen && <InkNote inkKey={inkKey(STUDENT.name, qq.text)} text={U.inkNote} />}</div>
                               <div className="smt-aitem-btns">
-                                <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />크게 보기</button>
+                                <button type="button" className="smt-mini" onClick={() => setZoomQ(i)}><IcoExpand />{U.zoom}</button>
                                 {/* 풀이 과정 보기 — 결과가 나온 펜 답안 + 단계 설명이 있는 문항만 */}
                                 {isDone && qq.solution && (
-                                  <button type="button" className="smt-mini blue" aria-pressed={replayQ === i} onClick={() => (replayQ === i ? closeReplay() : openReplay(i))}>{replayQ === i ? '✕ 필기 분석 닫기' : '▶ 필기 분석'}</button>
+                                  <button type="button" className="smt-mini blue" aria-pressed={replayQ === i} onClick={() => (replayQ === i ? closeReplay() : openReplay(i))}>{replayQ === i ? U.replayOff : U.replayOn}</button>
                                 )}
                               </div>
                             </div>
                             {/* [TSK-10 v1.11] 풀이 과정을 열면 이 원본 자리에서 필기가 다시 그려진다(장면 자막 포함) — 재생 막대 · 단계는 오른쪽 패널 */}
                             {replayQ === i && rq
                               ? <div className="smt-stage srp-stage-in" ref={setStageEl} />
-                              : <div className="smt-paper">{qq.pen ? <PenStrokes pen={qq.pen} from={qq.penFrom || 0} label={`${qq.label} 답안 필기`} style={{ maxHeight: 420 }} /> : qq.answer.map((l, k) => <div key={k} className="smt-hand">{l}</div>)}</div>}
+                              : <div className="smt-paper">{qq.pen ? <InkedPen pen={qq.pen} from={qq.penFrom || 0} inkKey={inkKey(STUDENT.name, qq.text)} label={U.penOf(tr(qq, 'label', lang))} style={{ maxHeight: 420 }} /> : qq.answer.map((l, k) => <div key={k} className="smt-hand">{l}</div>)}</div>}
                           </div>
                         ))}
-                        <div className="smt-pcap">{A.cap}</div>
+                        <div className="smt-pcap">{tr(A, 'cap', lang)}</div>
                       </div>
                     )}
                   </div>
 
-                  <div className="smt-resizer" role="separator" aria-orientation="vertical" aria-label="좌우 화면 폭 조절" tabIndex={0}
-                    title="끌어서 좌우 폭을 조절합니다 (두 번 누르면 원래 폭)"
+                  <div className="smt-resizer" role="separator" aria-orientation="vertical" aria-label={U.resize} tabIndex={0}
+                    title={U.resizeTip}
                     onPointerDown={startResize} onKeyDown={nudgeResize} onDoubleClick={() => setAsideW(ASIDE_W)}><span /></div>
 
                   {/* 오른쪽 — 채점 결과(리포트 미리보기) */}
                   <aside className={`smt-col-r ${rq ? 'has-rp' : ''}`}>
                     {rq && (
                       <div className="smt-rp-over" ref={replayRef}>
-                        <SolutionReplay key={replayQ} panel side="right" closing={rpClosing} q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} stagePaperClass="smt-paper" stageLineClass="smt-hand" />
+                        <SolutionReplay key={replayQ} panel side="right" closing={rpClosing} q={rq} A={A} onClose={closeReplay} stageTarget={kind === 'answer' ? stageEl : null} stagePaperClass="smt-paper" stageLineClass="smt-hand" lang={lang} onLangChange={setLang} qButtonTarget={qBtnEl} />
                       </div>
                     )}
-                    <div className="smt-rtitle">채점 결과</div>
-                    {isDone ? <ReportPreview A={A} /> : (
+                    <div className="smt-rtitle">{U.result}</div>
+                    {isDone ? <ReportPreview A={A} lang={lang} /> : (
                       /* 제출 완료(채점중) — 결과가 발송되면 결과 확인으로 바뀌고 채점 결과가 채워진다 */
-                      <div className="smt-notice">
-                        <b>선생님이 채점하고 있어요.</b> 채점 결과가 발송되면 이 과제가 「결과 확인」으로 바뀌고, 채점 결과와 리포트를 볼 수 있어요.
-                      </div>
+                      <div className="smt-notice">{U.grading}</div>
                     )}
                   </aside>
                 </div>
@@ -673,20 +751,20 @@ const StudentMyTasks = () => {
       </div>
 
       <div className="smt-foot">
-        <a href="#none" onClick={(e) => e.preventDefault()}>이용약관</a><a href="#none" onClick={(e) => e.preventDefault()}>개인정보 처리방침</a>
+        <a href="#none" onClick={(e) => e.preventDefault()}>{U.terms}</a><a href="#none" onClick={(e) => e.preventDefault()}>{U.privacy}</a>
         <span className="smt-dot">|</span><span>© 2026 NeoLAB Convergence Inc. All Rights Reserved.</span>
       </div>
 
       {/* 답안 크게 보기 */}
       {zq && (
-        <div className="smt-zoom" onClick={() => setZoomQ(null)} role="dialog" aria-label="답안 크게 보기">
+        <div className="smt-zoom" onClick={() => setZoomQ(null)} role="dialog" aria-label={U.zoomT}>
           <div className="smt-zoom-in" onClick={(e) => e.stopPropagation()}>
             <div className="smt-zoom-head">
-              <b>답안 · {zq.label}</b>
-              <button type="button" className="smt-ghost" onClick={() => setZoomQ(null)}>닫기</button>
+              <b>{U.answerOf(tr(zq, 'label', lang))}</b>
+              <button type="button" className="smt-ghost" onClick={() => setZoomQ(null)}>{U.close}</button>
             </div>
-            <div className="smt-paper big">{zq.pen ? <PenStrokes pen={zq.pen} from={zq.penFrom || 0} width={0.3} label={`${zq.label} 답안 필기`} style={{ maxHeight: '72vh' }} /> : zq.answer.map((l, i) => <div key={i} className="smt-hand">{l}</div>)}</div>
-            <div className="smt-pcap">{A.cap}</div>
+            <div className="smt-paper big">{zq.pen ? <InkedPen pen={zq.pen} from={zq.penFrom || 0} width={0.3} inkKey={inkKey(STUDENT.name, zq.text)} label={U.penOf(tr(zq, 'label', lang))} style={{ maxHeight: '72vh' }} /> : zq.answer.map((l, i) => <div key={i} className="smt-hand">{l}</div>)}</div>
+            <div className="smt-pcap">{tr(A, 'cap', lang)}</div>
           </div>
         </div>
       )}
@@ -694,7 +772,7 @@ const StudentMyTasks = () => {
       <div className={`smt-toast ${toast ? 'show' : ''}`} role="status" aria-live="polite">
         <span className="smt-t-ico"><IcoCheck color="#fff" /></span>
         <span>
-          <span className="smt-t-t">채점 리포트를 다운로드했습니다</span>
+          <span className="smt-t-t">{U.pdfToast}</span>
           <span className="smt-t-s">{toast}</span>
         </span>
       </div>
@@ -704,76 +782,92 @@ const StudentMyTasks = () => {
 
 /* ── [TSK-10 v1.8] 채점 결과 = 리포트 미리보기 — 리포트 PDF(POP-19)와 같은 내용 · 순서를 한 화면에 (문항 탭 없음)
  *   머리 정보 → 문항별 성취도 → 문항마다 등급 평가 · 학습 피드백 · 학습 안내 · AI 필기 분석 ── */
-const ReportPreview = ({ A }) => (
-  <div className="smt-report">
-    <div className="smt-rpage">— PAGE 1 — 본문</div>
-    <div className="smt-rcard">
-      <div className="smt-rhead">채점 결과 리포트</div>
-      <div className="smt-rinfo">
-        <div><span>학교명</span><b>{STUDENT.school}</b></div>
-        <div><span>학년/반/번호</span><b>{STUDENT.cls}</b></div>
-        <div><span>학생이름</span><b>{STUDENT.name}</b></div>
-        <div><span>과제명</span><b>{A.title}</b></div>
-        <div><span>교과</span><b>{A.subject}</b></div>
-        <div><span>출제일자</span><b>{A.pub}</b></div>
+const ReportPreview = ({ A, lang = BASE_LANG }) => {
+  const U = uiOf(UI, lang);
+  return (
+    <div className="smt-report" lang={lang}>
+      {missingLang(A, lang) && <div className="smt-nolang">{U.noLang}</div>}
+      <div className="smt-rpage">{U.rPage}</div>
+      <div className="smt-rcard">
+        <div className="smt-rhead">{U.rHead}</div>
+        <div className="smt-rinfo">
+          <div><span>{U.rSchool}</span><b>{STUDENT.school}</b></div>
+          <div><span>{U.rCls}</span><b>{STUDENT.cls}</b></div>
+          <div><span>{U.rName}</span><b>{STUDENT.name}</b></div>
+          <div><span>{U.rTask}</span><b>{tr(A, 'title', lang)}</b></div>
+          <div><span>{U.rSubj}</span><b>{tr(A, 'subject', lang)}</b></div>
+          <div><span>{U.rPub}</span><b>{tr(A, 'pub', lang)}</b></div>
+        </div>
       </div>
+      <div className="smt-rsec">{U.rByQ}</div>
+      <table className="smt-rtable">
+        <thead><tr><th scope="col">{U.thQ}</th><th scope="col">{U.thPt}</th><th scope="col">{U.thScore}</th><th scope="col">{U.thGrade}</th></tr></thead>
+        <tbody>{A.questions.map((qq, i) => (
+          <tr key={i}><td>{tr(qq, 'label', lang)}</td><td>{qq.point}</td><td>{U.scoreOf(qq.score, qq.point)}</td><td><span className={`smt-chip ${qq.chipCls}`}>{qq.grade} · {chipOf(U, qq.chip)}</span></td></tr>
+        ))}</tbody>
+      </table>
+      {A.questions.map((qq, i) => (
+        <div key={i} className="smt-rq">
+          <div className="smt-rsec">◆ {tr(qq, 'label', lang)}</div>
+          <ResultPane A={A} q={qq} lang={lang} />
+        </div>
+      ))}
     </div>
-    <div className="smt-rsec">◆ 문항별 성취도</div>
-    <table className="smt-rtable">
-      <thead><tr><th scope="col">문항</th><th scope="col">배점</th><th scope="col">점수</th><th scope="col">등급</th></tr></thead>
-      <tbody>{A.questions.map((qq, i) => (
-        <tr key={i}><td>{qq.label}</td><td>{qq.point}</td><td>{qq.score} / {qq.point}점</td><td><span className={`smt-chip ${qq.chipCls}`}>{qq.grade} · {qq.chip}</span></td></tr>
-      ))}</tbody>
-    </table>
-    {A.questions.map((qq, i) => (
-      <div key={i} className="smt-rq">
-        <div className="smt-rsec">◆ {qq.label}</div>
-        <ResultPane A={A} q={qq} />
-      </div>
-    ))}
-  </div>
-);
+  );
+};
 
 /* ── [채점 결과] — 리포트(POP-19) 순서: 등급(점수) → 학습 피드백 → 학습 안내 → AI 필기 분석 ── */
-const ResultPane = ({ A, q }) => {
-  const g = q.guide;
+const ResultPane = ({ A, q, lang = BASE_LANG }) => {
+  const U = uiOf(UI, lang);
+  const g = tr(q, 'guide', lang);
+  const fb = tr(q, 'fb', lang);
   const hw = A.hasProcess ? q.hw : null;
+  const hwL = hw && lang !== BASE_LANG ? { ...hw, ...(q[lang]?.hw || {}) } : hw; // 총평 · 패턴 이름의 언어별 값
   const code = hw?.code;
-  const pat = code ? lookupPattern(code) : null;
+  const pat = code ? { ...lookupPattern(code), ...(hwL?.name ? { name: hwL.name, brief: hwL.brief } : {}) } : null;
   const img = code && PATTERN_CHARACTERS[code];
+  /* [모르겠어요] 문항에 하나 — 학습 피드백 · 학습 안내 전체를 AI가 한 번에 다시 정리한다 */
+  const [ask, setAsk] = useState(false);
+  const explained = [
+    ...FB_ROWS.map((r, i) => `${U.fbRows[i]}: ${fb[i]}`),
+    ...(g?.items?.length ? [`${U.guide}: ${g.title}`, ...g.points, ...g.items.map((it, i) => `${i + 1}. ${it.ask} → ${it.example}`)] : []),
+  ];
+  const askCtx = { subject: tr(A, 'subject', lang), question: tr(q, 'text', lang), answer: q.answer, explained, correct: q.solution ? tr(q.solution, 'answer', lang) : null };
   return (
     <div>
-      <div className="smt-evalhead"><span className="smt-evaldot g" /><h2>등급 평가</h2></div>
+      <div className="smt-evalhead"><span className="smt-evaldot g" /><h2>{U.evalT}</h2></div>
 
       {/* 1. 성취도 */}
       <div className="smt-gradebar">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span className="smt-g">{q.grade}</span><span className={`smt-chip ${q.chipCls}`}>{q.chip}</span>
+          <span className="smt-g">{q.grade}</span><span className={`smt-chip ${q.chipCls}`}>{chipOf(U, q.chip)}</span>
         </div>
         <div className="smt-vline" />
-        <div className="smt-kv"><div className="k">점수</div><div className="v"><b>{q.score}</b> / {q.point}점</div></div>
+        <div className="smt-kv"><div className="k">{U.score}</div><div className="v">{U.scoreV(q.score, q.point)}</div></div>
         <div className="smt-vline" />
-        <div className="smt-kv"><div className="k">평가 기준</div><div className="v">5단계 기준</div></div>
+        <div className="smt-kv"><div className="k">{U.scale}</div><div className="v">{U.scale5}</div></div>
       </div>
 
       {/* 2. 학습 피드백 */}
       <div className="smt-sect">
-        <h3><span className="smt-bar" />학습 피드백</h3>
+        <h3><span className="smt-bar" />{U.fb}</h3>
         {FB_ROWS.map((r, i) => (
-          <div key={r.cls} className="smt-fb"><span className={`smt-lab ${r.cls}`}>{r.label}</span><span className="smt-txt">{q.fb[i]}</span></div>
+          <div key={r.cls} className="smt-fb"><span className={`smt-lab ${r.cls}`}>{U.fbRows[i]}</span>
+            <span className="smt-txt">{fb[i]}</span>
+          </div>
         ))}
       </div>
 
       {/* 3. 학습 안내 — [SCR-03 v5.23] 만점이라 고칠 내용이 없으면 안내 문구 */}
       {!g?.items?.length && (
         <div className="smt-sect">
-          <h3><span className="smt-bar" />학습 안내</h3>
-          <div className="smt-overall">{GUIDE_EMPTY_MESSAGE}</div>
+          <h3><span className="smt-bar" />{U.guide}</h3>
+          <div className="smt-overall">{U.guideEmpty}</div>
         </div>
       )}
       {g?.items?.length > 0 && (
         <div className="smt-sect">
-          <h3><span className="smt-bar" />학습 안내</h3>
+          <h3><span className="smt-bar" />{U.guide}</h3>
           <div className="smt-guide">
             <div className="smt-guide-t">{g.title}</div>
             <ul>{g.points.map((p, i) => <li key={i}>{p}</li>)}</ul>
@@ -781,23 +875,30 @@ const ResultPane = ({ A, q }) => {
           {g.items.map((it, i) => (
             <div key={i} className="smt-gitem">
               <div className="smt-gask">{i + 1}. {it.ask}</div>
-              <div className="smt-gwritten"><span>학생이 작성한 내용</span>{it.written}</div>
+              <div className="smt-gwritten"><span>{U.written}</span>{it.written}</div>
               <div className="smt-gtry">
-                <div className="smt-gtry-k">이렇게 해봐요</div>
+                <div className="smt-gtry-k">{U.tryIt}</div>
                 <div className="smt-gwhen">{it.whenTo}</div>
                 <div>{it.example}</div>
                 {it.tip && <div className="smt-gtip">{it.tip}</div>}
               </div>
-              <div className="smt-gcheck"><span>확인</span>{it.check}</div>
+              <div className="smt-gcheck"><span>{U.check}</span>{it.check}</div>
             </div>
           ))}
         </div>
       )}
 
+      {/* [모르겠어요] 피드백 · 학습 안내를 다 읽은 자리에 문항당 하나 */}
+      <div className="smt-ask">
+        {ask
+          ? <DontGetIt lang={lang} level={q.solution ? tr(q.solution, 'level', lang) : null} ctx={askCtx} onClose={() => setAsk(false)} />
+          : <DontGetIt.Button lang={lang} onClick={() => setAsk(true)} />}
+      </div>
+
       {/* 4. AI 필기 분석 — 과정 분석이 포함된 과제만. 캐릭터 + 총평 */}
       {A.hasProcess && (
         <div className="smt-evalsec-p">
-          <div className="smt-evalhead"><span className="smt-evaldot p" /><h2>AI 필기 분석</h2><span className="smt-evalsub">필기 과정에서 나타난 학습 행동을 분석합니다</span></div>
+          <div className="smt-evalhead"><span className="smt-evaldot p" /><h2>{U.hwT}</h2><span className="smt-evalsub">{U.hwS}</span></div>
           {hw ? (
             <>
               <div className="smt-pattern">
@@ -805,18 +906,18 @@ const ResultPane = ({ A, q }) => {
                   ? <img src={img} alt={pat.name} className="smt-char" />
                   : <div className="smt-char ph">{(code || '?').toUpperCase()}</div>}
                 <div>
-                  <div className="k">진단된 학습 행동 패턴</div>
+                  <div className="k">{U.hwPat}</div>
                   <div className="n">{pat.name}</div>
                   {pat.brief && <div className="b">{pat.brief}</div>}
                 </div>
               </div>
               <div className="smt-sect p" style={{ marginTop: 20 }}>
-                <h3><span className="smt-bar" />총평</h3>
-                <div className="smt-overall">{hw.summary}</div>
+                <h3><span className="smt-bar" />{U.hwSum}</h3>
+                <div className="smt-overall">{hwL.summary}</div>
               </div>
             </>
           ) : (
-            <div className="smt-overall">{PROCESS_INSUFFICIENT_MESSAGE}</div>
+            <div className="smt-overall">{U.hwNone}</div>
           )}
         </div>
       )}
@@ -845,6 +946,13 @@ const CSS = `
 .smt-dot{color:#D5DBE5}
 
 .smt-who{display:flex;align-items:center;gap:8px;margin-bottom:18px;padding:10px 14px;background:#fff;border:1px solid var(--line);border-radius:10px;width:fit-content}
+/* [다국어] 화면 언어 선택 — 학생 정보 줄 오른쪽 끝 */
+.smt-lang{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding:0 8px;height:32px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:var(--neo-font-size-sm);color:var(--t2)}
+.smt-lang select{border:none;background:none;font-family:inherit;font-size:var(--neo-font-size-sm);font-weight:700;color:var(--t1, #17212F);cursor:pointer}
+.smt-nolang{margin-bottom:12px;padding:8px 12px;border-radius:8px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;font-size:var(--neo-font-size-xs);line-height:1.6}
+/* [모르겠어요] 피드백 줄 · 학습 안내 항목 아래 */
+.smt-ask{display:block;margin-top:16px}
+.smt-qslot{display:inline-flex;align-items:center;margin-left:4px}
 .smt-who-tag{font-size:var(--neo-font-size-xs);font-weight:700;color:#fff;background:var(--blue);padding:3px 9px;border-radius:6px}
 .smt-who-cls{font-size:var(--neo-font-size-xs);font-weight:700;color:var(--blue)}
 .smt-who-nm{font-size:var(--neo-font-size-base);font-weight:700}

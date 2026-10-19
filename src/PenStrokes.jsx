@@ -22,7 +22,8 @@ const pathOf = (pts, n) => {
   return n === 1 ? `${d}l0.01 0` : d;
 };
 
-const PenStrokes = ({ pen, from = 0, to, viewBox, strokeState, tip, width = 0.38, color = '#1E293B', style, label = '펜 필기', ghost }) => {
+/* children — 같은 좌표(viewBox) 위에 덧그릴 층(교사 첨삭 등) */
+const PenStrokes = ({ pen, from = 0, to, viewBox, strokeState, tip, width = 0.38, color = '#1E293B', style, label = '펜 필기', ghost, children }) => {
   const last = to ?? pen.strokes.length - 1;
   const vb = viewBox || penViewBox(pen, from, last);
   const paths = [];
@@ -40,6 +41,7 @@ const PenStrokes = ({ pen, from = 0, to, viewBox, strokeState, tip, width = 0.38
       </g>}
       <g fill="none" strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">{paths}</g>
       {tip && <circle cx={tip[0]} cy={tip[1]} r={0.75} fill="#2563EB" stroke="rgba(37,99,235,.25)" strokeWidth={1.2} />}
+      {children}
     </svg>
   );
 };

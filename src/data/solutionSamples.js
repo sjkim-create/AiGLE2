@@ -10,7 +10,8 @@ import PEN_RATIONAL from './penSample_3-52-766-4.json';
 const PEN_FROM = 14;
 export const MATH_RAT_TASK = {
   title: '[수학] 유리함수의 그래프에서 식 구하기',
-  en: { subject: 'Math', cap: 'Smart pen upload · 2026.10.15 16:20' },
+  /* [다국어] 학생 화면 언어별 값 — 실제는 AI 채점 때 함께 만든다(lib/i18n.js) */
+  en: { title: '[Math] Find the equation from the graph of a rational function', subject: 'Math', pub: 'Oct 14, 2026', done: 'October 15, 2026', way: 'Smart pen upload', cap: 'Smart pen upload · 2026.10.15 16:20' },
   subject: '수학', full: 6, pub: '2026. 10. 14', done: '2026년 10월 15일', way: '스마트펜 업로드', cap: '스마트펜 업로드 · 2026.10.15 16:20',
   passage: null, hasProcess: true,
   questions: [
@@ -19,7 +20,41 @@ export const MATH_RAT_TASK = {
       text: '두 점근선이 x = 2, y = −1이고 점 (3, 0)을 지나는 유리함수의 그래프를 그리고, 이 유리함수의 식을 구하시오.',
       answer: ['점근선 x = 2, y = −1', 'y = k/(x−2) − 1 (k ≠ 0)로 둔다', '그래프가 점 (3, 0)을 지나므로 x = 3, y = 0 대입', '0 = k/(3−2) = −1 → 0 = k − 1 ∴ k = 1', '∴ 유리함수식 1/(x−2) − 1'],
       pen: PEN_RATIONAL, penFrom: PEN_FROM,
-      en: { label: 'Q1', text: 'Draw the graph of a rational function whose asymptotes are x = 2 and y = −1 and which passes through (3, 0), then find its equation.' },
+      en: {
+        label: 'Q1', text: 'Draw the graph of a rational function whose asymptotes are x = 2 and y = −1 and which passes through (3, 0), then find its equation.',
+        fb: [
+          'You read both asymptotes correctly from the graph, set the form y = k/(x−2) − 1 (k ≠ 0) first, and then substituted a point to find k. That order is very well organized.',
+          'After 0 = k/(3−2) you wrote "= −1" instead of "− 1", adding an extra equals sign, and your final answer is missing "y =". Practice checking each symbol as you write an expression.',
+          'Drawing the graph yourself to sort out the conditions is a great habit. Finish with a function like "y = 1/(x−2) − 1" and your answer will be complete.',
+        ],
+        guide: {
+          title: 'Write the rational function correctly and finish it',
+          points: [
+            'If the asymptotes are x = p and y = q, set the equation as y = k/(x−p) + q (k ≠ 0).',
+            'Substitute a point on the graph to find k.',
+            'Always write the answer as a function: "y = …".',
+          ],
+          items: [
+            {
+              ask: 'Rewrite the line where you substituted, with the right symbols.',
+              written: '"0 = k/(3−2) = −1"',
+              whenTo: 'When you substitute a point into the equation',
+              example: '0 = k/(3−2) − 1, so 0 = k − 1, and therefore k = 1.',
+              tip: "Don't mix up the equals sign (=) and the minus sign (−).",
+              check: 'Check that the line has only one equals sign.',
+            },
+            {
+              ask: 'Write the final answer as a function.',
+              written: '"rational function 1/(x−2) − 1"',
+              whenTo: 'When you put k back in to finish the equation',
+              example: 'So the rational function is y = 1/(x−2) − 1.',
+              tip: 'It only becomes a function when it starts with "y =".',
+              check: 'Check that x = 3 gives y = 0.',
+            },
+          ],
+        },
+        hw: { name: 'Thoughtful and confident', brief: 'Slow and revisits steps, but finishes firmly', summary: 'You drew the graph first, then moved smoothly from asymptotes → form of the equation → substitution → calculation. The two 4–5 second pauses before drawing the curves look like time spent picturing the shape. You finished without going back, but missed one symbol in the substitution line and one in the final answer.' },
+      },
       fb: [
         '그래프에서 두 점근선을 정확히 읽고, 식의 꼴을 y = k/(x−2) − 1 (k ≠ 0)로 먼저 정한 뒤 점을 대입해 k를 구한 풀이 순서가 매우 체계적입니다.',
         '0 = k/(3−2) 다음에 「− 1」 대신 「= −1」로 등호를 하나 더 썼고, 마지막 답에 「y =」가 빠졌습니다. 식을 쓸 때 기호 하나하나를 확인하는 연습이 필요합니다.',
@@ -120,7 +155,16 @@ export const MATH_RAT_TASK = {
     {
       label: '문항 2', point: 2, score: 2, grade: 'A', chip: '매우 우수', chipCls: 'a',
       text: '문항 1에서 구한 유리함수의 정의역과 치역을 구하시오.',
-      en: { label: 'Q2', text: 'Find the domain and range of the rational function you found in Q1.' },
+      en: {
+        label: 'Q2', text: 'Find the domain and range of the rational function you found in Q1.',
+        fb: [
+          'You used the value that makes the denominator 0 and the horizontal asymptote to find both the domain and range correctly.',
+          'You described the ranges well in words, like "all real numbers with x ≠ 2". Try set notation such as {x | x ≠ 2} as well — it looks even cleaner.',
+          'You clearly understand how the asymptotes relate to the domain and range. Use the same method with other rational functions.',
+        ],
+        guide: { title: '', points: [], items: [] },
+        hw: { name: 'Careful, step-by-step and confident', brief: 'Steady pace, in order, with confidence', summary: 'You wrote both lines without stopping and never went back. Turning the asymptotes from Q1 straight into the domain and range shows a steady flow.' },
+      },
       answer: ['정의역 : x ≠ 2 인 모든 실수', '치역 : y ≠ −1 인 모든 실수'],
       fb: [
         '분모가 0이 되는 값과 가로 점근선을 이용해 정의역과 치역을 모두 정확하게 구했습니다.',
@@ -156,8 +200,8 @@ export const MATH_RAT_TASK = {
 /* [일괄 채점 통합 · SCR-03 v5.30] 학생 모드 유리함수 과제를 교사 쪽에도 — 같은 학생(김소리) · 같은 문항 · 같은 결과
  *   과제 목록에 한 줄(taskKey 'rat'), 그 과제를 고르면 명단은 김소리만, 상세는 문항마다 피드백 · 채점 근거 · 원본 필기 · 필기 재생이 그 문항 것 */
 export const RAT_TEACHER_TASK = {
-  id: 'rat', taskKey: 'rat', type: '수학', title: MATH_RAT_TASK.title.replace(/^\[수학\]\s*/, ''), date: '2026.10.14', submissions: '1/1', description: '학생 모드 시연 과제', resultMode: 'score',
-  questions: MATH_RAT_TASK.questions.map((q, i) => ({ id: i + 1, title: q.label, score: q.point, sheets: 1, description: q.text })),
+  id: 'rat', taskKey: 'rat', type: '수학', title: MATH_RAT_TASK.title.replace(/^\[수학\]\s*/, ''), date: '2026.10.14', submissions: '2/2', description: '학생 모드 시연 과제', resultMode: 'score',
+  questions: MATH_RAT_TASK.questions.map((q, i) => ({ id: i + 1, title: q.label, score: q.point, sheets: 2, description: q.text })),
 };
 const ratBasis = [
   {
@@ -201,4 +245,12 @@ export const RAT_TEACHER_STUDENT = {
   },
   /* 원본 보기 · 필기 재생 — 문항마다 학생 모드와 같은 데이터(문항 1 = 실제 펜, 문항 2 = 글자 흉내) */
   replayQ: Object.fromEntries(MATH_RAT_TASK.questions.map((q, i) => [i + 1, q])),
+};
+
+/* [교사 첨삭 예제] 채점 확인 단계 학생 — AI 채점이 끝나고 교사가 확인 중이라 원본 보기에서 교사펜 첨삭을 할 수 있다.
+ *   필기 · AI 결과는 시연용으로 김소리와 같은 펜 샘플을 쓴다(교사 첨삭은 학생마다 따로 저장) */
+export const RAT_TEACHER_STUDENT_2 = {
+  ...RAT_TEACHER_STUDENT,
+  id: 302, name: '박지후', grade: '3학년 1반 2번', status: '채점 확인', teacherGrade: '-', teacherScore: undefined,
+  sentMode: undefined, sheetNo: 'R-0002',
 };

@@ -14,7 +14,9 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { lookupPattern } from './handwritingPatternMatrix';
-import SolutionReplay from './SolutionReplay';
+import SolutionReplay, { teacherReplayNote } from './SolutionReplay';
+import InkedPen, { TeacherPenPanel } from './TeacherInk';
+import { inkKey } from './lib/teacherInk';
 import { MATH_RAT_TASK } from './data/solutionSamples';
 import PenStrokes from './PenStrokes';
 import { formatResult, gradeToPoints, scoreToGrade } from './lib/gradingShared'; // [TSK v3.82] 과제의 채점 결과 표기(등급/점수)
@@ -305,6 +307,10 @@ const GradingReviewModal = ({
         setTimeout(() => { setReplayOpen(false); setRpClosing(false); }, 320);
     };
     const [stageEl, setStageEl] = useState(null); // [SCR-03 v5.29] 원본 보기 안 필기 재생 자리
+    const [qBtnEl, setQBtnEl] = useState(null); // [풀이 과정] 「문항 보기」 버튼 자리 — 왼쪽 문항 탭 이름 옆
+    /* [교사 첨삭] 교사펜 연결(프로토: 에뮬레이터) · 펜 도구 — 일괄 채점 통합 · 펜 답안의 원본 보기 */
+    const [penConn, setPenConn] = useState(null); // null | 'BLE' | 'USB'
+    const [inkTool, setInkTool] = useState({ color: 'red', bold: false });
     /* [SCR-03 v5.31] 좌우 폭 조절(일괄 채점 통합) — 가운데 손잡이를 끌거나 ← → . 두 번 누르면 원래 폭 */
     const [leftW, setLeftW] = useState(null);
     const rowRef = React.useRef(null);
@@ -339,6 +345,8 @@ const GradingReviewModal = ({
     const [critPicks, setCritPicks] = useState({});
     const fmt = (grade, score) => formatResult(grade, { resultMode, maxPoints, score });
     const [rightTab, setRightTab] = useState('feedback'); // 'feedback' | 'basis' | 'original'
+    /* [풀이 과정] 필기 분석은 원본 보기에서만 — 피드백 보기 · 채점 근거로 옮기면 왼쪽 풀이 과정 패널을 닫는다 */
+    useEffect(() => { if (rightTab !== 'original') closeReplay(); }, [rightTab]); // eslint-disable-line react-hooks/exhaustive-deps
     const [isSaved, setIsSaved] = useState(false);
 
     // 원본 보기 — 재생·페이지·전체화면
@@ -648,6 +656,11 @@ const GradingReviewModal = ({
     // [SCR-03 v5.30] 학생에 문항별 답안 · 풀이 데이터가 있으면(유리함수 과제) 원본 · 필기 재생 모두 그 문항 것. 없으면 시연 샘플
     const origQ = selectedStudent?.replayQ?.[activeQuestion] || null;
     const replayData = origQ?.solution ? { q: origQ, A: MATH_RAT_TASK, sample: null } : { q: MATH_RAT_TASK.questions[0], A: MATH_RAT_TASK, sample: '시연 샘플 필기' };
+    /* [교사 첨삭] AI 채점이 끝난 뒤 — 채점 확인 · 결과 발송 전 단계에서 쓸 수 있다. 결과 발송 완료면 잠기고, 발송을 취소하면 다시 열린다 */
+    const showInkPanel = solutionReplay && !!origQ?.pen && !isPlaybackMode;
+    const inkLocked = selectedStudent?.status === '채점 확인' || selectedStudent?.status === '결과 발송 전' ? null
+        : selectedStudent?.status === '결과 발송 완료' ? '결과를 발송한 뒤에는 첨삭할 수 없어요.'
+        : 'AI 채점 후에 첨삭할 수 있어요.';
     const renderOriginal = () => (
         <div style={{ padding: '4px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div className="pen-canvas-box" style={isFullscreen
@@ -675,11 +688,16 @@ const GradingReviewModal = ({
                         /* [SCR-03 v5.29] 필기 재생 — 원본 자리에서(장면 자막 · 재생 막대는 그 아래). 시연은 실제 펜 샘플이라 답안지 이미지 대신 흰 바탕에 그린다 */
                         <div ref={setStageEl} className="srp-stage-in" style={{ width: '100%', maxWidth: isFullscreen ? 900 : 640 }} />
                     ) : (
+                    /* [교사 첨삭] 펜 답안이면 원본 보기 맨 오른쪽에 교사펜 패널 — 답안은 남은 폭의 가운데 */
+                    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', width: '100%' }}>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center' }}>
                     <div style={{ position: 'relative', width: '100%', maxWidth: isFullscreen ? 900 : 640 }}>
                         {origQ ? (
                             <div style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', padding: '20px 22px', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }}>
                                 {origQ.pen
-                                    ? <PenStrokes pen={origQ.pen} from={origQ.penFrom || 0} label="학생 답안 원본" style={{ maxHeight: 420 }} />
+                                    ? (solutionReplay
+                                        ? <InkedPen pen={origQ.pen} from={origQ.penFrom || 0} inkKey={inkKey(selectedStudent?.name, origQ.text)} editable={!!penConn && !isPlaybackMode && !inkLocked} tool={inkTool} label="학생 답안 원본 · 교사 첨삭" style={{ maxHeight: 420 }} />
+                                        : <PenStrokes pen={origQ.pen} from={origQ.penFrom || 0} label="학생 답안 원본" style={{ maxHeight: 420 }} />)
                                     : origQ.answer.map((l, i) => <div key={i} style={{ fontFamily: "'Nanum Pen Script', cursive", fontSize: 'var(--neo-font-size-xxl)', color: '#22325C', lineHeight: 1.75 }}>{l}</div>)}
                             </div>
                         ) : <img src={ANSWER_SHEET_IMG} alt="학생 답안 원본" style={{ width: '100%', border: '1px solid #E5E7EB', background: 'white', opacity: isPlaybackMode && !isPlaying ? 0.45 : 1 }} />}
@@ -691,6 +709,11 @@ const GradingReviewModal = ({
                                 {isPlaying ? '⏸' : '▶'}
                             </button>
                         )}
+                    </div>
+                    </div>
+                    {showInkPanel && (
+                        <TeacherPenPanel inkKey={inkKey(selectedStudent?.name, origQ.text)} locked={inkLocked} conn={penConn} onConnect={setPenConn} tool={inkTool} onTool={setInkTool} />
+                    )}
                     </div>
                     )}
                 </div>
@@ -814,7 +837,7 @@ const GradingReviewModal = ({
                             <div style={{ position: 'absolute', left: 0, right: 0, top: HEAD_H, bottom: 0, zIndex: 6 }}>
                                 <SolutionReplay panel key={`${selectedStudent?.id}-${activeQuestion}`} q={replayData.q} A={replayData.A} viewer="teacher" studentName={selectedStudent?.name}
                                     sampleNote={replayData.sample} onClose={closeReplay} side="left" closing={rpClosing}
-                                    stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" stageLineClass="srp-hand" />
+                                    stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" stageLineClass="srp-hand" qButtonTarget={qBtnEl} />
                             </div>
                         )}
                         {/* [v5.18] 좌우 머리줄 높이를 같게(HEAD_H) — 아래 흰 카드의 위 끝이 좌우로 맞는다 */}
@@ -824,6 +847,8 @@ const GradingReviewModal = ({
                                     {activeQuestion === q.id ? '✓ ' : ''}문항 {q.id} <span style={{ fontWeight: 400, opacity: 0.8 }}>{q.score || 2}점</span>
                                 </div>
                             ))}
+                            {/* [풀이 과정] 「문항 보기」 — 풀이 과정 패널이 열려 있을 때 문항 탭 이름 옆 */}
+                            {canReplay && replayOpen && <span ref={setQBtnEl} style={{ alignSelf: 'center', marginLeft: 6 }} />}
                         </div>
                         <div style={{ ...card, flex: 1, borderRadius: '0 16px 16px 16px', padding: '20px 22px', overflow: 'auto', gap: 22 }}>
                             {/* 채점 결과 */}
@@ -992,14 +1017,18 @@ const GradingReviewModal = ({
                     {/* ── 우측 ── */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, height: HEAD_H, flexShrink: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text }}>
-                                {qLabel} {rightTab === 'feedback' ? '피드백 보기' : rightTab === 'basis' ? '채점 근거' : '원본 보기'}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--neo-font-size-lg)', fontWeight: 600, color: T.text, minWidth: 0 }}>
+                                <span style={{ flexShrink: 0 }}>{qLabel} {rightTab === 'feedback' ? '피드백 보기' : rightTab === 'basis' ? '채점 근거' : '원본 보기'}</span>
+                                {/* [풀이 과정] 교사 확인용 안내 — 풀이 과정 패널 아래에서 이 제목 옆으로 옮김 */}
+                                {canReplay && replayOpen && rightTab === 'original' && (
+                                    <span title={teacherReplayNote()} style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 400, color: T.sub, lineHeight: 1.45, minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{teacherReplayNote()}</span>
+                                )}
                                 {rightTab === 'basis' && (<>
                                     <span title="AI가 채점 기준마다 충족 여부를 판단한 근거입니다. 학생에게 발송되는 리포트에는 싣지 않습니다." style={{ width: 18, height: 18, borderRadius: '50%', border: `1px solid ${T.line}`, color: T.sub, fontSize: 'var(--neo-font-size-xs)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>i</span>
                                     <span style={pill('#1E293B', 'white')}>교사에게만 표시</span>
                                 </>)}
                             </div>
-                            <div style={{ display: 'inline-flex', borderRadius: T.rLg, overflow: 'hidden' }}>
+                            <div style={{ display: 'inline-flex', borderRadius: T.rLg, overflow: 'hidden', ...(solutionReplay ? { flexShrink: 0, whiteSpace: 'nowrap' } : {}) }}> {/* 일괄 채점 통합 — 제목 옆 안내가 길어도 탭이 눌리지 않게 */}
                                 {tabBtn('feedback', '피드백 보기', '🗨')}
                                 {tabBtn('original', '원본 보기', '▤')}
                                 {tabBtn('basis', '채점 근거', '☑')}

@@ -23,7 +23,9 @@ import BatchGradingUnified, { UNIFIED_GROUP_STUDENTS, UNIFIED_DATA_STATE } from 
 import { isConnectDownloaded, markConnectDownloaded } from './RequiredProgramModal';
 import { listWorkbooks } from './lib/itemBank'; // [TSK-15 v1.42] 문제지를 인쇄한 문제집 → 미채점 과제
 import AnswerGradingPanel from './AnswerGradingPanel';
-import { RAT_TEACHER_TASK, RAT_TEACHER_STUDENT } from './data/solutionSamples'; // [SCR-03 v5.30] 학생 모드 유리함수 과제
+import { RAT_TEACHER_TASK, RAT_TEACHER_STUDENT, RAT_TEACHER_STUDENT_2 } from './data/solutionSamples'; // [SCR-03 v5.30] 학생 모드 유리함수 과제
+import InkedPen, { InkNote } from './TeacherInk'; // [교사 첨삭] 리포트 학생 답안 페이지
+import { inkKey } from './lib/teacherInk';
 
 // ─────────────────────────────────────────────
 // [SCR-06] 퇴고 — 등급 ↔ 점수 환산 및 추이 판정
@@ -118,7 +120,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     question: false,
     answer: false,
     feedback: true,
-    process: true
+    process: true,
+    teacherInk: true, // [교사 첨삭] 학생 답안 페이지에 교사 첨삭을 겹쳐 싣는다(학생 답안을 실을 때만 · 「보이기」 첨삭만)
   });
   // [POP-19 v2.2] 출력 형식 — 'pdf'(기본, 학생별 PDF ZIP 묶음) | 'excel'(전체 명단 단일 xlsx)
   const [exportFormat, setExportFormat] = useState('pdf');
@@ -208,8 +211,17 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     // [SCR-06] v2 데모용 — 퇴고 요청 후 2차 답안 채점 대기 (1차 미채점 학생과 동일한 상태)
     { id: 13, name: '오세림', grade: '1학년 1반 9번', submitType: 'pen', aiGrade: '-', teacherGrade: '-', status: '미채점', round: 2, sheetNo: 'B-0009', aiCount: { 1: 1, 2: 0 }, v2Only: true,
       history: [{ round: 1, aiGrade: '보통', teacherGrade: '보통', sheetNo: 'A-0009', sentAt: '2026.08.13' }] },
-    ...(isUnified ? [RAT_TEACHER_STUDENT] : []),
+    ...(isUnified ? [RAT_TEACHER_STUDENT, RAT_TEACHER_STUDENT_2] : []), // 박지후 = 교사 첨삭 예제(채점 확인 단계)
   ]));
+
+  /* 열린 상세의 학생 단계(결과 발송 · 발송 취소 등)를 명단과 맞춘다 — 상세 화면이 바뀐 단계를 바로 따른다(교사 첨삭 잠금 등) */
+  useEffect(() => {
+    setSelectedStudent((prev) => {
+      const cur = prev && students.find((s) => s.id === prev.id);
+      if (!cur || (cur.status === prev.status && cur.sentMode === prev.sentMode)) return prev;
+      return { ...prev, status: cur.status, sentMode: cur.sentMode, sentScale: cur.sentScale, sentAt: cur.sentAt };
+    });
+  }, [students]);
 
   // [SCR-06] 화면에 노출할 학생 명단 — v2 전용 데모 학생(`v2Only`)은 v1(기존 채점 관리)에서 숨긴다.
   //   개별 id 조회(`students.find`)는 v1에서 해당 id가 선택될 일이 없으므로 그대로 둔다.
@@ -1555,6 +1567,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         const includedSectionLabels = [
           exportContentOptions.question && '지문+문항',
           exportContentOptions.answer && '학생 답안',
+          isUnified && exportContentOptions.answer && exportContentOptions.teacherInk && '교사 첨삭',
           exportContentOptions.process && '과정 분석',
           exportContentOptions.feedback && '교사 피드백'
         ].filter(Boolean);
@@ -1641,6 +1654,14 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <input type="checkbox" checked={exportContentOptions.answer} onChange={() => toggleContentOption('answer')} />
                     학생 답안
                   </label>
+                  {/* [교사 첨삭] 일괄 채점 통합 — 학생 답안 위에 교사펜 첨삭을 함께 싣는다. 학생 답안을 실을 때만 고를 수 있다 */}
+                  {isUnified && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: exportContentOptions.answer ? 'pointer' : 'not-allowed', color: exportContentOptions.answer ? '#334155' : '#94A3B8' }}
+                      title={exportContentOptions.answer ? '학생 답안 페이지에 교사 첨삭을 겹쳐 싣습니다. 「첨삭 숨김」으로 둔 첨삭은 싣지 않습니다.' : '학생 답안을 실을 때 고를 수 있습니다.'}>
+                      <input type="checkbox" checked={exportContentOptions.answer && exportContentOptions.teacherInk} disabled={!exportContentOptions.answer} onChange={() => toggleContentOption('teacherInk')} />
+                      교사 첨삭
+                    </label>
+                  )}
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#334155' }} title="AI 필기 분석을 싣습니다 — 결과가 있으면 캐릭터 · 총평, 없으면 안내 문구.">
                     <input type="checkbox" checked={exportContentOptions.process} onChange={() => toggleContentOption('process')} />
                     과정 분석
@@ -1962,7 +1983,26 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     </section>
 
                     {/* ============ Page 2~N — 학생 답안 (맨 뒤, 답안별 1페이지) ============ */}
-                    {exportContentOptions.answer && mockAnswers.map((a, idx) => (
+                    {/* [교사 첨삭] 펜 답안이 있는 학생 — 문항마다 실제 필기(+ 교사 첨삭) 한 페이지 */}
+                    {exportContentOptions.answer && previewStudent.replayQ && Object.entries(previewStudent.replayQ).map(([no, rq], idx) => (
+                      <React.Fragment key={`rq-${no}`}>
+                        <PageDivider label={`— Page ${idx + 2} —`} />
+                        <section className="preview-page preview-page-answer" style={{ padding: '24px 32px 28px', background: 'white' }}>
+                          <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>— Page {idx + 2} — 학생 답안 ({no}번 문항)</div>
+                          <TitleArea />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: '0.5rem', marginBottom: '0.75rem' }}>
+                            <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', margin: 0 }}>◆ 학생 답안 — {no}번 문항</h3>
+                            {rq.pen && exportContentOptions.teacherInk && <InkNote inkKey={inkKey(previewStudent.name, rq.text)} text="✎ 교사 첨삭 포함" />}
+                          </div>
+                          <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
+                            {rq.pen
+                              ? <InkedPen pen={rq.pen} from={rq.penFrom || 0} inkKey={inkKey(previewStudent.name, rq.text)} show={exportContentOptions.teacherInk} label={`${no}번 문항 학생 답안`} style={{ maxHeight: 520 }} />
+                              : <div style={{ fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', whiteSpace: 'pre-line' }}>{rq.answer.join('\n')}</div>}
+                          </div>
+                        </section>
+                      </React.Fragment>
+                    ))}
+                    {exportContentOptions.answer && !previewStudent.replayQ && mockAnswers.map((a, idx) => (
                       <React.Fragment key={a.no}>
                         <PageDivider label={`— Page ${idx + 2} —`} />
                         <section className="preview-page preview-page-answer" style={{ padding: '24px 32px 28px', background: 'white' }}>
