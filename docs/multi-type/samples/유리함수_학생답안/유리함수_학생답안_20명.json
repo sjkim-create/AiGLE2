@@ -1,0 +1,1149 @@
+{
+  "assignment": {
+    "title": "유리함수",
+    "source": "assignment-유리함수.json",
+    "totalPoints": 10,
+    "questions": [
+      {
+        "no": 1,
+        "id": "q-2012",
+        "points": 2,
+        "text": "유리함수의 정의를 쓰시오.",
+        "modelAnswer": "함수 y = f(x)에서 f(x)가 x에 대한 유리식일 때, 이 함수를 유리함수라 한다.",
+        "rubric": [
+          {
+            "score": 2,
+            "content": "유리함수의 정의를 옳게 쓴 경우"
+          },
+          {
+            "score": 1,
+            "content": "유리함수를 분수함수라고 정의한 경우 / y=(ax+b)/(cx+d) 형식으로 정의한 경우"
+          },
+          {
+            "score": 0,
+            "content": "정의를 쓰지 못한 경우"
+          }
+        ]
+      },
+      {
+        "no": 2,
+        "id": "q-2013",
+        "points": 3,
+        "text": "실생활 속에서 다항함수가 아닌 유리함수의 예를 찾아 설명하고 식으로 나타내시오.",
+        "modelAnswer": "50g의 물에 xg의 소금을 넣었을 때 소금물의 농도를 y%라 하자. 이때의 다항함수가 아닌 유리함수의 식은 y = 100x/(x+50)이다.",
+        "rubric": [
+          {
+            "score": 3,
+            "content": "예를 설명하고 식으로 올바르게 작성한 경우"
+          },
+          {
+            "score": 1,
+            "content": "예를 설명했으나 식으로 표현하지 못한 경우 / 식은 세웠으나 실생활 예로 설명하지 못한 경우"
+          },
+          {
+            "score": 0,
+            "content": "예를 설명하지 못하고 식으로 작성하지 못한 경우"
+          }
+        ]
+      },
+      {
+        "no": 3,
+        "id": "q-2014",
+        "points": 5,
+        "text": "그림과 같은 유리함수의 그래프가 나타나는 함수의 식을 구하시오. (점근선 x=2, y=−1, 점 (3, 0)을 지남)",
+        "modelAnswer": "점근선 x=2, y=−1 → y = k/(x−2) − 1 (k≠0). 점 (3, 0)을 지나므로 0 = k/(3−2) − 1, k = 1. ∴ y = 1/(x−2) − 1",
+        "rubric": [
+          {
+            "score": 5,
+            "content": "점근선으로 y=k/(x−2)−1을 쓰고 (3,0) 대입해 k=1, y=1/(x−2)−1을 찾은 경우"
+          },
+          {
+            "score": 3,
+            "content": "점근선을 이용해 y=k/(x−2)−1을 작성한 경우"
+          },
+          {
+            "score": 1,
+            "content": "유리함수의 식만 y=k/(x−2)−1 찾은 경우"
+          },
+          {
+            "score": 0,
+            "content": "식을 구하지 못한 경우"
+          }
+        ]
+      }
+    ]
+  },
+  "note": "시연 · 채점 테스트용 가상 답안. 이름은 가상. 예상 점수는 과제 JSON의 채점 기준표 기준이며 borderline = 기준표로 정하기 애매한 경우",
+  "patterns": [
+    {
+      "id": "Q1-A",
+      "question": 1,
+      "level": "상",
+      "expectedScore": 2,
+      "approach": "교과서 정의",
+      "description": "f(x)가 x에 대한 유리식인 함수"
+    },
+    {
+      "id": "Q1-B",
+      "question": 1,
+      "level": "상",
+      "expectedScore": 2,
+      "approach": "다항식의 비",
+      "description": "P(x)/Q(x) (Q(x)는 0이 아닌 다항식) 꼴"
+    },
+    {
+      "id": "Q1-C",
+      "question": 1,
+      "level": "상",
+      "expectedScore": 2,
+      "approach": "정의 + 다항함수 포함",
+      "description": "다항함수도 유리함수에 포함됨을 덧붙임"
+    },
+    {
+      "id": "Q1-D",
+      "question": 1,
+      "level": "중",
+      "expectedScore": 2,
+      "approach": "다항식 ÷ 다항식",
+      "description": "유리식이라는 말 대신 다항식의 나눗셈으로 설명 (경계)"
+    },
+    {
+      "id": "Q1-E",
+      "question": 1,
+      "level": "중",
+      "expectedScore": 1,
+      "approach": "분수함수",
+      "description": "분수 꼴의 함수 = 분수함수 (기준표 1점 행)"
+    },
+    {
+      "id": "Q1-F",
+      "question": 1,
+      "level": "중",
+      "expectedScore": 1,
+      "approach": "(ax+b)/(cx+d) 꼴",
+      "description": "특정 형식으로 정의 (기준표 1점 행)"
+    },
+    {
+      "id": "Q1-G",
+      "question": 1,
+      "level": "하",
+      "expectedScore": 1,
+      "approach": "분모에 x",
+      "description": "분모에 x가 있는 함수 — 분수함수 수준, 다항함수 빠짐"
+    },
+    {
+      "id": "Q1-H",
+      "question": 1,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "유리수 오개념",
+      "description": "x가 유리수인 함수로 오해"
+    },
+    {
+      "id": "Q1-I",
+      "question": 1,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "성질을 정의로",
+      "description": "그래프 모양(쌍곡선)을 정의로 씀"
+    },
+    {
+      "id": "Q1-J",
+      "question": 1,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "무응답",
+      "description": "빈칸"
+    },
+    {
+      "id": "Q2-A",
+      "question": 2,
+      "level": "상",
+      "expectedScore": 3,
+      "approach": "소금물 농도(교사 예시형)",
+      "description": "y = 100x/(x+50) 류"
+    },
+    {
+      "id": "Q2-B",
+      "question": 2,
+      "level": "상",
+      "expectedScore": 3,
+      "approach": "평균 비용",
+      "description": "고정비 + 변동비를 개수로 나눔 y = (a + bx)/x"
+    },
+    {
+      "id": "Q2-C",
+      "question": 2,
+      "level": "상",
+      "expectedScore": 3,
+      "approach": "병렬 저항",
+      "description": "1/y = 1/2 + 1/x → y = 2x/(x+2)"
+    },
+    {
+      "id": "Q2-D",
+      "question": 2,
+      "level": "상",
+      "expectedScore": 3,
+      "approach": "소금물 + 표준형 변형",
+      "description": "y = 100x/(100+x)를 −10000/(x+100) + 100으로 변형"
+    },
+    {
+      "id": "Q2-E",
+      "question": 2,
+      "level": "중",
+      "expectedScore": 3,
+      "approach": "거리·속력·시간",
+      "description": "y = (거리)/x"
+    },
+    {
+      "id": "Q2-F",
+      "question": 2,
+      "level": "중",
+      "expectedScore": 3,
+      "approach": "넓이 일정 직사각형",
+      "description": "xy = S → y = S/x"
+    },
+    {
+      "id": "Q2-G",
+      "question": 2,
+      "level": "중",
+      "expectedScore": 3,
+      "approach": "똑같이 나누기",
+      "description": "y = (전체)/x"
+    },
+    {
+      "id": "Q2-H",
+      "question": 2,
+      "level": "중",
+      "expectedScore": 1,
+      "approach": "설명만",
+      "description": "반비례 상황 설명, 식 없음"
+    },
+    {
+      "id": "Q2-I",
+      "question": 2,
+      "level": "중",
+      "expectedScore": 1,
+      "approach": "식 오류",
+      "description": "상황 설명은 맞으나 식을 곱 · 다항식으로 씀"
+    },
+    {
+      "id": "Q2-J",
+      "question": 2,
+      "level": "하",
+      "expectedScore": 1,
+      "approach": "식만",
+      "description": "유리함수 식은 썼으나 실생활 설명 없음"
+    },
+    {
+      "id": "Q2-K",
+      "question": 2,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "다항함수 예",
+      "description": "1차함수 예 — 「다항함수가 아닌」 조건 미충족 (경계)"
+    },
+    {
+      "id": "Q2-L",
+      "question": 2,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "무응답",
+      "description": "모르겠다 · 빈칸"
+    },
+    {
+      "id": "Q3-A",
+      "question": 3,
+      "level": "상",
+      "expectedScore": 5,
+      "approach": "표준형 k",
+      "description": "y = k/(x−2) − 1 → (3,0) 대입 → k = 1"
+    },
+    {
+      "id": "Q3-B",
+      "question": 3,
+      "level": "상",
+      "expectedScore": 5,
+      "approach": "분자 미지수형",
+      "description": "y = (ax+b)/(x−2), 가로 점근선 a = −1, (3,0) → b = 3 → y = (−x+3)/(x−2) (같은 함수)"
+    },
+    {
+      "id": "Q3-C",
+      "question": 3,
+      "level": "상",
+      "expectedScore": 3,
+      "approach": "두 미지수 + 대칭점 연립(원본 답안)",
+      "description": "y = b/(ax−2) − 1, (3,0)과 대칭점 (1,−2)로 연립 → a = b = 1, 최종 식 미기재 (경계)"
+    },
+    {
+      "id": "Q3-D",
+      "question": 3,
+      "level": "상",
+      "expectedScore": 5,
+      "approach": "평행이동",
+      "description": "y = k/x를 x축 2, y축 −1 평행이동"
+    },
+    {
+      "id": "Q3-E",
+      "question": 3,
+      "level": "상",
+      "expectedScore": 5,
+      "approach": "대칭점 대입",
+      "description": "점근선 교점 (2,−1)에 대한 대칭점 (1,−2)를 대입"
+    },
+    {
+      "id": "Q3-F",
+      "question": 3,
+      "level": "중",
+      "expectedScore": 5,
+      "approach": "표기 실수(펜 샘플형)",
+      "description": "과정 · k 맞음, 대입 줄 등호 오기 · 「y =」 누락 (경계)"
+    },
+    {
+      "id": "Q3-G",
+      "question": 3,
+      "level": "중",
+      "expectedScore": 3,
+      "approach": "k 계산 실수",
+      "description": "이항 부호 실수로 k = −1"
+    },
+    {
+      "id": "Q3-H",
+      "question": 3,
+      "level": "중",
+      "expectedScore": 3,
+      "approach": "식 세움까지",
+      "description": "y = k/(x−2) − 1까지 쓰고 k를 구하지 못함"
+    },
+    {
+      "id": "Q3-I",
+      "question": 3,
+      "level": "중",
+      "expectedScore": 3,
+      "approach": "대입 좌표 뒤바꿈",
+      "description": "(3,0)을 x = 0, y = 3으로 대입"
+    },
+    {
+      "id": "Q3-J",
+      "question": 3,
+      "level": "하",
+      "expectedScore": 1,
+      "approach": "식만",
+      "description": "과정 · 점근선 설명 없이 y = k/(x−2) − 1만 씀"
+    },
+    {
+      "id": "Q3-K",
+      "question": 3,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "점근선 부호 오독",
+      "description": "x = −2, y = 1로 읽음 — 방법은 맞음 (경계)"
+    },
+    {
+      "id": "Q3-L",
+      "question": 3,
+      "level": "하",
+      "expectedScore": 1,
+      "approach": "답만",
+      "description": "과정 없이 y = 1/(x−2) − 1 (기준표에 없는 경우, 경계)"
+    },
+    {
+      "id": "Q3-M",
+      "question": 3,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "일반형 포기",
+      "description": "y = (ax+b)/(cx+d)로 시작해 진행 못함"
+    },
+    {
+      "id": "Q3-N",
+      "question": 3,
+      "level": "하",
+      "expectedScore": 0,
+      "approach": "무응답",
+      "description": "빈칸"
+    }
+  ],
+  "students": [
+    {
+      "no": 1,
+      "name": "김도윤",
+      "class": "1학년 3반 1번",
+      "level": "상",
+      "totalExpected": 10,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-A",
+          "approach": "교과서 정의",
+          "answerText": "함수 y = f(x)에서 f(x)가 x에 대한 유리식일 때\n이 함수를 유리함수라고 한다.",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-B",
+          "approach": "평균 비용",
+          "answerText": "<티셔츠 단체 주문>\n디자인 비용 30000원은 한 번만 내고, 티셔츠는 한 장에 5000원이다.\nx장을 주문할 때 한 장당 평균 가격을 y원이라 하면\ny = (5000x + 30000)/x = 30000/x + 5000\n많이 주문할수록 한 장당 가격이 5000원에 가까워진다.",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-A",
+          "approach": "표준형 k",
+          "answerText": "점근선 x = 2, y = −1\ny = k/(x − 2) − 1 (k ≠ 0)\n(3, 0)을 지나므로 0 = k/(3 − 2) − 1\nk = 1\n∴ y = 1/(x − 2) − 1",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "no": 2,
+      "name": "이서연",
+      "class": "1학년 3반 2번",
+      "level": "상",
+      "totalExpected": 10,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-B",
+          "approach": "다항식의 비",
+          "answerText": "두 다항식 P(x), Q(x)에 대하여\ny = P(x)/Q(x) (Q(x)는 0이 아닌 다항식)로 나타내어지는 함수를 유리함수라 한다.",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-C",
+          "approach": "병렬 저항",
+          "answerText": "<병렬 회로의 합성 저항>\n2Ω 저항과 xΩ 저항을 병렬로 연결하면 합성 저항 y는\n1/y = 1/2 + 1/x\ny = 2x/(x + 2)\nx가 아무리 커져도 y는 2Ω을 넘지 않는다.",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-B",
+          "approach": "분자 미지수형",
+          "answerText": "세로 점근선이 x = 2이므로 분모는 x − 2\ny = (ax + b)/(x − 2)로 놓으면 가로 점근선은 y = a = −1\ny = (−x + b)/(x − 2)\n(3, 0) 대입: 0 = (−3 + b)/1, b = 3\n∴ y = (−x + 3)/(x − 2)",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "표준형으로 바꾸면 y = 1/(x−2) − 1과 같은 함수. 형태가 달라도 정답으로 인정할지 기준표에 명시 필요"
+        }
+      ]
+    },
+    {
+      "no": 3,
+      "name": "박지호",
+      "class": "1학년 3반 3번",
+      "level": "상",
+      "totalExpected": 8,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-A",
+          "approach": "교과서 정의",
+          "answerText": "함수 y = f(x) 에서 f(x)가 x에 대한\n유리식일 때 이 함수를 유리함수라 한다",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": "제공된 실제 학생 답안"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-D",
+          "approach": "소금물 + 표준형 변형",
+          "answerText": "<소금물의 농도>\n물 100g에 소금 xg을 녹인 소금물의 농도를\ny%라고 할 때\ny = 100x/(100 + x) = −10000/(x + 100) + 100",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "제공된 실제 학생 답안"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-C",
+          "approach": "두 미지수 + 대칭점 연립(원본 답안)",
+          "answerText": "점근선 x = 2, y = −1\n→ y = b/(ax − 2) − 1\n(3, 0)을 지나므로 대입\n→ 0 = b/(3a − 2) − 1\n1 = b/(3a − 2)\n3a − 2 = b, 3a − b = 2\n(2, −1)에 대해 대칭이므로 (1, −2)도 지남\n→ −2 = b/(a − 2) − 1\n−1 = b/(a − 2)\n−a + 2 = b, 2 = a + b\n연립하면\n3a − b = 2\n+) a + b = 2\n4a = 4\na = 1, b = 1",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": true,
+          "note": "제공된 실제 학생 답안. a, b는 맞게 구했으나 최종 식 y = 1/(x−2) − 1을 쓰지 않음. 또 b/(ax−2)의 세로 점근선은 x = 2/a라 a = 1일 때만 x = 2 — 가정에 논리 틈. 5점 / 3점 교사 판단"
+        }
+      ]
+    },
+    {
+      "no": 4,
+      "name": "최하은",
+      "class": "1학년 3반 4번",
+      "level": "상",
+      "totalExpected": 10,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-C",
+          "approach": "정의 + 다항함수 포함",
+          "answerText": "f(x)가 x에 대한 유리식인 함수 y = f(x)를 유리함수라 한다.\n(다항식도 유리식이므로 다항함수도 유리함수이다.)",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-A",
+          "approach": "소금물 농도(교사 예시형)",
+          "answerText": "물 50g에 소금 xg을 넣으면 소금물은 (50 + x)g\n농도 y% = (소금의 양)/(소금물의 양) × 100\ny = 100x/(x + 50)",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-D",
+          "approach": "평행이동",
+          "answerText": "y = k/x의 그래프를\nx축 방향으로 2만큼, y축 방향으로 −1만큼 평행이동\n→ y = k/(x − 2) − 1\n(3, 0) 대입 → 0 = k − 1, k = 1\n따라서 y = 1/(x − 2) − 1",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "no": 5,
+      "name": "정민준",
+      "class": "1학년 3반 5번",
+      "level": "상",
+      "totalExpected": 10,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-B",
+          "approach": "다항식의 비",
+          "answerText": "분자와 분모가 모두 다항식인 식(유리식) f(x)로\n나타내어지는 함수 y = f(x)",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-E",
+          "approach": "거리·속력·시간",
+          "answerText": "<자전거 여행>\n집에서 호수 공원까지 30km를 시속 x km로 가면 걸리는 시간이 y시간\ny = 30/x\n속력이 2배가 되면 시간은 절반이 된다.",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-E",
+          "approach": "대칭점 대입",
+          "answerText": "두 점근선의 교점 (2, −1)\n그래프는 이 점에 대하여 대칭이므로\n(3, 0)과 대칭인 점 (1, −2)도 지난다.\ny = k/(x − 2) − 1에 (1, −2) 대입\n−2 = k/(−1) − 1 → k = 1\ny = 1/(x − 2) − 1",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "no": 6,
+      "name": "강수아",
+      "class": "1학년 3반 6번",
+      "level": "상",
+      "totalExpected": 10,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-D",
+          "approach": "다항식 ÷ 다항식",
+          "answerText": "다항식을 다항식으로 나눈 꼴의 식으로\n나타낼 수 있는 함수",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": true,
+          "note": "분모가 0이 아닌 다항식이라는 조건은 없으나 유리식의 뜻과 같음"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-B",
+          "approach": "평균 비용",
+          "answerText": "<동아리 티셔츠 제작>\n판 제작비 20000원 + 한 장 4000원\nx장 만들 때 한 장 평균 비용을 y원이라 하면\ny = (20000 + 4000x)/x",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-F",
+          "approach": "표기 실수(펜 샘플형)",
+          "answerText": "점근선 x = 2, y = −1\ny = k/(x−2) − 1 (k ≠ 0)로 둔다\n그래프가 점 (3, 0)을 지나므로 x = 3, y = 0 대입\n0 = k/(3−2) = −1\n0 = k − 1\n∴ k = 1\n∴ 유리함수식 1/(x−2) − 1",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": true,
+          "note": "과정 · k 모두 맞음. 대입 줄 「= −1」 등호 오기, 최종 답 「y =」 누락 — 표기 감점은 기준표에 없어 교사 판단"
+        }
+      ]
+    },
+    {
+      "no": 7,
+      "name": "조예준",
+      "class": "1학년 3반 7번",
+      "level": "중",
+      "totalExpected": 9,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-E",
+          "approach": "분수함수",
+          "answerText": "분수 모양으로 생긴 함수를 유리함수라고 한다.\n분수함수와 같다.",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-E",
+          "approach": "거리·속력·시간",
+          "answerText": "학교에서 집까지 3km를 걸어갈 때\n1시간에 x km씩 걸으면 걸리는 시간 y\ny = 3/x",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-A",
+          "approach": "표준형 k",
+          "answerText": "점근선이 x = 2, y = −1 이니까\ny = k/(x−2) − 1\n(3, 0) 넣으면 0 = k/1 − 1\nk = 1\ny = 1/(x−2) − 1",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "no": 8,
+      "name": "윤지우",
+      "class": "1학년 3반 8번",
+      "level": "중",
+      "totalExpected": 8,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-A",
+          "approach": "교과서 정의",
+          "answerText": "y = f(x)에서 f(x)가 유리식이면 유리함수",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": "짧지만 핵심 조건을 다 씀"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-F",
+          "approach": "넓이 일정 직사각형",
+          "answerText": "넓이가 24㎠인 직사각형의 가로를 x cm, 세로를 y cm라 하면\nxy = 24 이므로 y = 24/x",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-G",
+          "approach": "k 계산 실수",
+          "answerText": "점근선 x = 2, y = −1\ny = k/(x−2) − 1\n(3, 0) 대입\n0 = k/(3−2) − 1\nk = −1\ny = −1/(x−2) − 1",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "이항 부호 실수로 k = −1 → 그림(1·3사분면 쪽 곡선)과 다른 그래프"
+        }
+      ]
+    },
+    {
+      "no": 9,
+      "name": "장서준",
+      "class": "1학년 3반 9번",
+      "level": "중",
+      "totalExpected": 7,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-F",
+          "approach": "(ax+b)/(cx+d) 꼴",
+          "answerText": "y = (ax + b)/(cx + d) 처럼 생긴 함수 (c ≠ 0)",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-G",
+          "approach": "똑같이 나누기",
+          "answerText": "피자 한 판 8조각을 x명이 똑같이 나누어 먹을 때\n한 사람이 먹는 조각 수 y\ny = 8/x",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-H",
+          "approach": "식 세움까지",
+          "answerText": "그래프를 보면 점근선이 x = 2, y = −1\n따라서 y = k/(x − 2) − 1 (k ≠ 0)",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "k를 구하는 단계 없음"
+        }
+      ]
+    },
+    {
+      "no": 10,
+      "name": "임채원",
+      "class": "1학년 3반 10번",
+      "level": "중",
+      "totalExpected": 8,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-D",
+          "approach": "다항식 ÷ 다항식",
+          "answerText": "다항식 ÷ 다항식 꼴의 함수 (분모는 0이 아닌 다항식)",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-H",
+          "approach": "설명만",
+          "answerText": "같은 거리를 갈 때 속력이 빠를수록 걸리는 시간은 줄어든다.\n속력과 시간은 반비례하므로 유리함수이다.",
+          "expectedScore": 1,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "식 없음"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-A",
+          "approach": "표준형 k",
+          "answerText": "y = k/(x − 2) − 1\n점근선: x = 2, y = −1\n점 (3, 0)\n0 = k − 1 → k = 1\n답: y = 1/(x − 2) − 1",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "순서가 뒤섞였으나 필요한 요소를 모두 씀"
+        }
+      ]
+    },
+    {
+      "no": 11,
+      "name": "한유진",
+      "class": "1학년 3반 11번",
+      "level": "중",
+      "totalExpected": 5,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-E",
+          "approach": "분수함수",
+          "answerText": "분수함수",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-I",
+          "approach": "식 오류",
+          "answerText": "거리 60km를 시속 x km로 가는 데 걸리는 시간을 y라 하면\ny = 60x",
+          "expectedScore": 1,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "상황 설명은 맞으나 식을 곱으로 씀(다항함수)"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-I",
+          "approach": "대입 좌표 뒤바꿈",
+          "answerText": "점근선 x = 2, y = −1\ny = k/(x − 2) − 1\n(3, 0)이니까 x = 0, y = 3을 넣으면\n3 = k/(0 − 2) − 1\nk = −8\ny = −8/(x − 2) − 1",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "점의 x, y 좌표를 뒤바꿔 대입"
+        }
+      ]
+    },
+    {
+      "no": 12,
+      "name": "오시우",
+      "class": "1학년 3반 12번",
+      "level": "중",
+      "totalExpected": 8,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-A",
+          "approach": "교과서 정의",
+          "answerText": "함수 y=f(x)에서 f(x)가 x에 대한 유리식일 때 유리함수라고 한다",
+          "expectedScore": 2,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-A",
+          "approach": "소금물 농도(교사 예시형)",
+          "answerText": "소금 xg을 물 200g에 넣었을 때 소금물의 농도 y%\ny = x/(x + 200) × 100",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-G",
+          "approach": "k 계산 실수",
+          "answerText": "점근선 x = 2, y = −1\ny = k/(x−2) − 1\n(3, 0) 대입: 0 = k/(3−2) − 1\n0 = k − 1, k = 1\ny = 1/(x−2) + 1",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": true,
+          "note": "k는 맞게 구했으나 최종 식을 옮겨 쓰며 −1을 +1로 씀 — 5점 / 3점 교사 판단"
+        }
+      ]
+    },
+    {
+      "no": 13,
+      "name": "서다인",
+      "class": "1학년 3반 13번",
+      "level": "중",
+      "totalExpected": 7,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-G",
+          "approach": "분모에 x",
+          "answerText": "분모에 x가 들어 있는 함수",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": "다항함수가 빠지는 정의"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-F",
+          "approach": "넓이 일정 직사각형",
+          "answerText": "넓이가 36㎡인 직사각형 텃밭의 가로 x m, 세로 y m\ny = 36/x",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-H",
+          "approach": "식 세움까지",
+          "answerText": "x = 2, y = −1 이 점근선\ny = k/(x−2) − 1\n(3, 0)을 지난다\n0 = k/(3−2) − 1\n…",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "대입 식까지 쓰고 계산을 마치지 못함"
+        }
+      ]
+    },
+    {
+      "no": 14,
+      "name": "신현우",
+      "class": "1학년 3반 14번",
+      "level": "중",
+      "totalExpected": 7,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-F",
+          "approach": "(ax+b)/(cx+d) 꼴",
+          "answerText": "y = (ax+b)/(cx+d) 의 꼴로 나타낸 함수",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-H",
+          "approach": "설명만",
+          "answerText": "물에 소금을 넣을수록 농도가 진해지지만 100%는 넘지 않는다.\n이런 관계가 유리함수이다.",
+          "expectedScore": 1,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "식 없음"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-B",
+          "approach": "분자 미지수형",
+          "answerText": "분모가 x − 2\ny = (ax + b)/(x − 2)\n가로 점근선 y = a = −1\n(3, 0): 0 = (−3 + b)/(3 − 2) → b = 3\ny = (−x + 3)/(x − 2)",
+          "expectedScore": 5,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "같은 함수의 다른 표현"
+        }
+      ]
+    },
+    {
+      "no": 15,
+      "name": "권나연",
+      "class": "1학년 3반 15번",
+      "level": "하",
+      "totalExpected": 3,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-G",
+          "approach": "분모에 x",
+          "answerText": "x가 분모에 있는 함수",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-J",
+          "approach": "식만",
+          "answerText": "y = 1/x + 3",
+          "expectedScore": 1,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "실생활 설명 없음"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-J",
+          "approach": "식만",
+          "answerText": "y = k/(x − 2) − 1",
+          "expectedScore": 1,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "과정 · 점근선 설명 없이 식만"
+        }
+      ]
+    },
+    {
+      "no": 16,
+      "name": "황준서",
+      "class": "1학년 3반 16번",
+      "level": "하",
+      "totalExpected": 0,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-H",
+          "approach": "유리수 오개념",
+          "answerText": "x가 유리수일 때 정의되는 함수",
+          "expectedScore": 0,
+          "maxScore": 2,
+          "borderline": false,
+          "note": "유리수와 유리식을 혼동"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-K",
+          "approach": "다항함수 예",
+          "answerText": "택시 기본요금 4800원, 1km마다 1000원씩 올라간다\ny = 1000x + 4800",
+          "expectedScore": 0,
+          "maxScore": 3,
+          "borderline": true,
+          "note": "실생활 설명 · 식은 썼으나 다항함수 — 「다항함수가 아닌」 조건 미충족. 기준표에 없는 경우"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-K",
+          "approach": "점근선 부호 오독",
+          "answerText": "점근선 x = −2, y = 1\ny = k/(x + 2) + 1\n(3, 0) 대입 0 = k/5 + 1\nk = −5\ny = −5/(x + 2) + 1",
+          "expectedScore": 0,
+          "maxScore": 5,
+          "borderline": true,
+          "note": "점근선 부호를 반대로 읽음. 풀이 방법은 맞음 — 부분 점수 여부 교사 판단"
+        }
+      ]
+    },
+    {
+      "no": 17,
+      "name": "안소율",
+      "class": "1학년 3반 17번",
+      "level": "하",
+      "totalExpected": 5,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-E",
+          "approach": "분수함수",
+          "answerText": "분수로 된 함수",
+          "expectedScore": 1,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-G",
+          "approach": "똑같이 나누기",
+          "answerText": "케이크 1개를 x명이 나눠 먹으면 한 명이 먹는 양 y\ny = 1/x",
+          "expectedScore": 3,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-L",
+          "approach": "답만",
+          "answerText": "y = 1/(x − 2) − 1",
+          "expectedScore": 1,
+          "maxScore": 5,
+          "borderline": true,
+          "note": "과정 없이 답만 — 기준표에 해당 행 없음(답만 맞은 경우 기준 필요)"
+        }
+      ]
+    },
+    {
+      "no": 18,
+      "name": "송태윤",
+      "class": "1학년 3반 18번",
+      "level": "하",
+      "totalExpected": 0,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-I",
+          "approach": "성질을 정의로",
+          "answerText": "그래프가 쌍곡선 모양인 함수",
+          "expectedScore": 0,
+          "maxScore": 2,
+          "borderline": false,
+          "note": "성질을 정의로 씀"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-L",
+          "approach": "무응답",
+          "answerText": "잘 모르겠다",
+          "expectedScore": 0,
+          "maxScore": 3,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-M",
+          "approach": "일반형 포기",
+          "answerText": "y = (ax + b)/(cx + d)\na, b, c, d를 구해야 한다\n(3, 0) → 0 = (3a + b)/(3c + d)",
+          "expectedScore": 0,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "미지수 4개로 시작해 진행 못함"
+        }
+      ]
+    },
+    {
+      "no": 19,
+      "name": "류하린",
+      "class": "1학년 3반 19번",
+      "level": "하",
+      "totalExpected": 1,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-J",
+          "approach": "무응답",
+          "answerText": "",
+          "expectedScore": 0,
+          "maxScore": 2,
+          "borderline": false,
+          "note": "무응답"
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-J",
+          "approach": "식만",
+          "answerText": "y = 2/(x − 1)",
+          "expectedScore": 1,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "식만"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-N",
+          "approach": "무응답",
+          "answerText": "",
+          "expectedScore": 0,
+          "maxScore": 5,
+          "borderline": false,
+          "note": "무응답"
+        }
+      ]
+    },
+    {
+      "no": 20,
+      "name": "홍지안",
+      "class": "1학년 3반 20번",
+      "level": "하",
+      "totalExpected": 4,
+      "answers": [
+        {
+          "question": 1,
+          "patternId": "Q1-H",
+          "approach": "유리수 오개념",
+          "answerText": "유리수로 이루어진 함수",
+          "expectedScore": 0,
+          "maxScore": 2,
+          "borderline": false,
+          "note": ""
+        },
+        {
+          "question": 2,
+          "patternId": "Q2-I",
+          "approach": "식 오류",
+          "answerText": "물 100g에 소금 xg을 넣은 소금물의 농도 y\ny = x/100",
+          "expectedScore": 1,
+          "maxScore": 3,
+          "borderline": false,
+          "note": "소금물 전체 무게 대신 물 무게로 나눔(다항함수)"
+        },
+        {
+          "question": 3,
+          "patternId": "Q3-H",
+          "approach": "식 세움까지",
+          "answerText": "점근선은 x = 2, y = −1\ny = k/(x − 2) − 1",
+          "expectedScore": 3,
+          "maxScore": 5,
+          "borderline": false,
+          "note": ""
+        }
+      ]
+    }
+  ]
+}
