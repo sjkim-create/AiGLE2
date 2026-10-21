@@ -178,27 +178,6 @@ const WorksheetPreviewModal = ({
 
           {/* 우: 설정 */}
           <div style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 4 }}>
-            {/* [v4.1] 채점 방식 — 스캔 채점용(기본) / 스마트펜 채점용 */}
-            {gradingModeSelect && (
-              <div role="radiogroup" aria-label="채점 방식">
-                <span style={fieldLabel}>채점 방식</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {PRINT_MODES.map((m) => {
-                    const on = printMode === m.key;
-                    return (
-                      <label key={m.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                        border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white' }}>
-                        <input type="radio" name="print-mode" value={m.key} checked={on} onChange={() => setPrintMode(m.key)} style={{ marginTop: 3, accentColor: '#2A75F3' }} />
-                        <span>
-                          <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{m.label}</span>
-                          <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.5 }}>{m.desc}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
             {mode.ncode && (
             <div>
               <label style={fieldLabel}>
@@ -235,6 +214,27 @@ const WorksheetPreviewModal = ({
                 <option value={copies}>{copies}</option>
               </select>
             </div>
+            {/* [v4.1] 채점 방식 — 스캔 채점용(기본) / 스마트펜 채점용 · 매수 아래 */}
+            {gradingModeSelect && (
+              <div role="radiogroup" aria-label="채점 방식">
+                <span style={fieldLabel}>채점 방식</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {PRINT_MODES.map((m) => {
+                    const on = printMode === m.key;
+                    return (
+                      <label key={m.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                        border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white' }}>
+                        <input type="radio" name="print-mode" value={m.key} checked={on} onChange={() => setPrintMode(m.key)} style={{ marginTop: 3, accentColor: '#2A75F3' }} />
+                        <span>
+                          <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{m.label}</span>
+                          <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.5 }}>{m.desc}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
