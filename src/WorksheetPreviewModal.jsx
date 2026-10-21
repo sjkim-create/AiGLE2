@@ -178,15 +178,14 @@ const WorksheetPreviewModal = ({
 
           {/* 우: 설정 */}
           <div style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 4 }}>
-            {mode.ncode && (
+            {/* 프린터명 — 항상 보인다. 안내만 채점 방식에 맞춘다 */}
             <div>
               <label style={fieldLabel}>
                 프린터명
-                <span title="Ncode Print Doctor가 인식한 프린터입니다. 비워 두면 기본 프린터로 인쇄합니다." style={{ marginLeft: 4, width: 14, height: 14, borderRadius: '50%', border: '1px solid #94A3B8', color: '#64748B', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>i</span>
+                <span title={mode.ncode ? 'Ncode Print Doctor가 인식한 프린터입니다. 비워 두면 기본 프린터로 인쇄합니다.' : '일반 프린터로 인쇄합니다. 비워 두면 기본 프린터로 인쇄합니다.'} style={{ marginLeft: 4, width: 14, height: 14, borderRadius: '50%', border: '1px solid #94A3B8', color: '#64748B', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help' }}>i</span>
               </label>
               <input value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="" style={field} />
             </div>
-            )}
 
             <div>
               <label style={fieldLabel}>그룹</label>
