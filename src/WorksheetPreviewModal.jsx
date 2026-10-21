@@ -11,6 +11,9 @@
  *     · 선 있는 답안 (1cm)  — 신규. 한 장에 더 많은 줄
  *     · 선 없는 답안
  *   인쇄는 Ncode Print Doctor 설치 시에만 가능(미설치면 안내 모달). PDF 다운받기는 드라이버 없이 가능.
+ *   [v4.1] 채점 방식 선택(gradingModeSelect) — 스캔 채점용(기본) / 스마트펜 채점용
+ *     · 스캔 채점용: Ncode 없이 일반 인쇄(Print Doctor 불필요) · 연필로 써도 된다 · 스캔해서 채점
+ *     · 스마트펜 채점용: Ncode를 함께 인쇄(Print Doctor 필요) · 스마트펜으로 쓴다 · 펜 채점이 안 되면 스캔 채점도 된다
  *   Print Doctor 설치 여부: localStorage['ncodePrintDoctor:downloaded']
  */
 import React, { useState, useMemo } from 'react';
@@ -51,12 +54,22 @@ export const sheetTypeLabel = (key) => {
   return t.cm ? `${t.label} (${t.cm}cm)` : t.label;
 };
 
+/* [v4.1] 채점 방식 — 인쇄에 Ncode를 넣을지가 여기서 정해진다 */
+export const PRINT_MODES = [
+  { key: 'scan', label: '스캔 채점용', desc: 'Ncode 없이 일반 인쇄 · 연필 사용 가능', ncode: false },
+  { key: 'pen', label: '스마트펜 채점용', desc: 'Ncode 포함 인쇄 · 스마트펜 사용 · 펜 채점이 안 되면 스캔 채점 가능', ncode: true },
+];
+export const printModeLabel = (key) => (PRINT_MODES.find((m) => m.key === key) || PRINT_MODES[0]).label;
+
 const WorksheetPreviewModal = ({
   open, onClose, schoolName = '공주 고등학교', subject = '국어', taskTitle = '토론의 논증 구성하기',
   groups = ['그룹1', '그룹2'], totalPages = 1, taskCode = '00000594',
   groupStudentCounts = {}, // { 그룹명: 배포할 학생 수 } — 매수는 여기서 정해지고 교사가 고치지 않는다
   onPrint,
+  gradingModeSelect = false, // [v4.1] 채점 방식 선택 표시 — 서·논술형 직접 등록에서 켠다
 }) => {
+  const [printMode, setPrintMode] = useState('scan'); // [v4.1] 기본 = 스캔 채점용
+  const mode = gradingModeSelect ? (PRINT_MODES.find((m) => m.key === printMode) || PRINT_MODES[0]) : PRINT_MODES[1]; // 선택이 없으면 舊 동작(Ncode 인쇄)
   // [v3.75] onPrint(groupLabel) — 인쇄·PDF 다운로드가 실제 시작될 때 호출. 과제 등록 화면이 그룹별 출력 완료를 기록한다
   const [sheetType, setSheetType] = useState('line14'); // [v4.0] 舊 lineTab('with'|'without') 대체
   const [activeGroup, setActiveGroup] = useState(groups[0] || '그룹1');
@@ -71,11 +84,13 @@ const WorksheetPreviewModal = ({
 
   if (!open) return null;
 
+  const modeTag = gradingModeSelect ? ` · ${mode.label}` : '';
   const handlePrint = () => {
-    if (isPrintDoctorInstalled()) {
-      // mock — 실제 서비스에선 Ncode Print Doctor 드라이버 경유
-      if (window.showToast) window.showToast(`「${activeGroup}」 ${sheetTypeLabel(sheetType)} ${copies}부 인쇄가 시작되었습니다.`, 'success');
-      onPrint && onPrint(activeGroup);
+    // [v4.1] 스캔 채점용은 Ncode가 없어 일반 인쇄 — Print Doctor 없이 바로 인쇄
+    if (!mode.ncode || isPrintDoctorInstalled()) {
+      // mock — 실제 서비스에선 스마트펜 채점용은 Ncode Print Doctor 드라이버 경유
+      if (window.showToast) window.showToast(`「${activeGroup}」 ${sheetTypeLabel(sheetType)}${modeTag} ${copies}부 인쇄가 시작되었습니다.`, 'success');
+      onPrint && onPrint(activeGroup, mode.key);
       setTimeout(() => window.print(), 200);
     } else {
       setShowInstallGuide(true);
@@ -84,8 +99,8 @@ const WorksheetPreviewModal = ({
 
   /* PDF 다운받기 — 드라이버 없이 가능. 출력 기록은 인쇄와 동일하게 남긴다 */
   const handleDownloadPdf = () => {
-    if (window.showToast) window.showToast(`「${activeGroup}」 ${sheetTypeLabel(sheetType)} ${copies}부 PDF를 내려받았습니다.`, 'success');
-    onPrint && onPrint(activeGroup);
+    if (window.showToast) window.showToast(`「${activeGroup}」 ${sheetTypeLabel(sheetType)}${modeTag} ${copies}부 PDF를 내려받았습니다.`, 'success');
+    onPrint && onPrint(activeGroup, mode.key);
   };
 
   const fieldLabel = { fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E293B', marginBottom: 6, display: 'block' };
@@ -106,12 +121,20 @@ const WorksheetPreviewModal = ({
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 24px 8px', display: 'flex', gap: 24, alignItems: 'flex-start' }}>
           {/* 좌: A4 미리보기 */}
           <div style={{ flex: '1 1 0', minWidth: 0, background: '#F8FAFC', borderRadius: 12, padding: 16 }}>
-            <div style={{ position: 'relative', background: 'white', border: '1px solid #E2E8F0', borderRadius: 4, padding: '18px 20px', minHeight: 620 }}>
+            <div style={{ position: 'relative', background: 'white', border: '1px solid #E2E8F0', borderRadius: 4, padding: '18px 20px', minHeight: 620,
+              ...(mode.ncode ? { backgroundImage: 'radial-gradient(rgba(100,116,139,0.28) 0.6px, transparent 0.8px)', backgroundSize: '5px 5px' } : {}) }}>
+              {/* [v4.1] 인쇄 방식 표시 — 스마트펜 채점용은 Ncode 점 무늬가 함께 인쇄된다 */}
+              {gradingModeSelect && (
+                <div style={{ position: 'absolute', top: 10, left: 12, fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                  background: mode.ncode ? '#EEF2FF' : '#F1F5F9', color: mode.ncode ? '#4338CA' : '#475569', border: `1px solid ${mode.ncode ? '#C7D2FE' : '#E2E8F0'}` }}>
+                  {mode.ncode ? 'Ncode 포함' : '일반 인쇄'}
+                </div>
+              )}
               <div style={{ position: 'absolute', top: 10, right: 12, background: '#E2E8F0', color: '#475569', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, padding: '2px 8px', borderRadius: 999 }}>
                 1/{totalPages}
               </div>
 
-              <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, letterSpacing: '-0.02em', color: '#1E3A8A', marginBottom: 10 }}>QiGLE</div>
+              <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, letterSpacing: '-0.02em', color: '#1E3A8A', marginBottom: 10, marginTop: gradingModeSelect ? 18 : 0 }}>QiGLE</div>
 
               {/* 정보 테이블 */}
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-xs)', marginBottom: 12 }}>
@@ -155,6 +178,28 @@ const WorksheetPreviewModal = ({
 
           {/* 우: 설정 */}
           <div style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 4 }}>
+            {/* [v4.1] 채점 방식 — 스캔 채점용(기본) / 스마트펜 채점용 */}
+            {gradingModeSelect && (
+              <div role="radiogroup" aria-label="채점 방식">
+                <span style={fieldLabel}>채점 방식</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {PRINT_MODES.map((m) => {
+                    const on = printMode === m.key;
+                    return (
+                      <label key={m.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                        border: `1.5px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#EFF6FF' : 'white' }}>
+                        <input type="radio" name="print-mode" value={m.key} checked={on} onChange={() => setPrintMode(m.key)} style={{ marginTop: 3, accentColor: '#2A75F3' }} />
+                        <span>
+                          <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#1E293B' }}>{m.label}</span>
+                          <span style={{ display: 'block', marginTop: 2, fontSize: 'var(--neo-font-size-xs)', color: '#64748B', lineHeight: 1.5 }}>{m.desc}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {mode.ncode && (
             <div>
               <label style={fieldLabel}>
                 프린터명
@@ -162,6 +207,7 @@ const WorksheetPreviewModal = ({
               </label>
               <input value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="" style={field} />
             </div>
+            )}
 
             <div>
               <label style={fieldLabel}>그룹</label>
@@ -198,7 +244,7 @@ const WorksheetPreviewModal = ({
             style={{ padding: '10px 22px', borderRadius: 8, border: '1px solid #2A75F3', background: 'white', color: '#2A75F3', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
             PDF 다운받기
           </button>
-          <button onClick={handlePrint} title={`「${activeGroup}」 ${sheetTypeLabel(sheetType)} ${copies}부 인쇄`}
+          <button onClick={handlePrint} title={`「${activeGroup}」 ${sheetTypeLabel(sheetType)}${modeTag} ${copies}부 인쇄`}
             style={{ padding: '10px 22px', borderRadius: 8, border: 'none', background: '#2A75F3', color: 'white', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
             🖨 인쇄하기
           </button>

@@ -657,10 +657,12 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
   //   학생 배포 ⇄ 취소는 학생 노출 여부만 바꾼다 (미채점 등록은 유지).
   // [v3.80] 舊 번호표 인쇄 한도(117명) 폐기 — 번호표를 쓰지 않는다
   // 출력 모달에서 인쇄(다운로드)가 시작되면 해당 그룹을 출력 완료로 기록 → 미채점 등록 + 학생 배포 활성화
-  const markGroupPrinted = (label) => setGroupList((prev) => prev.map((g) => {
-    if (g.label !== label || g.printed) return g;
+  // [TSK-05 v4.1] printMode — 'scan'(스캔 채점용) | 'pen'(스마트펜 채점용). 마지막으로 출력한 방식을 그룹에 남긴다
+  const markGroupPrinted = (label, printMode) => setGroupList((prev) => prev.map((g) => {
+    if (g.label !== label) return g;
+    if (g.printed) return printMode ? { ...g, printMode } : g;
     toast(`「${g.label}」 답안지 출력 완료 — 채점 관리 미채점에 등록되었고 학생 배포가 가능해졌습니다.`);
-    return { ...g, printed: true };
+    return { ...g, printed: true, printMode };
   }));
   // 학생 배포 ⇄ 취소
   const toggleGroupStudent = (gid) => setGroupList((prev) => prev.map((g) => {
@@ -1686,7 +1688,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                       <span style={{ fontWeight: 700, color: '#1E293B', fontSize: 'var(--neo-font-size-base)' }}>{g.label}</span>
                       <span style={{ color: '#94A3B8', fontSize: 'var(--neo-font-size-sm)' }}>{g.studentCount}명</span>
                       {/* [v3.75] 번호표 배포 배지·버튼 폐기 → 출력 완료 배지 + 학생 배포(출력 완료 그룹만 활성) */}
-                      {g.printed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>🖨 답안지 출력 완료 · 미채점 등록</span>}
+                      {g.printed && !g.studentDeployed && <span style={badge('#FEF3C7', '#B45309')}>🖨 답안지 출력 완료{g.printMode ? ` (${g.printMode === 'pen' ? '스마트펜 채점용' : '스캔 채점용'})` : ''} · 미채점 등록</span>}
                       {!g.printed && <span style={badge('#F1F5F9', '#64748B')}>출력 전</span>}
                       {g.studentDeployed && <span style={badge('#DBEAFE', '#1D4ED8')}>🚀 학생 배포</span>}
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -1828,6 +1830,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
         groups={groupList.map((g) => g.label)}
         groupStudentCounts={Object.fromEntries(groupList.map((g) => [g.label, g.studentCount]))}
         onPrint={markGroupPrinted}
+        gradingModeSelect // [TSK-05 v4.1] 서·논술형 직접 등록 — 스캔 채점용 / 스마트펜 채점용 선택
       />
     </div>
   );
