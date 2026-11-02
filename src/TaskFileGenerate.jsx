@@ -6,7 +6,7 @@
  * 상용 「JSON 가져오기」용 JSON 파일로 내려받을 수 있다 (lib/assignmentJson).
  * 변환 로직: lib/taskFromFile.js · 과제 객체: lib/taskSchema.buildFileGenerateTask
  */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { generateTaskFromFile, isFileGenerateAvailable, GenerateError, STEPS, MAX_PAGES, MAX_FILE_MB } from './lib/taskFromFile';
 import { buildFileGenerateTask } from './lib/taskSchema';
 import { downloadAssignmentJson } from './lib/assignmentJson';
@@ -47,7 +47,8 @@ const btn = (primary) => ({
 });
 
 // onEditTask — 만든 과제를 직접 입력 2 화면으로 열어 고친다 (그림 범위 조정 포함)
-const TaskFileGenerate = ({ onBack, onAdd, embedded = false, onEditTask }) => {
+// initialFile — [2.4] 과제 등록 › 스마트 등록에서 이미 올린 자료. 있으면 바로 분석한다
+const TaskFileGenerate = ({ onBack, onAdd, embedded = false, onEditTask, initialFile = null }) => {
   const [phase, setPhase] = useState('pick'); // pick | loading | done | error
   const [file, setFile] = useState(null);
   const [stepKey, setStepKey] = useState(null);
@@ -71,6 +72,8 @@ const TaskFileGenerate = ({ onBack, onAdd, embedded = false, onEditTask }) => {
       setPhase('error');
     }
   };
+
+  useEffect(() => { if (initialFile) run(initialFile); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onPick = (e) => { const f = e.target.files?.[0]; e.target.value = ''; run(f); };
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); run(e.dataTransfer.files?.[0]); };

@@ -12,7 +12,7 @@ export const REGISTER_GROUPS = [
     ] },
     { title: '✅ 정답형 과제', sub: '객관식·진위·단답 등 · 한 장 시험지 · 정답 대조 채점', color: '#1D4ED8', hover: '#EFF6FF', border: '#BFDBFE', items: [
         { mode: 'answer-direct', icon: '✍️', label: '정답형 직접 등록', desc: '문항을 직접 작성하거나 문제 은행·문제집에서 골라 시험지를 만듭니다.' },
-        { mode: 'answer-smart', icon: '✨', label: '정답형 스마트 등록', desc: '시험지·교재를 올리면 AI가 문항 분류·정답·배점·과제명까지 채웁니다. 확인만 하면 됩니다.' },
+        { mode: 'answer-smart', icon: '✨', label: '정답형 스마트 등록', desc: '시험지·교재를 올리면 AI가 문항 분류·정답·배점까지 채워 문제집으로 묶습니다.' },
     ] },
 ];
 

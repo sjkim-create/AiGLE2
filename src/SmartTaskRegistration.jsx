@@ -32,7 +32,7 @@ const KINDS = {
 
 // onGoItemBank() — 정답형 과제(문제 은행 목록)로
 // onStartAnswer — 정답형을 고르면 정답형 과제 만들기(TSK-15) 스마트로 바로 (자료 → 문항 → 배치 → 저장, 과제 관리 안)
-const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, onEditTask, initialKind = null }) => {
+const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, onEditTask, initialKind = null, initialFile = null }) => {
   const [kind, setKind] = useState(initialKind); // null | 'essay' | 'answer'
 
   return (
@@ -80,7 +80,7 @@ const SmartTaskRegistration = ({ onBack, onAdd, onGoItemBank, onStartAnswer, onE
               </p>
             </>
           )}
-          {kind === 'essay' && <TaskFileGenerate embedded onBack={onBack} onAdd={onAdd} onEditTask={onEditTask} />}
+          {kind === 'essay' && <TaskFileGenerate embedded initialFile={initialFile} onBack={onBack} onAdd={onAdd} onEditTask={onEditTask} />}
           {kind === 'answer' && (
             <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 16, padding: '24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, margin: 0 }}>정답형 과제는 문제 은행의 문항으로 만듭니다</h2>

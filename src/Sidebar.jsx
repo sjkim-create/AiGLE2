@@ -131,7 +131,7 @@ const Sidebar = ({
                                     className={`nav-sub-item ${activeSubMenu === '교사관리(학교모드)' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('교사관리(학교모드)')}
                                 >
-                                    ⊙ {appVersion === '2.4' && appRole === 'school' ? '교사 관리' : '교사관리(학교모드)'}
+                                    ⊙ {appRole === 'school' ? '교사 관리' : '교사관리(학교모드)'}
                                 </div>
                                 )}
                                 {showSub('회원 관리', '학교 관리') && (
@@ -182,11 +182,20 @@ const Sidebar = ({
                                 </div>
                                 )}
                                 {/* [TSK-15 v1.4] 형태별 과제 목록 — 등록은 목록의 [+ 새 과제 등록]에서 직접 등록 / 스마트 등록 */}
-                                {FORM_LISTS.map((f) => {
+                                {FORM_LISTS.filter((f) => showSub('과제 관리', f.sub)).map((f) => {
                                     const isAnswer = f.form === 'answer';
                                     const fromHere = onRegisterScreen && !historyActive && (isAnswer ? isAnswerSub(listOrigin) : listOrigin === f.sub);
                                     // 정답형 과제를 고르면 하위 메뉴(문항 · 문제집)가 열리고, 다른 메뉴를 고르면 닫힌다 (등록 중에는 열린 채로)
                                     const answerOpen = isAnswer && (isAnswerSub(activeSubMenu) || fromHere);
+                                    // [2.4] 「정답형 과제」 제목 없이 하위 메뉴를 과제 관리 바로 아래에 (2026-10-29)
+                                    if (isAnswer && appVersion === '2.4') {
+                                        return ANSWER_SUBS.map((a) => (
+                                            <div key={a.sub} className={`nav-sub-item ${activeSubMenu === a.sub || (fromHere && a.sub === listOrigin) ? 'active' : ''}`}
+                                                onClick={() => setActiveSubMenu(a.sub)}>
+                                                ⊙ {a.label}
+                                            </div>
+                                        ));
+                                    }
                                     return (
                                         <React.Fragment key={f.sub}>
                                             <div className={`nav-sub-item ${(!isAnswer && activeSubMenu === f.sub) || fromHere ? 'active' : ''}`}
@@ -209,12 +218,23 @@ const Sidebar = ({
                                         </React.Fragment>
                                     );
                                 })}
+                                {showSub('과제 관리', '공유된 과제') && (
                                 <div
                                     className={`nav-sub-item ${activeSubMenu === '공유된 과제' ? 'active' : ''}`}
                                     onClick={() => setActiveSubMenu('공유된 과제')}
                                 >
                                     ⊙ 공유된 과제 <span className="n-badge" style={{ background: 'var(--success)' }}>N</span>
                                 </div>
+                                )}
+                                {/* [2.4] 교육청 문제 은행 — 교육청(시스템 관리자)이 등록한 과제를 골라 복제 (TSK-16) */}
+                                {showSub('과제 관리', '교육청 문제 은행') && (
+                                <div
+                                    className={`nav-sub-item ${activeSubMenu === '교육청 문제 은행' ? 'active' : ''}`}
+                                    onClick={() => setActiveSubMenu('교육청 문제 은행')}
+                                >
+                                    ⊙ 교육청 문제 은행
+                                </div>
+                                )}
                                 {/* 이전 메뉴 (history) — 정리 전 등록 메뉴. 같은 화면으로 연결 */}
                                 {onRegister && showSub('과제 관리', '이전 메뉴') && (
                                     <>
@@ -270,6 +290,12 @@ const Sidebar = ({
                             </div>
                         )}
                         </>)}
+                        {/* [2.4] 교육청 문제 은행 — 시스템 관리자가 과제를 등록한다 (TSK-16) */}
+                        {showMenu('교육청 문제 은행') && (
+                        <div className={`nav-item ${activeMenu === '교육청 문제 은행' ? 'active' : ''}`} onClick={() => handleMenuChange('교육청 문제 은행')}>
+                            🏛️ 교육청 문제 은행
+                        </div>
+                        )}
                         {/* [BRD-16] 게시판 — 공지사항 / 장애신고(시스템 관리자) */}
                         {showMenu('게시판') && (<>
                         <div

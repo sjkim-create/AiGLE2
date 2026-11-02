@@ -3,6 +3,7 @@ import './index.css';
 import TaskFileUploadWizard from './TaskFileUploadWizard';
 import TaskDirectInputWizard from './TaskDirectInputWizard';
 import SmartTaskRegistration from './SmartTaskRegistration';
+import TaskRegisterEntryV24 from './TaskRegisterEntryV24';
 import { REGISTER_GROUPS } from './registerMenu';
 import { taskToDirectInputData } from './lib/taskSchema';
 import AnswerTaskWizard from './AnswerTaskWizard';
@@ -11,7 +12,10 @@ import NumberTagPreviewModal from './NumberTagPreviewModal';
 
 // initialEditTask — 과제 상세의 [✏️ 직접 입력 2에서 수정]으로 들어오면 그 과제를 채워서 연다
 // onModeChange — 왼쪽 메뉴 강조를 지금 화면에 맞춘다 (스마트 등록 → 직접 등록 화면에서 수정 등)
-const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank, initialEditTask = null, onModeChange }) => {
+const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, onLeaveGuardChange, onGoItemBank, onOpenWorkbook, initialEditTask = null, onModeChange, answerEnabled = true, unifiedEntry = false, eduMode = null }) => {
+  // eduMode — [2.4] 교육청 문제 은행(관리자) 등록 { onAnswerSmart(result) } — 정답형은 교사 문제 은행에 저장하지 않는다 (TSK-16)
+  // [2.4] 과제 등록 입구 — 직접/스마트 먼저, 형태는 그 다음 (TSK-14 §5A). 스마트에서 올린 자료는 형태별 등록 화면이 이어 받는다
+  const [smartFile, setSmartFile] = useState(null);
   const [editData, setEditData] = useState(() => (initialEditTask ? taskToDirectInputData(initialEditTask) : null));
   // [v3.5] 등록 방식 — 'select' (진입 직후 선택 화면) / 'direct' (직접 입력) / 'upload' (파일 업로드 Wizard) / 'generate' (✨ 스마트 과제 등록 — TSK-14) / 'generate-answer' (스마트 과제 등록을 정답형으로 바로 시작 — 문제 은행에서 진입)
   // [v3.6] initialMode prop으로 TaskManagement 슬라이딩 패널에서 선택된 모드로 바로 진입 가능
@@ -305,6 +309,16 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
     width: 1, height: 18, background: '#E2E8F0', margin: '0 2px',
   };
 
+  // 'entry-direct' · 'entry-smart' — 목록의 [+ 새 과제 등록 ▾]에서 직접/스마트를 이미 고르고 들어온 경우 (방식 고르기 화면 없이)
+  if ((registrationMode === 'select' && unifiedEntry) || registrationMode === 'entry-direct' || registrationMode === 'entry-smart') {
+    return <TaskRegisterEntryV24 onBack={onBack}
+      initialPhase={{ 'entry-direct': 'kind', 'entry-smart': 'upload' }[registrationMode] || 'pick'}
+      onDirect={(kind) => setRegistrationMode(kind === 'essay' ? 'direct2' : 'answer-direct')}
+      onSmart={(kind, file) => { setSmartFile(file); setRegistrationMode(kind === 'essay' ? 'generate' : 'answer-smart'); }}
+      renderDirect={answerEnabled ? (extra, onGuard) => <AnswerTaskWizard initialSource="direct" headerExtra={extra} bankSave={!eduMode} onSmartResult={eduMode?.onAnswerSmart || null} onBack={onBack} onAdd={onAdd}
+        onLeaveGuardChange={(g) => { onGuard(g); onLeaveGuardChange && onLeaveGuardChange(g); }} onOpenWorkbook={onOpenWorkbook} /> : null} />;
+  }
+
   // [v3.5] 등록 방식 선택 화면 (TSK-02 §3.5.0)
   if (registrationMode === 'select') {
     return (
@@ -319,7 +333,8 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
             <p style={{ fontSize: 'var(--neo-font-size-base)', color: '#64748B', textAlign: 'center', marginBottom: '28px' }}>
               직접 등록은 화면에서 하나씩 작성하고, 스마트 등록은 자료(PDF·이미지)를 올리면 AI가 모든 단계를 채웁니다.
             </p>
-            {REGISTER_GROUPS.map((g) => (
+            {/* 정답형 과제가 없는 버전(2.3)은 서·논술형만 */}
+            {REGISTER_GROUPS.filter((g, i) => answerEnabled || i === 0).map((g) => (
               <div key={g.title} style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 900, color: g.color, marginBottom: 8 }}>{g.title} <span style={{ color: '#94A3B8', fontWeight: 600, fontSize: 'var(--neo-font-size-sm)' }}>{g.sub}</span></div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
@@ -361,7 +376,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
   // ✅ 정답형 과제 (TSK-15) — 직접 입력 / ✨ 스마트(자료) / 문제 은행에서 고르기
   if (registrationMode === 'answer-direct' || registrationMode === 'answer-smart' || registrationMode === 'answer-bank') {
     const src = { 'answer-direct': 'direct', 'answer-smart': 'file', 'answer-bank': 'bank' }[registrationMode];
-    return <AnswerTaskWizard initialSource={src} onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
+    return <AnswerTaskWizard initialSource={src} initialFile={registrationMode === 'answer-smart' ? smartFile : null} bankSave={!eduMode} onSmartResult={eduMode?.onAnswerSmart || null} onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} onOpenWorkbook={onOpenWorkbook} />;
   }
 
   // ✨ 스마트 과제 등록 (TSK-14) — 서·논술형(바로 과제) / 정답형(→ TSK-15 스마트)
@@ -369,6 +384,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
   if (registrationMode === 'generate' || registrationMode === 'generate-answer' || registrationMode === 'generate-pick') {
     // 등록 메뉴가 형태별로 나뉘어 있으므로 서·논술 그룹의 스마트 과제 등록은 서·논술형으로 바로 시작
     return <SmartTaskRegistration initialKind={registrationMode === 'generate-pick' ? null : registrationMode === 'generate-answer' ? 'answer' : 'essay'}
+      initialFile={registrationMode === 'generate' ? smartFile : null}
       onBack={() => { setRegistrationMode('select'); onBack && onBack(); }} onAdd={onAdd} onGoItemBank={onGoItemBank}
       onStartAnswer={() => setRegistrationMode('answer-smart')}
       onEditTask={(task) => { setEditData(taskToDirectInputData(task)); setRegistrationMode('direct2'); }} />;
@@ -376,7 +392,7 @@ const TaskRegistration = ({ onBack, showToast, initialMode = 'select', onAdd, on
 
   // 직접 입력 2 — 탭 단계형 Wizard 모드
   if (registrationMode === 'direct2') {
-    return <TaskDirectInputWizard key={editData?.taskId || 'new'} initialData={editData} onBack={() => { setEditData(null); setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} />;
+    return <TaskDirectInputWizard key={editData?.taskId || 'new'} initialData={editData} onBack={() => { setEditData(null); setRegistrationMode('select'); onBack && onBack(); }} showToast={showToast} onAdd={onAdd} onLeaveGuardChange={onLeaveGuardChange} sheetMode={unifiedEntry} />;
   }
 
   // 기존: 직접 입력 모드

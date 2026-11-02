@@ -24,6 +24,7 @@ import TaskManagement, { BASE_TASKS } from './TaskManagement';
 import TaskRegistration from './TaskRegistration';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
 import SharedAssignments from './SharedAssignments';
+import EduBank from './EduBank'; // [2.4] 교육청 문제 은행 (TSK-16)
 import ItemBank from './ItemBank';
 import StudentManagement from './StudentManagement';
 import StudentRegistration from './StudentRegistration';
@@ -53,8 +54,9 @@ import TaskDetail from './TaskDetail';
 import TaskDeleteDialog from './TaskDeleteDialog';
 import MyInfo from './MyInfo';
 import StudentMyTasks from './StudentMyTasks'; // [TSK-06·09·10] 학생 모드 › 내 과제
-import { getInitialVersion, persistVersion, getInitialRole, persistRole, homeOf, isMenuVisible, isSubVisible, firstVisibleSub } from './lib/appVersion'; // [v2.4] 버전 트리거
+import { getInitialVersion, persistVersion, getInitialRole, persistRole, homeOf, isMenuAllowed, isSubVisible, firstVisibleSub } from './lib/appVersion'; // [v2.4] 버전 트리거
 import { REGISTER_GROUPS, isAnswerSub, answerTabOf, answerSubOf } from './registerMenu';
+import ChartScale from './lib/ChartScale'; // [2026-10-28] 대시보드 차트 글자 · 선 굵기 고정 px
 
 // ─────────────────────────────────────────────
 // 해시 기반 딥링크 라우트 맵
@@ -89,6 +91,8 @@ const HASH_ROUTES = {
   '#/task-answer-workbooks': { menu: '과제 관리', sub: '정답형 문제집' },
   '#/task-answer-words':    { menu: '과제 관리', sub: '정답형 낱말 문제집' },
   '#/shared-assignments':   { menu: '과제 관리', sub: '공유된 과제' },
+  '#/edu-bank':             { menu: '과제 관리', sub: '교육청 문제 은행' }, // [2.4] 교사 — 교육청 문제 고르기·복제 (TSK-16)
+  '#/edu-bank-admin':       { menu: '교육청 문제 은행', sub: '채점 관리' },   // [2.4] 시스템 관리자 — 교육청 문제 등록
   // [QBK-01] 문제 은행 — 스마트 과제 등록(정답형)으로 저장한 문항
   // [BRD-16] 게시판
   '#/notice':               { menu: '게시판', sub: '공지사항' },
@@ -125,13 +129,16 @@ function Setting() {
   };
   // 현재 버전·모드에서 숨겨진 메뉴에 머물러 있으면(해시 진입·전환·화면 안 이동) 보이는 메뉴로 옮긴다
   useEffect(() => {
-    if (!isMenuVisible(appVersion, activeMenu, appRole)) {
+    if (!isMenuAllowed(appVersion, activeMenu, appRole)) {
       const home = homeOf(appVersion, appRole);
       setActiveMenu(home.menu); setActiveSubMenu(home.sub);
     } else if (!isSubVisible(appVersion, activeMenu, activeSubMenu, appRole)) {
       setActiveSubMenu(firstVisibleSub(appVersion, activeMenu, activeSubMenu, appRole));
     }
   }, [appVersion, appRole, activeMenu, activeSubMenu]);
+  // [DSH-05] 교육청 대시보드 → 과목별 학교 목록에서 고른 학교. 학교 대시보드를 떠나면 지운다
+  const [drillSchool, setDrillSchool] = useState(null);
+  useEffect(() => { if (activeMenu !== '학교 대시보드') setDrillSchool(null); }, [activeMenu]);
   // [TCH-09] 교사 등록 진입 시 모드 구분 (school | system)
   const [teacherRegMode, setTeacherRegMode] = useState('school');
 
@@ -790,6 +797,8 @@ function Setting() {
             <TaskRegistration
               key={editTask?.n || `reg-${regNonce}`}
               onModeChange={setCurRegMode}
+              answerEnabled={isSubVisible(appVersion, '과제 관리', '정답형 과제', appRole)}
+              unifiedEntry={appVersion === '2.4'}
               initialEditTask={editTask?.task || null}
               onBack={() => { setLeaveGuard(null); setEditTask(null); setActiveSubMenu(listOrigin); }}
               showToast={showToast}
@@ -797,11 +806,24 @@ function Setting() {
               onLeaveGuardChange={setLeaveGuard}
               onAdd={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))}
               onGoItemBank={(view) => { setItemBankEntry({ view: view || 'list', n: Date.now() }); setActiveSubMenu('정답형 과제'); }}
+              onOpenWorkbook={(wbId) => { setLeaveGuard(null); setItemBankEntry({ view: 'list', n: Date.now(), wbId }); setActiveSubMenu(answerSubOf('workbooks')); }}
             />
           ) : activeSubMenu === '문제 은행' || isAnswerSub(activeSubMenu) ? (
             /* [TSK-15 v1.5] 정답형 과제 = 문제 은행 목록 · 등록은 정답형 직접 등록 / 스마트 등록 */
-            <ItemBank key={`${itemBankEntry.n}-${activeSubMenu}`} title="정답형 과제" initialTab={answerTabOf(activeSubMenu)} onTabChange={(t) => setActiveSubMenu(answerSubOf(t))} registerItems={REGISTER_GROUPS[1].items}
+            <ItemBank key={`${itemBankEntry.n}-${activeSubMenu}`} title={appVersion === '2.4' ? '과제 관리' : '정답형 과제'} initialTab={answerTabOf(activeSubMenu)} initialWbId={itemBankEntry.wbId} initialSourceId={itemBankEntry.sourceId} onTabChange={(t) => setActiveSubMenu(answerSubOf(t))} registerItems={REGISTER_GROUPS[1].items} registerUnified={appVersion === '2.4'}
+              /* [2.4] 서·논술형 과제는 문제집 목록에 함께 · 교육청 문제는 「교육청 문제 은행」에서 복제 · 내 목록에선 출처 필터로 거른다 (TSK-16 v1.6) */
+              eduSource={appVersion === '2.4'} essayInWorkbooks={appVersion === '2.4'}
+              /* 기본 과제(BASE_TASKS)도 함께 — 내용(detail)이 없는 과제는 상세 보기로 연다 */
+              essayTasks={appVersion === '2.4' ? [...registeredTasks, ...copiedTasks, ...BASE_TASKS].filter((t) => t.form !== 'answer' && !deletedTaskIds.includes(t.id)) : []}
+              onDeployEssay={(task) => setSelectedTaskDetail(task)}
+              onDeleteEssay={(task) => setTaskToDelete(task)}
+              onOpenEssay={(task) => { if (!task.detail) { setSelectedTaskDetail(task); return; } setEditTask({ task, n: Date.now() }); setTaskRegistrationMode('direct2'); setListOrigin(activeSubMenu); setActiveSubMenu('과제 등록'); }}
               onRegister={(mode) => { setEditTask(null); setTaskRegistrationMode(mode); setRegNonce((n) => n + 1); setListOrigin(isAnswerSub(activeSubMenu) ? activeSubMenu : '정답형 과제'); setActiveSubMenu('과제 등록'); }} />
+          ) : activeSubMenu === '교육청 문제 은행' ? (
+            <EduBank mode="teacher" showToast={showToast}
+              onCloneEssay={(task) => setRegisteredTasks((prev) => upsertTask(prev, task))}
+              onOpenEssayList={() => setActiveSubMenu(appVersion === '2.4' ? answerSubOf('workbooks') : '서·논술형 과제')}
+              onOpenItems={(sourceId) => { setItemBankEntry({ view: 'list', n: Date.now(), sourceId }); setActiveSubMenu(answerSubOf('items')); }} />
           ) : activeSubMenu === '공유된 과제' ? (
             <SharedAssignments
               onNavigateToTaskManagement={() => setActiveSubMenu('과제 관리')}
@@ -810,6 +832,7 @@ function Setting() {
             />
           ) : (
             <TaskManagement
+              answerEnabled={isSubVisible(appVersion, '과제 관리', '정답형 과제', appRole)}
               key={activeSubMenu}
               form={{ '서·논술형 과제': 'essay', '정답형 과제': 'answer' }[activeSubMenu] || null}
               onAdd={(mode) => { setEditTask(null); setTaskRegistrationMode(mode || 'select'); setRegNonce((n) => n + 1); setListOrigin(['서·논술형 과제', '정답형 과제'].includes(activeSubMenu) ? activeSubMenu : '과제 관리'); setActiveSubMenu('과제 등록'); }}
@@ -829,12 +852,12 @@ function Setting() {
           /* [BRD-16] 게시판 — 공지사항 / 장애신고 */
           activeSubMenu === '장애신고' ? <IncidentBoard showToast={showToast} title={appVersion === '2.4' ? '이용불편신고' : undefined} /> : activeSubMenu === 'Q&A' ? <QnaBoard showToast={showToast} /> : <NoticePopupDemo />
         ) : activeMenu === '대시보드' ? (
-          <Dashboard onNavigate={setActiveMenu} />
+          <ChartScale style={{ height: '100%' }}><Dashboard onNavigate={setActiveMenu} appVersion={appVersion} /></ChartScale>
         ) : activeMenu === '교사 대시보드' ? (
           // [v3.x] TeacherDashboard 상단 3 카드(과제/채점/학생) 클릭 시 각 목록 화면으로 라우팅
           //   기존: setActiveMenu(target) — 'TaskManagement' 등의 문자열은 매치되는 라우트 없음 (동작 안 함)
           //   신규: target → { menu, sub } 매핑 후 setActiveMenu + setActiveSubMenu 동시 설정
-          <TeacherDashboard onNavigate={(target) => {
+          <ChartScale style={{ height: '100%' }}><TeacherDashboard appVersion={appVersion} onNavigate={(target) => {
             const routeMap = {
               TaskManagement: { menu: '과제 관리', sub: '과제 관리' },
               GradingManagement: { menu: '채점 관리', sub: '채점 관리' },
@@ -844,6 +867,18 @@ function Setting() {
               '채점 관리': { menu: '채점 관리', sub: '채점 관리' },
               '학생 관리': { menu: '학생', sub: '학생 관리' },
             };
+            // [v2.4] 과제 등록 — 과제 목록의 [+ 새 과제 등록]과 같은 등록 화면(유형 고르기)부터 연다
+            if (target === '과제 등록') {
+              setEditTask(null); setSelectedTaskDetail(null); setTaskRegistrationMode('select'); setRegNonce((n) => n + 1);
+              setListOrigin(appVersion === '2.4' ? '서·논술형 과제' : '과제 관리');
+              setActiveMenu('과제 관리'); setActiveSubMenu('과제 등록');
+              return;
+            }
+            // [v2.4] 「채점 관리」 하위 메뉴가 빠졌으므로 채점은 일괄 채점 통합으로 연다
+            if (appVersion === '2.4' && ['GradingManagement', '채점 관리'].includes(target)) {
+              setActiveMenu('채점 관리'); setActiveSubMenu('일괄 채점 통합');
+              return;
+            }
             const dest = routeMap[target];
             if (dest) {
               setActiveMenu(dest.menu);
@@ -851,11 +886,16 @@ function Setting() {
             } else {
               setActiveMenu(target); // fallback
             }
-          }} />
+          }} /></ChartScale>
         ) : activeMenu === '학교 대시보드' ? (
-          <SchoolDashboard onNavigate={setActiveMenu} />
+          drillSchool
+            /* [DSH-05] 교육청에서 들어온 학교 대시보드 — 그 학교를 보여 주고, 학교 관리자용 바로가기(KPI 카드 이동)는 막는다 */
+            ? <ChartScale style={{ height: '100%' }}><SchoolDashboard appVersion={appVersion} schoolName={drillSchool} onNavigate={() => {}} onBack={() => setActiveMenu('교육청 대시보드')} /></ChartScale>
+            : <ChartScale style={{ height: '100%' }}><SchoolDashboard appVersion={appVersion} onNavigate={setActiveMenu} /></ChartScale>
         ) : activeMenu === '교육청 대시보드' ? (
-          <EduOfficeDashboard onNavigate={setActiveMenu} />
+          <ChartScale style={{ height: '100%' }}><EduOfficeDashboard appVersion={appVersion} onNavigate={setActiveMenu} onOpenSchool={(name) => { setDrillSchool(name); setActiveMenu('학교 대시보드'); }} /></ChartScale>
+        ) : activeMenu === '교육청 문제 은행' ? (
+          <EduBank mode="admin" showToast={showToast} />
         ) : activeMenu === '화면 명세서' ? (
           <SpecViewer renderPreview={(key) => {
             if (key === '학교 대시보드') return <SchoolDashboard onNavigate={() => {}} />;
