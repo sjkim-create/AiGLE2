@@ -56,7 +56,7 @@ export const BASE_TASKS = [
 // [TSK-15] 새 과제 등록 — 과제 형태별 입구
 
 // form — 'essay' | 'answer' : 왼쪽 메뉴 「서·논술형 과제」·「정답형 과제」 목록 (TSK-15 v1.4). 없으면 전체(기존 과제 관리)
-const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [], form = null }) => {
+const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onRequestDelete, deletedTaskIds = [], form = null, answerEnabled = true }) => {
     const formList = FORM_LISTS.find((f) => f.form === form) || null;
     const groups = formList ? [{ ...formList.group, more: undefined, title: null }] : [{ title: null, items: LEGACY_REGISTER, hover: '#EFF6FF', border: '#BFDBFE' }];
     const [viewMode, setViewMode] = useState('card'); // 'card' | 'list'
@@ -172,7 +172,8 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
     return (
         <div className="task-management-container">
             <header className="content-header">
-                <div className="page-title">{formList ? `${formList.icon} ${formList.sub}` : '과제 관리'}</div>
+                {/* [디자인 v2] 다른 목록 화면과 같은 제목 — 제목 앞 이모지 없이 */}
+                <h1 className="page-title">{formList ? formList.sub : '과제 관리'}</h1>
             </header>
             
             <div className="task-filter-wrapper">
@@ -182,7 +183,8 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                         <select className="filter-select"><option>학년</option></select>
                         <select className="filter-select"><option>교과</option></select>
                         <select className="filter-select" style={{ flex: 1.5 }}><option>핵심 역량</option></select>
-                        {!formList && <select className="filter-select" value={formFilter} onChange={(e) => setFormFilter(e.target.value)} aria-label="과제 형태">
+                        {/* 정답형 과제가 없는 버전(2.3)은 과제 형태 필터를 두지 않는다 */}
+                        {!formList && answerEnabled && <select className="filter-select" value={formFilter} onChange={(e) => setFormFilter(e.target.value)} aria-label="과제 형태">
                             <option value="전체">과제 형태: 전체</option>
                             <option value="essay">📝 서·논술형</option>
                             <option value="answer">✅ 정답형</option>
@@ -335,6 +337,8 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                     <span className={`task-status-tag ${getStatusClass(task.status)}`}>{task.status}</span>
                                     <span className={`task-status-tag ${getVisibilityClass(task.visibility)}`}>{task.visibility}</span>
                                     <span className="task-status-tag" style={task.form === 'answer' ? { background: '#EFF6FF', color: '#1D4ED8' } : { background: '#F5F3FF', color: '#6D28D9' }}>{task.form === 'answer' ? '✅ 정답형' : '📝 서·논술형'}</span>
+                                    {/* [TSK-16] 교육청 문제 은행에서 복제한 과제 — 출처를 항상 표시 */}
+                                    {task.copiedFromEduId && <span className="task-status-tag" title="교육청 문제 은행에서 복제한 과제" style={{ background: '#FEF3C7', color: '#92400E' }}>🏛️ 교육청</span>}
                                 </div>
                                 <div className="card-teacher-meta" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <span className="t-date">최근 수정 : {task.lastUpdate}</span>
@@ -413,6 +417,7 @@ const TaskManagement = ({ onAdd, extraTasks = [], onAddTask, onOpenDetail, onReq
                                         <div className="status-tags">
                                             <span className={`task-status-tag ${getStatusClass(task.status)}`}>{task.status}</span>
                                             <span className={`task-status-tag ${getVisibilityClass(task.visibility)}`}>{task.visibility}</span>
+                                            {task.copiedFromEduId && <span className="task-status-tag" title="교육청 문제 은행에서 복제한 과제" style={{ background: '#FEF3C7', color: '#92400E' }}>🏛️ 교육청</span>}
                                         </div>
                                     </td>
                                     <td>

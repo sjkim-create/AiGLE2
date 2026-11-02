@@ -17,7 +17,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import UnsavedLeaveModal from './UnsavedLeaveModal';
 import CropDialog from './CropDialog';
-import { imageTag } from './lib/taskSchema';
+import { imageTag, modelRowIdx, modelAnswerScore } from './lib/taskSchema';
 import {
   subjectsOf, gradesOf, competenciesOf, evalAreasOf,
   defaultGradeScale,
@@ -26,6 +26,8 @@ import {
 } from './lib/gradingShared';
 import { buildDirectInputTask } from './lib/taskSchema';
 import WorksheetPreviewModal from './WorksheetPreviewModal';
+import { WorkbookSheet, LayoutOptions, DEFAULT_LAYOUT } from './WorkbookLayout';
+import WorkbookDeploy from './WorkbookDeploy';
 
 const STEPS = [
   { n: 1, label: '기본 정보',          icon: '📋' },
@@ -34,6 +36,14 @@ const STEPS = [
   { n: 4, label: '평가 기준',          icon: '⚖️' },
   { n: 5, label: '그룹 배포·출력',      icon: '🚀' },
 ];
+// [v4.01 · 2.4] 서·논술형도 정답형 문제집처럼 문제지 한 가지로 출력 — 평가 기준까지는 같고, 문제지 배치 → 그룹 배포·출력
+const SHEET_STEPS = [
+  ...STEPS.slice(0, 4),
+  { n: 5, label: '문제지 배치',        icon: '📐' },
+  { n: 6, label: '그룹 배포·출력',      icon: '🚀' },
+];
+const SHEET_DEFAULT_LAYOUT = { ...DEFAULT_LAYOUT, columns: 1, spacing: 'narrow' };
+const plainOf = (html) => String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
 // 성취기준 mock — 각 성취기준은 핵심평가영역(area) 1종 + 관련 핵심역량(competencies) 매핑
 // [직접입력 규칙] 성취기준은 핵심평가영역(필수)·핵심역량(선택) 선택에 따라 필터되어 노출된다.
@@ -129,7 +139,10 @@ function InlineEditor({ value, onChange, placeholder, minHeight = 120 }) {
 
 // [v3.90] initialData — 기존 서·논술 과제를 이 화면으로 열어 고친다 (스마트 과제 등록 결과·직접 입력 과제, lib/taskSchema.taskToDirectInputData)
 //   extraOptions: 실제 교육과정의 교과 역량·핵심평가영역·성취기준을 선택지에 더한다 · pageImages: 모범답안 그림 범위 조정용 원본 쪽
-const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, initialData }) => {
+// sheetMode — [v4.01 · 2.4] 문제지 배치(5) · 그룹 배포·출력(6) — 문제지와 답안지를 따로 출력하지 않는다
+const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, initialData, sheetMode = false }) => {
+  const steps = sheetMode ? SHEET_STEPS : STEPS;
+  const LAST = steps.length;
   const extra = initialData?.extraOptions || { competencies: [], areas: [], standards: [] };
   const STANDARDS = [...MOCK_STANDARDS, ...(extra.standards || [])];
   const compsOf = (subj) => [...new Set([...competenciesOf(subj), ...(extra.competencies || [])])];
@@ -176,6 +189,10 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
     { id: 2, label: '1학년 2반', studentCount: 27, checked: false, printed: false, studentDeployed: false },
     { id: 3, label: '1학년 3반', studentCount: 26, checked: false, printed: false, studentDeployed: false },
   ]);
+  // [v4.01] 문제지 배치 — 지면 설정 · 문항별 답안 길이 { [qid]: 'col' | 'p1'~'p10' } (기본 한 단 쓰기)
+  const [sheetLayout, setSheetLayout] = useState(() => ({ ...SHEET_DEFAULT_LAYOUT, ...(initialData?.sheet?.layout || {}) }));
+  const [answerSpace, setAnswerSpace] = useState(() => initialData?.sheet?.answerSpace || {});
+  const [sheetActual, setSheetActual] = useState(false);
   // [v2.52] 학생 1명당 인쇄할 답안지 수 — 기본 1, 범위 1~10 (v2.54: 호환용 유지)
   const [answerSheetCopies, setAnswerSheetCopies] = useState(1);
   // [v2.54] 문항별 답안지 수 매핑 — { [qid]: number }, 기본 1
@@ -726,13 +743,15 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
         evalMode, groupList, isShared,
       });
       if (initialData?.keep) task.detail.fromFile = { ...initialData.keep, extraOptions: extra }; // 원래 자료·원본 쪽 보존 (다시 고칠 때)
+      if (initialData?.eduSource) task.copiedFromEduId = initialData.eduSource; // [TSK-16] 교육청 출처는 고쳐도 유지
+      if (sheetMode) task.detail.sheet = { layout: sheetLayout, answerSpace }; // [v4.01] 문제지 배치
       onAdd(task);
     }
     savedSnapRef.current = snapshot();
   };
   const autoSave = () => { saveTask(); toast('저장됨'); };
 
-  const next = () => { if (canProceed()) { autoSave(); setStep((s) => Math.min(5, s + 1)); } };
+  const next = () => { if (canProceed()) { autoSave(); setStep((s) => Math.min(LAST, s + 1)); } };
   const prev = () => setStep((s) => Math.max(1, s - 1));
 
   // [v3.79] 총 배점 = 범주 배점 합계(표시 전용) — 불일치 검사·정합성 모달 폐기
@@ -881,7 +900,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
       {/* [v3.92] 본문 — 왼쪽 단계 열 메뉴 · 오른쪽 내용 패널 (상용 디자인) */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 16, padding: '16px 20px 16px 16px' }}>
       <nav aria-label="등록 단계" style={{ flex: '0 0 230px', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
-        {STEPS.map((s) => {
+        {steps.map((s) => {
           const allowed = canGoToStep(s.n);
           const done = s.n < step; const now = s.n === step;
           return (
@@ -916,15 +935,15 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
        <div style={{ maxWidth: 1080, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
 
         {/* [v3.75] 과제 수정 잠금 안내 — 학생 배포 중이면 Step 1~4는 읽기 전용 */}
-        {editLocked && step < 5 && (
+        {editLocked && step < LAST && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 'var(--neo-font-size-sm)', color: '#991B1B', fontWeight: 700 }}>
             <span>🔒</span>
-            <span>학생 배포 중인 과제는 수정할 수 없습니다. 수정하려면 Step 5에서 학생 배포를 취소하세요.</span>
-            <button onClick={() => setStep(5)} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontWeight: 700, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>Step 5로 이동</button>
+            <span>학생 배포 중인 과제는 수정할 수 없습니다. 수정하려면 Step {LAST}에서 학생 배포를 취소하세요.</span>
+            <button onClick={() => setStep(LAST)} style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#B91C1C', fontWeight: 700, fontSize: 'var(--neo-font-size-xs)', cursor: 'pointer' }}>Step {LAST}로 이동</button>
           </div>
         )}
         {/* 잠금 시 pointer-events:none → 휠 스크롤은 바깥 스크롤 컨테이너가 받는다 */}
-        <div inert={editLocked && step < 5 ? true : undefined} style={editLocked && step < 5 ? { pointerEvents: 'none', opacity: 0.6, userSelect: 'none' } : undefined}>
+        <div inert={editLocked && step < LAST ? true : undefined} style={editLocked && step < LAST ? { pointerEvents: 'none', opacity: 0.6, userSelect: 'none' } : undefined}>
 
         {/* Step 1 — 기본 정보 */}
         {step === 1 && (
@@ -1293,11 +1312,13 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                   return (
                     <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
                       <button onClick={() => toggleModelAns(q.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 12px', background: maOpen ? '#F8FAFC' : 'white', border: 'none', borderBottom: maOpen ? '1px solid #E2E8F0' : 'none', cursor: 'pointer', textAlign: 'left' }}>
+                        style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 4, gap: 8, width: '100%', padding: '10px 12px', background: maOpen ? '#F8FAFC' : 'white', border: 'none', borderBottom: maOpen ? '1px solid #E2E8F0' : 'none', cursor: 'pointer', textAlign: 'left' }}>
                         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>{maOpen ? '▼' : '▶'}</span>
                         <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569' }}>모범답안 <span style={{ color: '#EF4444' }}>*</span> <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>(텍스트 · 이미지 · 수식 입력 가능)</span></span>
-                        {!maFilled && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 700 }}>미입력</span>}
-                        {maFilled && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#10B981', fontWeight: 700 }}>입력 완료</span>}
+                        {!maFilled && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#DC2626', fontWeight: 700, whiteSpace: 'nowrap' }}>미입력</span>}
+                        {maFilled && <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#10B981', fontWeight: 700, whiteSpace: 'nowrap' }}>입력 완료</span>}
+                        {/* [v4.00] 모범답안 수준(점수대)은 Step 4에서 고른다 — 제목 줄 오른쪽 끝 안내 */}
+                        <span style={{ marginLeft: 'auto', textAlign: 'right', fontSize: 'var(--neo-font-size-xs)', color: '#047857', fontWeight: 600 }}>💡 모범답안의 수준(점수대)은 4단계 「평가 기준」에서 설정합니다.</span>
                       </button>
                       {maOpen && (() => {
                         const showOverlay = !maFilled && !modelAnsFocused;
@@ -1388,7 +1409,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
               return (
               <div>
                 <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#1E40AF', background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '10px 12px', borderRadius: 8, marginBottom: 14, lineHeight: 1.6 }}>
-                  ✍️ 문항마다 채점 기준을 직접 입력하거나, 문항의 [🤖 AI 채점 기준 생성]을 눌러 성취기준·문항 내용으로 채울 수 있습니다. 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다.
+                  ✍️ 문항마다 채점 기준을 직접 입력하거나, 문항의 [🤖 AI 채점 기준 생성]을 눌러 성취기준·문항 내용으로 채울 수 있습니다. 채점 기준은 1~5개, 평가 내용은 2~(배점+1)개로 추가·삭제할 수 있습니다. 「모범답안」 열에서 모범답안이 받는 점수를 고릅니다.
                 </div>
 
                 {/* 문항 탭 */}
@@ -1444,6 +1465,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                           <strong style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 900, color: sum > 0 ? '#1D4ED8' : '#94A3B8' }}>{sum}</strong>
                           <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>점</span>
                           <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>· 각 범주의 배점 합계로 자동 산출됩니다.</span>
+                          {sum > 0 && <span style={{ marginLeft: 'auto', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#047857' }}>모범답안 {modelAnswerScore(q)}점</span>}
                         </div>
                       );
                     })()}
@@ -1490,6 +1512,8 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                             <tr style={{ background: '#F8FAFC' }}>
                               <th style={{ textAlign: 'left', padding: '6px 8px', color: '#64748B', fontWeight: 700, width: 96 }}>점수</th>
                               <th style={{ textAlign: 'left', padding: '6px 8px', color: '#64748B', fontWeight: 700 }}>평가 내용</th>
+                              {/* 모범답안 점수대 — 이 범주에서 모범답안이 받는 점수 행 (기본 맨 위) */}
+                              <th style={{ textAlign: 'center', padding: '6px 8px', color: '#64748B', fontWeight: 700, width: 76, whiteSpace: 'nowrap' }}>모범답안</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1516,6 +1540,11 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
                                     addLabel={`${c.rows.length}/${rowLimit(c)}`}
                                   />
                                 </td>
+                                <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                  <input type="radio" name={`model-${q.id}-${c.id}`} checked={modelRowIdx(c) === ri}
+                                    onChange={() => updateCriterion(q.id, c.id, { modelRow: ri })}
+                                    aria-label={`채점 ${ci + 1} ${r.score}점 — 모범답안 점수대`} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#047857' }} />
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1537,7 +1566,51 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
         </div>{/* /잠금 래퍼 */}
 
         {/* Step 5 — 그룹 배포 · 문답지 출력 */}
-        {step === 5 && (() => {
+        {/* [v4.01 · 2.4] Step 5 문제지 배치 — 정답형 문제집 배치와 같은 지면 + 문항별 답안 길이 */}
+        {sheetMode && step === 5 && (() => {
+          const entries = questions.map((q) => ({
+            item: { id: q.id, itemType: 'essay_sheet', stem: plainOf(q.content), images: q.contentImages || [], passageId: plainOf(passage) ? 'passage' : undefined },
+            points: Number(q.points) || q.criteria.reduce((s2, c) => s2 + (Number(c.maxPoints) || 0), 0),
+            answerSpace: answerSpace[q.id] || 'col',
+          }));
+          return (
+            <div>
+              <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 6 }}>📐 Step 5. 문제지 배치</h2>
+              <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 14 }}>문제와 답안 공간을 한 문제지로 배치합니다. 답안 길이는 지면의 문항마다 고릅니다.</p>
+              <LayoutOptions layout={sheetLayout} onChange={setSheetLayout}>
+                <button type="button" onClick={() => setSheetActual((v) => !v)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: 'pointer' }}>{sheetActual ? '화면에 맞추기' : '100%로 보기'}</button>
+              </LayoutOptions>
+              <div style={{ marginTop: 12 }}>
+                <WorkbookSheet title={basicInfo.title} curriculum={{ schoolLevelName: basicInfo.schoolLevel, gradeLabel: basicInfo.grade, curriculumName: basicInfo.subject, subjectName: basicInfo.subSubject }}
+                  entries={entries} passages={plainOf(passage) ? { passage: { text: plainOf(passage) } } : {}} layout={sheetLayout} actualSize={sheetActual}
+                  answerTools onAnswerSpace={(id, v) => setAnswerSpace((a) => ({ ...a, [id]: v }))} />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* [v4.01 · 2.4] Step 6 그룹 배포·출력 — 문제지 출력 + 배포 그룹 (답안지 매수 · 답안지 출력 없음) */}
+        {sheetMode && step === 6 && (() => {
+          const entries = questions.map((q) => ({
+            item: { id: q.id, itemType: 'essay_sheet', stem: plainOf(q.content), images: q.contentImages || [], passageId: plainOf(passage) ? 'passage' : undefined },
+            points: Number(q.points) || q.criteria.reduce((s2, c) => s2 + (Number(c.maxPoints) || 0), 0),
+            answerSpace: answerSpace[q.id] || 'col',
+          }));
+          return (
+            <div>
+              <h2 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: 6 }}>🚀 Step 6. 그룹 배포 · 문제지 출력</h2>
+              <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 16 }}>응시 설정 → 문제지 출력 → 학생 배포 순으로 진행합니다.</p>
+              <WorkbookDeploy noAnswerSheet noun="과제" layoutName="문제지 배치" paper={sheetLayout.paper}
+                wb={{ title: basicInfo.title, deploy: { blockCopyPaste, groups: groupList } }}
+                onSave={(next) => { setBlockCopyPaste(!!next.deploy.blockCopyPaste); setGroupList(next.deploy.groups); }}
+                onNotice={(m) => toast(m)}
+                sheet={<WorkbookSheet title={basicInfo.title} curriculum={{ schoolLevelName: basicInfo.schoolLevel, gradeLabel: basicInfo.grade, curriculumName: basicInfo.subject, subjectName: basicInfo.subSubject }}
+                  entries={entries} passages={plainOf(passage) ? { passage: { text: plainOf(passage) } } : {}} layout={sheetLayout} actualSize />} />
+            </div>
+          );
+        })()}
+
+        {!sheetMode && step === 5 && (() => {
           const badge = (bg, color) => ({ background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 10 });
           const studentBtn = (on) => ({ padding: '7px 14px', borderRadius: 8, fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, cursor: 'pointer', border: on ? '1px solid #EF4444' : 'none', background: on ? 'white' : '#2A75F3', color: on ? '#EF4444' : 'white' });
           return (
@@ -1715,7 +1788,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
           disabled={step === 1}
           style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #CBD5E1', background: 'white', color: step === 1 ? '#CBD5E1' : '#334155', fontWeight: 700, cursor: step === 1 ? 'not-allowed' : 'pointer', fontSize: 'var(--neo-font-size-sm)', minWidth: 150 }}
         >← 이전 단계</button>
-        {!canProceed() && step < 5 && (
+        {!canProceed() && step < LAST && (
           <span style={{ flex: 1, textAlign: 'right', fontSize: 'var(--neo-font-size-sm)', color: '#B45309' }}>
             {step === 1 ? '과제명을 입력하세요.'
               : step === 2 ? '모든 문항의 내용을 입력하세요.'
@@ -1725,7 +1798,7 @@ const TaskDirectInputWizard = ({ onBack, showToast, onAdd, onLeaveGuardChange, i
           </span>
         )}
         <span style={{ marginLeft: 'auto' }} />
-        {step < 5 ? (
+        {step < LAST ? (
           <button
             onClick={() => { if (!canProceed()) return; next(); }}
             disabled={!canProceed()}
@@ -2017,7 +2090,7 @@ const RowMenu = ({ onAddBelow, onDelete, onOpenEditor, addLabel }) => {
 //   하단: 평가내용 통합 입력 영역 (텍스트 + $$LaTeX$$ 마커)
 //   푸터: [취소] [입력]
 // ============================================================
-const FormulaModal = ({ initialLatex, onCancel, onConfirm }) => {
+export const FormulaModal = ({ initialLatex, onCancel, onConfirm }) => {
   const [latex, setLatex] = React.useState(initialLatex || '');
   // 툴바 카테고리 → 클릭 시 마커 형식으로 템플릿 삽입 (텍스트와 구분)
   const insertTemplate = (tpl) => {

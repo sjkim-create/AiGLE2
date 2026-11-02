@@ -147,7 +147,7 @@ export const imageTag = (im) => `<p><img src="${im.dataUrl}" alt="${escHtml(im.l
 export const taskToDirectInputData = (task) => {
   const d = task.detail || {};
   if (task.source === 'direct_input') {
-    return { taskId: task.id, basicInfo: d.basicInfo, passage: d.passage || '', questions: d.questions, extraOptions: d.fromFile?.extraOptions, pageImages: d.fromFile?.pageImages || [], keep: d.fromFile || null };
+    return { taskId: task.id, basicInfo: d.basicInfo, passage: d.passage || '', questions: d.questions, extraOptions: d.fromFile?.extraOptions, pageImages: d.fromFile?.pageImages || [], keep: d.fromFile || null, eduSource: task.copiedFromEduId || null, sheet: d.sheet || null };
   }
   const meta = d.meta || {};
   const std = (x) => `std-${x.id}`;
@@ -174,6 +174,7 @@ export const taskToDirectInputData = (task) => {
   };
   return {
     taskId: task.id,
+    eduSource: task.copiedFromEduId || null, // [TSK-16] 교육청 출처 — 고쳐 저장해도 유지
     basicInfo: {
       title: task.title, type: '서술형',
       subject: meta.curriculumName || task.subject || '국어', subSubject: meta.subjectName || task.subSubject || '',
@@ -188,3 +189,9 @@ export const taskToDirectInputData = (task) => {
     keep: { origin: 'file_generate', issues: d.issues, sourceFile: d.sourceFile, pageImages: d.pageImages || [], meta, extraOptions },
   };
 };
+
+// [TSK-13 v4.x] 모범답안 점수대 — 채점 기준(범주)마다 모범답안이 받는 점수 행을 고른다 (기본: 맨 위 = 최고 점수)
+//   modelRow: 그 범주 rows의 인덱스. 행이 줄어들면 마지막 행으로 맞춘다
+export const modelRowIdx = (c) => Math.min(Math.max(0, Number(c?.modelRow) || 0), Math.max(0, (c?.rows || []).length - 1));
+export const modelAnswerScore = (q) => (q?.criteria || []).reduce((s, c) => s + (Number(c.rows?.[modelRowIdx(c)]?.score) || 0), 0);
+export const criteriaTotal = (q) => (q?.criteria || []).reduce((s, c) => s + (Number(c.maxPoints) || 0), 0);
