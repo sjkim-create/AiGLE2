@@ -13,6 +13,9 @@ import { openPdf } from './pdfSplit';
 
 export const MAX_PAGES = 10;
 export const MAX_FILE_MB = 20;
+export const ITEM_MAX_FILE_MB = 100; // 정답형 스마트 등록(TSK-14) 자료 — 문제집 · 자료집 한 권 단위라 서·논술형보다 크게
+export const ITEM_MAX_PAGES = 30;     // 정답형은 한 번에 30쪽(한 구간) — 더 길면 구간을 이어서 분석한다(분할 추출). 구간 안에서는 ITEM_CHUNK_PAGES쪽씩 나눠 AI에 보낸다(itemExtract)
+export const ITEM_CHUNK_PAGES = 10;
 const RENDER_W = 1400;
 // 앞에서부터 시도 — 혼잡(503)·한도(429)·종료(404)면 다음 모델로 넘어간다.
 // gemini-2.0/2.5-flash는 종료됨(404). 2026-10 기준 이 키로 호출 가능한 flash 계열
@@ -41,15 +44,16 @@ const loadImageFile = (file) => new Promise((resolve, reject) => {
   img.src = url;
 });
 
-/** @returns {Promise<{pages: {no, canvas, dataUrl}[], totalPages: number}>} */
-export const readFilePages = async (file) => {
+/** fromPage — 이 쪽부터 maxPages쪽을 읽는다 (정답형 분할 추출의 구간)
+ * @returns {Promise<{pages: {no, canvas, dataUrl}[], totalPages: number}>} */
+export const readFilePages = async (file, { maxMb = MAX_FILE_MB, maxPages = MAX_PAGES, fromPage = 1 } = {}) => {
   const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
   const isImage = /^image\/(png|jpe?g|webp)$/.test(file.type);
   if (!isPdf && !isImage) {
     throw new GenerateError('FILE_TYPE', 'PDF 또는 이미지(JPG·PNG) 파일만 올릴 수 있습니다.', '파일 형식을 확인해 주세요.');
   }
-  if (file.size > MAX_FILE_MB * 1024 * 1024) {
-    throw new GenerateError('FILE_SIZE', `파일이 ${MAX_FILE_MB}MB를 넘습니다.`, '쪽 수를 줄이거나 해상도를 낮춰 다시 올려 주세요.');
+  if (file.size > maxMb * 1024 * 1024) {
+    throw new GenerateError('FILE_SIZE', `파일이 ${maxMb}MB를 넘습니다.`, '쪽 수를 줄이거나 해상도를 낮춰 다시 올려 주세요.');
   }
 
   if (isImage) {
@@ -74,8 +78,9 @@ export const readFilePages = async (file) => {
       err?.name === 'PasswordException' ? '암호를 풀고 다시 올려 주세요.' : '다시 저장한 뒤 올려 주세요.');
   }
   const pages = [];
-  const count = Math.min(doc.numPages, MAX_PAGES);
-  for (let p = 1; p <= count; p += 1) {
+  const start = Math.min(Math.max(1, fromPage), doc.numPages);
+  const end = Math.min(doc.numPages, start + maxPages - 1);
+  for (let p = start; p <= end; p += 1) {
     const page = await doc.getPage(p);
     const base = page.getViewport({ scale: 1 });
     const viewport = page.getViewport({ scale: Math.min(2.5, RENDER_W / base.width) });

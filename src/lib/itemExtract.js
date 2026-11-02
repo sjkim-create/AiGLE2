@@ -5,8 +5,8 @@
  *      → 그림 자르기(cropImage) → source / passages / items 레코드 + 문항별 부족한 항목(issues)
  * 저장은 하지 않는다 — 교사가 확인·선택한 뒤 itemBank.saveExtraction으로 저장
  */
-import { readFilePages, callGeminiJson, loadCatalog, matchCatalog, cropImage, pageImagesOf, GenerateError, MAX_PAGES } from './taskFromFile';
-import { ITEM_TYPES, ITEM_SCHEMA_VERSION, emptyAnswer, hasAnswer, newId } from './itemBank';
+import { readFilePages, callGeminiJson, loadCatalog, matchCatalog, cropImage, pageImagesOf, GenerateError, ITEM_MAX_FILE_MB, ITEM_MAX_PAGES, ITEM_CHUNK_PAGES } from './taskFromFile';
+import { ITEM_TYPES, ITEM_SCHEMA_VERSION, emptyAnswer, hasAnswer, newId, countBlanks, emptyParensToBlanks } from './itemBank';
 
 // 프롬프트 본문은 PRD에 두지 않는다 (코드에만 존재)
 export const buildItemPrompt = (pageCount, fileName = '') => `당신은 한국 초·중·고 평가 문항 자료(시험지·문제집·평가지)를 문제 은행으로 옮기는 담당자입니다.
@@ -34,6 +34,7 @@ export const buildItemPrompt = (pageCount, fileName = '') => `당신은 한국 �
   - material: 발문 아래 <보기>·조건·제시 자료 글 (없으면 "")
   - choices: 선다형·양자택일형 보기 [{"no":1,"text":"..."}] (아니면 [])
   - matching: 연결형이면 {"left":["..."],"right":["..."]} (아니면 null)
+  - 완성형 stem은 빈칸 자리를 [빈칸] 으로 적음 (예: "a + [빈칸] = b + [빈칸]")
   - blanks: 완성형 빈칸 수 (아니면 0)
   - answer: {"choices":[번호…], "truth":true|false|null, "texts":["허용 답…"], "blanks":[["빈칸1 허용 답…"],…], "pairs":[[왼쪽번호,오른쪽번호]…], "model":"서술형 모범답안"} — 해당 유형 칸만 채움
   - answerSource: 정답을 자료의 정답표·해설에서 읽었으면 "file", 정답이 자료에 없어 직접 풀었으면 "ai", 풀 수 없으면 "none"
@@ -132,32 +133,90 @@ const normalizeAnswer = (type, raw = {}) => {
   return a;
 };
 
+/* 쪽이 많으면 ITEM_CHUNK_PAGES쪽씩 나눠 분석하고 합친다 — 한 번에 보내면 AI 응답이 길어져 응답 한도를 넘는다.
+ *   묶음마다 쪽 번호는 1부터 다시 세므로 원본 쪽 번호로 되돌리고, 지문 key는 묶음끼리 겹치지 않게 바꾼다.
+ *   동시에 2묶음씩(사용량 한도 · 혼잡 대비). 한 묶음이 실패해도 나머지는 살리고 그 쪽 범위를 알린다.
+ *   한계 — 정답표가 다른 묶음에 있으면 그 문항의 정답은 비어 교사 확인으로 남는다 */
+const analyzeInChunks = async (pages, fileName, analyze, summaryIssues, failed = []) => {
+  const chunks = [];
+  for (let i = 0; i < pages.length; i += ITEM_CHUNK_PAGES) chunks.push(pages.slice(i, i + ITEM_CHUNK_PAGES));
+  const call = (ch) => (analyze ? analyze(ch) : callGeminiJson(buildItemPrompt(ch.length, fileName), ch));
+  if (chunks.length <= 1 && pages[0]?.no === 1) return call(pages); // 1쪽부터 한 묶음이면 쪽 번호를 고칠 필요가 없다 (분할 추출의 뒤 구간은 아래에서 원본 쪽으로 되돌린다)
+  const results = new Array(chunks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < chunks.length) {
+      const ci = next; next += 1;
+      try { results[ci] = { ok: true, ai: await call(chunks[ci]) }; } catch (err) { results[ci] = { ok: false, err }; }
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  const ok = results.filter((r) => r.ok);
+  if (!ok.length) throw results[0].err;
+  const merged = { isItemSource: false, reason: '', meta: null, passages: [], items: [], unreadable: [] };
+  results.forEach((r, ci) => {
+    const first = chunks[ci][0].no;
+    const last = chunks[ci][chunks[ci].length - 1].no;
+    if (!r.ok) { failed.push({ from: first, to: last }); summaryIssues.push({ level: 'warn', field: '파일', message: `${first}~${last}쪽은 분석하지 못했습니다. 그 쪽의 문항은 빠졌을 수 있습니다.` }); return; }
+    const ai = r.ai || {};
+    const offset = first - 1;
+    const key = (k) => (k == null ? k : `c${ci + 1}-${k}`);
+    if (ai.isItemSource !== false) merged.isItemSource = true;
+    if (!merged.reason && ai.reason) merged.reason = ai.reason;
+    if (!merged.meta && ai.meta && Object.values(ai.meta).some((v) => (Array.isArray(v) ? v.length : v))) merged.meta = ai.meta;
+    (ai.passages || []).forEach((ps) => merged.passages.push({ ...ps, key: key(ps.key) }));
+    (ai.items || []).forEach((it) => merged.items.push({
+      ...it,
+      passageKey: key(it.passageKey),
+      page: Number(it.page) ? Number(it.page) + offset : it.page,
+      images: (it.images || []).map((im) => ({ ...im, page: Number(im.page) ? Number(im.page) + offset : im.page })),
+    }));
+    (ai.unreadable || []).forEach((u) => merged.unreadable.push(u));
+  });
+  merged.meta = merged.meta || {};
+  return merged;
+};
+
+/** 문항이 나온 쪽 번호 — 문항 쪽 + 그림을 자른 쪽 (원본 쪽 이미지는 이 쪽만 보관) */
+export const pagesOfItems = (items) => new Set(items.flatMap((it) => [it.source?.page, ...(it.images || []).map((im) => im.page)]).map(Number).filter((n) => n > 0));
+
+const hasMeta = (m) => !!m && Object.values(m).some((v) => (Array.isArray(v) ? v.length : v));
+
 /**
+ * [분할 추출] 쪽이 많은 자료는 ITEM_MAX_PAGES쪽(한 구간)씩 나눠 분석한다 — 교사가 구간 결과를 보고 다음 구간을 이어서 돌린다.
+ *   fromPage — 이 구간의 첫 쪽. prev — 앞 구간에서 이어받는 값 { sourceId, meta, orderBase }
+ *     · 같은 자료이므로 sourceId를 그대로 쓴다 (문제 은행에서 한 자료로 묶인다)
+ *     · 교과·학년·시험 범위(meta)는 앞 구간 값을 쓴다. 앞 구간에서 못 정했으면 이 구간 값을 쓴다
+ *   뒤에 분석할 쪽이 남아 있거나 이어받은 구간이면, 문항이 없어도 실패로 끝내지 않고 빈 결과를 돌려준다
  * @param {File} file
  * @param {(stepKey: string) => void} onStep
- * @returns {Promise<{source, passages, items, summaryIssues}>}
+ *   analyze · assign — AI 호출 자리(샘플 체험은 고정 결과·단원 배정 생략을 넣는다)
+ * @returns {Promise<{source, passages, items, summaryIssues, range: {from, to, total}, meta}>}
  */
-export const extractItemsFromFile = async (file, onStep = () => {}, { analyze } = {}) => {
+export const extractItemsFromFile = async (file, onStep = () => {}, { analyze, assign = assignUnits, fromPage = 1, pageCount = ITEM_MAX_PAGES, prev = null } = {}) => {
   const summaryIssues = [];
+  const failed = []; // AI 호출이 실패한 쪽 범위 — 화면에서 그 쪽만 다시 분석할 수 있게 돌려준다
 
   onStep('read');
-  const { pages, totalPages } = await readFilePages(file);
-  if (totalPages > MAX_PAGES) {
-    summaryIssues.push({ level: 'warn', field: '파일', message: `${totalPages}쪽 중 앞의 ${MAX_PAGES}쪽만 분석했습니다. 뒤쪽 문항은 빠졌을 수 있습니다.` });
-  }
+  const { pages, totalPages } = await readFilePages(file, { maxMb: ITEM_MAX_FILE_MB, maxPages: Math.min(pageCount, ITEM_MAX_PAGES), fromPage });
+  const range = { from: pages[0]?.no || fromPage, to: pages[pages.length - 1]?.no || fromPage, total: totalPages };
+  const hasMore = range.to < totalPages;
 
   onStep('ai');
-  const [ai, cat] = await Promise.all([analyze ? analyze(pages) : callGeminiJson(buildItemPrompt(pages.length, file.name), pages), loadCatalog()]);
+  const [ai, cat] = await Promise.all([analyzeInChunks(pages, file.name, analyze, summaryIssues, failed), loadCatalog()]);
   const rawItems = Array.isArray(ai.items) ? ai.items : [];
   if (import.meta.env.DEV) window.__lastItemAI = ai; // 개발 확인용 — 마지막 AI 응답 (브라우저 메모리에만)
+  const meta = hasMeta(prev?.meta) ? prev.meta : (ai.meta || {});
+  const now = new Date().toISOString();
+  const sourceId = prev?.sourceId || newId('src');
   if (ai.isItemSource === false || rawItems.length === 0) {
-    throw new GenerateError('NOT_ITEM_SOURCE', '파일에서 문항을 찾지 못했습니다.', ai.reason || '문항이 들어 있는 평가 자료인지 확인해 주세요.');
+    if (!hasMore && !prev) throw new GenerateError('NOT_ITEM_SOURCE', '파일에서 문항을 찾지 못했습니다.', ai.reason || '문항이 들어 있는 평가 자료인지 확인해 주세요.');
+    summaryIssues.push({ level: 'info', field: '구간', message: `${range.from}~${range.to}쪽에서 문항을 찾지 못했습니다.` });
+    const empty = { id: sourceId, schemaVersion: ITEM_SCHEMA_VERSION, fileName: file.name, fileSize: file.size, pages: totalPages, title: String(meta.title || '').trim() || file.name.replace(/\.[^.]+$/, ''), curriculum: {}, track: 'curriculum', skill: '', examScope: { units: [], standardCodes: [] }, itemIds: [], pageImages: [], uploadedAt: now };
+    return { source: empty, passages: [], items: [], summaryIssues, range, meta, failed };
   }
 
   onStep('match');
-  const meta = ai.meta || {};
-  const now = new Date().toISOString();
-  const sourceId = newId('src');
   // 자료 전체 교육과정 — 문항에 코드가 없을 때 기본값
   const docIssues = [];
   const docMeta = matchCatalog(cat, { ...meta, competencies: [] }, docIssues);
@@ -172,7 +231,7 @@ export const extractItemsFromFile = async (file, onStep = () => {}, { analyze } 
   // 단원 배정 — 실패해도 추출 결과는 살린다 (단원은 교사가 고르게 됨)
   let assigned = {};
   if (track === 'curriculum') try {
-    assigned = await assignUnits(areasOfSubject, rawItems.map((r, i) => ({ number: String(r.number ?? i + 1), stem: r.stem, choices: r.choices })), (meta.scopeUnits || []).join(', '));
+    assigned = await assign(areasOfSubject, rawItems.map((r, i) => ({ number: String(r.number ?? i + 1), stem: r.stem, choices: r.choices })), (meta.scopeUnits || []).join(', '));
   } catch { summaryIssues.push({ level: 'warn', field: '단원', message: 'AI 단원 배정에 실패했습니다. 문항마다 단원을 골라 주세요.' }); }
 
   const passageIdByKey = {};
@@ -242,19 +301,26 @@ export const extractItemsFromFile = async (file, onStep = () => {}, { analyze } 
     if ((r.images || []).length > images.length) issues.push({ level: 'warn', field: '그림', message: '그림 일부를 찾지 못해 넣지 못했습니다.' });
     if (images.length) issues.push({ level: 'info', field: '그림', message: `그림 ${images.length}장을 AI가 찾은 위치로 잘라 넣었습니다. 잘린 범위를 확인해 주세요.` });
 
+    // 완성형 — 빈칸 자리를 [빈칸] 표시로 (AI가 빈 괄호로 남긴 것도 바꾼다). 표시가 없으면 교사가 넣게 안내
+    let stem = String(r.stem || '').trim();
+    if (itemType === 'completion') {
+      stem = emptyParensToBlanks(stem);
+      if (!countBlanks(stem)) issues.push({ level: 'warn', field: '빈칸', message: '지문에서 빈칸 자리를 찾지 못했습니다. 빈칸 넣기로 표시해 주세요.' });
+    }
+
     const order = { error: 0, warn: 1, info: 2 };
     issues.sort((a, b) => order[a.level] - order[b.level]);
     return {
       id: newId('itm'),
       schemaVersion: ITEM_SCHEMA_VERSION,
-      order: idx,
+      order: (prev?.orderBase || 0) + idx,
       number: String(r.number ?? idx + 1),
       itemType,
-      stem: String(r.stem || '').trim(),
+      stem,
       material: String(r.material || '').trim(),
       choices: (r.choices || []).map((c, i) => ({ no: Number(c.no) || i + 1, text: String(c.text || '').trim() })),
       matching: r.matching && Array.isArray(r.matching.left) ? { left: r.matching.left.map(String), right: (r.matching.right || []).map(String) } : null,
-      blankCount: Number(r.blanks) || 0,
+      blankCount: countBlanks(stem) || Number(r.blanks) || 0,
       answer,
       answerSource,
       explanation: String(r.explanation || '').trim(),
@@ -298,8 +364,9 @@ export const extractItemsFromFile = async (file, onStep = () => {}, { analyze } 
     skill,
     examScope: { units: (meta.scopeUnits || []).map(String).filter(Boolean), standardCodes: (meta.standardCodes || []).map(String) },
     itemIds: items.map((i) => i.id),
-    pageImages: pageImagesOf(pages), // 원본 쪽 — 그림 범위 조정·새로 자르기 (QBK-01 문항 편집)
+    // 원본 쪽 — 그림 범위 조정·새로 자르기 (QBK-01 문항 편집). [분할 추출] 문항이 나온 쪽만 보관한다 (책 한 권을 다 담으면 저장소가 커진다)
+    pageImages: pageImagesOf(pages.filter((p) => pagesOfItems(items).has(p.no))),
     uploadedAt: now,
   };
-  return { source, passages, items, summaryIssues };
+  return { source, passages, items, summaryIssues, range, meta, failed };
 };

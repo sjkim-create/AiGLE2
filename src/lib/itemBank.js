@@ -30,7 +30,7 @@ export const TYPE_GROUPS = { select: '선택형', supply: '서답형' };
 // 문항 성격 — 교과 문항은 단원·성취기준으로, 기초학력 문항은 기초 기능(예: 한글 해득 › 복잡한 받침 읽기)으로 관리
 //   기초학력은 교과 단원의 성취기준에 딱 맞지 않을 수 있어 단원·성취기준을 요구하지 않는다 (채점은 정답 대조로 동일)
 export const TRACKS = {
-  curriculum: { label: '교과', desc: '단원·성취기준으로 관리' },
+  curriculum: { label: '학년 수준', desc: '그 학년 단원·성취기준으로 관리' },
   basic: { label: '기초학력', desc: '성취기준 없이 기초 기능으로 관리' },
 };
 
@@ -45,6 +45,43 @@ export const ANSWER_SOURCE = {
 let seq = 0;
 export const newId = (prefix) => `${prefix}_${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+/**
+ * 완성형 빈칸 표시 — 지문에 [빈칸]을 넣으면 앞에서부터 ①②… 번호가 붙고, 정답 「빈칸 ①」과 짝이 된다
+ * 빈칸 수는 표시 개수로 정한다 (괄호 ( )는 수식에도 쓰여 빈칸으로 보지 않는다)
+ */
+export const BLANK_MARK = '[빈칸]';
+export const blankNo = (i) => '①②③④⑤⑥⑦⑧⑨⑩'[i] || `(${i + 1})`;
+export const countBlanks = (stem) => String(stem || '').split(BLANK_MARK).length - 1;
+/** 지문을 글·빈칸 조각으로 — [{ text } | { blank: 0 }, …] (화면이 빈칸 모양을 그린다) */
+export const stemParts = (stem) => String(stem || '').split(BLANK_MARK).flatMap((t, i) => (i ? [{ blank: i - 1 }, { text: t }] : [{ text: t }]));
+/** 빈칸을 ( ① ) 글자로 — 목록 썸네일 · AI에 넘기는 발문 */
+export const stemText = (stem) => stemParts(stem).map((p) => ('blank' in p ? `( ${blankNo(p.blank)} )` : p.text)).join('');
+/**
+ * 지문을 고칠 때 빈칸 정답이 자기 빈칸을 따라가게 — 앞에 빈칸을 넣으면 뒤 빈칸의 정답이 ①→②로 밀린다
+ * 바뀐 구간 앞·뒤의 빈칸은 정답을 그대로 옮기고, 바뀐 구간에서 지운 빈칸의 정답은 버리고, 새로 넣은 빈칸은 비워 둔다
+ * 빈칸 표시가 없던 이전 문항(정답만 있음)은 그대로 둔다
+ */
+export const remapBlankAnswers = (oldStem, newStem, blanks) => {
+  const before = String(oldStem || ''); const after = String(newStem || '');
+  const prev = blanks || [];
+  const oldN = countBlanks(before);
+  if (!oldN) return prev;
+  let p = 0;
+  while (p < before.length && p < after.length && before[p] === after[p]) p += 1;
+  let s = 0;
+  while (s < before.length - p && s < after.length - p && before[before.length - 1 - s] === after[after.length - 1 - s]) s += 1;
+  const marks = (t) => { const at = []; let i = t.indexOf(BLANK_MARK); while (i >= 0) { at.push(i); i = t.indexOf(BLANK_MARK, i + 1); } return at; };
+  const om = marks(before);
+  const head = om.filter((i) => i + BLANK_MARK.length <= p).length;          // 바뀐 구간 앞
+  const tail = om.filter((i) => i >= before.length - s).length;              // 바뀐 구간 뒤
+  const added = countBlanks(after) - head - tail;                            // 바뀐 구간에 새로 생긴 빈칸
+  return [...prev.slice(0, head), ...Array.from({ length: Math.max(0, added) }, () => []), ...Array.from({ length: tail }, (_, k) => prev[oldN - tail + k] || [])];
+};
+/** 빈 괄호 (   ) 를 빈칸 표시로 — 스마트 등록 자료의 완성형 지문에만 쓴다 */
+export const emptyParensToBlanks = (stem) => String(stem || '').replace(/[(（]\s*[)）]|_{3,}/g, BLANK_MARK);
+/** 완성형 빈칸 수 — 표시가 있으면 표시 개수, 없으면(이전 문항) 저장된 수 */
+export const blankCountOf = (item) => countBlanks(item.stem) || Math.max(item.blankCount || 0, (item.answer?.blanks || []).length, 1);
+
 /** 빈 정답 객체 — 유형별로 쓰는 칸만 채운다 */
 export const emptyAnswer = () => ({ choices: [], truth: null, texts: [], blanks: [], pairs: [], model: '' });
 
@@ -57,7 +94,10 @@ export const hasAnswer = (item) => {
     case 'true_false': return a.truth === true || a.truth === false;
     case 'matching': return (a.pairs || []).length > 0;
     case 'short_answer': return (a.texts || []).some((t) => String(t).trim());
-    case 'completion': return (a.blanks || []).length > 0 && a.blanks.every((b) => (b || []).some((t) => String(t).trim()));
+    case 'completion': {
+      const n = blankCountOf(item);
+      return Array.from({ length: n }, (_, i) => (a.blanks || [])[i]).every((b) => (b || []).some((t) => String(t).trim()));
+    }
     case 'essay': return !!String(a.model || '').trim();
     default: return false;
   }
@@ -72,7 +112,7 @@ export const answerText = (item) => {
     case 'true_false': return a.truth === true ? 'O' : a.truth === false ? 'X' : '';
     case 'matching': return (a.pairs || []).map(([l, r]) => `${l}-${r}`).join(', ') + ' (왼쪽-오른쪽 순번)';
     case 'short_answer': return (a.texts || []).filter(Boolean).join(' / ');
-    case 'completion': return (a.blanks || []).map((b, i) => `(${i + 1}) ${(b || []).join('/')}`).join('  ');
+    case 'completion': return (a.blanks || []).map((b, i) => `${blankNo(i)} ${(b || []).join('/')}`).join('  ');
     case 'essay': return a.model ? `${String(a.model).slice(0, 40)}${a.model.length > 40 ? '…' : ''}` : '';
     default: return '';
   }

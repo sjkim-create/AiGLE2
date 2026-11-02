@@ -6,7 +6,7 @@
  *   · 결과 = 맞힌 수 · 점수, 인식이 애매하거나 정답이 없는 문항은 「확인 필요」 → 교사가 O/X로 정한다
  * 프로토: 학생 답은 모의로 만든다(실제 스캔 OCR · Ncode 펜 인식은 다음 단계).
  */
-import { answerText, hasAnswer } from './itemBank';
+import { answerText, hasAnswer, stemText } from './itemBank';
 import { blankOf } from '../WordWorkbook';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
@@ -41,7 +41,7 @@ export const gradingQuestionsOf = (wb, itemsById = {}) => {
   };
   return (wb.itemIds || []).map((id) => itemsById[id]).filter(Boolean).map((it, i) => ({
     key: it.id, no: i + 1, kind: it.itemType,
-    prompt: it.stem || '(발문 없음)',
+    prompt: stemText(it.stem) || '(발문 없음)',
     correct: acceptOf(it).join(' / '),
     accept: acceptOf(it),
     points: Number(wb.points?.[it.id] ?? it.points ?? 1) || 0,

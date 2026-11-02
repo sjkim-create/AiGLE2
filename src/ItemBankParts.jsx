@@ -2,6 +2,8 @@
  * ItemBankParts — 스마트 과제 등록(정답형) 확인 단계 · 문제 은행이 함께 쓰는 조각
  *   · BulkEditBar   — 고른 문항의 유형·성격 일괄 변경 (정답은 지우지 않는다)
  *   · applyTrack    — 문항 성격(교과/기초학력) 바꾸기
+ *   · applyUnit     — 단원 지정(그 단원의 성취기준 연결) · UnitBulkSelect — 고른 문항 단원 일괄 지정
+ *   · SubjectPicker · curriculumOf · applySubject — 교과를 확인하지 못한 문항 · 자료에 교과를 직접 지정 (학교급 → 학년 → 교과)
  *   · WorkbookPicker — 고른 문항을 문제집에 담기 (기존 문제집 / 새 문제집)
  */
 import React, { useEffect, useState } from 'react';
@@ -28,8 +30,106 @@ export const applyTrack = (item, track, { unitOptions = [], skill = '' } = {}) =
   return {
     ...item, track,
     curriculum: { ...item.curriculum, standardsBasis: 'unit', standards: opt ? opt.standards : [] },
-    issues: opt ? rest : [{ level: 'warn', field: '단원', message: '교과 문항으로 바꿨습니다. 단원을 골라 주세요.' }, ...rest],
+    issues: opt ? rest : [{ level: 'warn', field: '단원', message: '학년 수준 문항으로 바꿨습니다. 단원을 골라 주세요.' }, ...rest],
   };
+};
+
+/* ── 교과 직접 지정 ──
+ *   AI가 교과를 맞추지 못하면(성취기준 코드도 교과명도 목록과 안 맞음) 단원을 고를 수 없다 → 교사가 교과를 고른다 */
+/** 교과(과목 id) → 문항 · 자료의 교육과정 정보 */
+export const curriculumOf = (cat, subjectId) => {
+  const subject = cat?.subjects?.[subjectId];
+  if (!subject) return null;
+  const cu = cat.curricula[subject.curriculumId] || {};
+  const gr = cat.grades[cu.gradeId] || {};
+  const lv = cat.levels[gr.level] || {};
+  return {
+    schoolLevelCode: lv.code ?? null, schoolLevelName: lv.name || '',
+    gradeId: cu.gradeId ?? null, gradeLabel: gr.name || '',
+    curriculumId: subject.curriculumId ?? null, curriculumName: cu.name || '',
+    subjectId: Number(subjectId), subjectName: subject.name || '',
+  };
+};
+/** 문항에 교과를 지정 — 단원 · 성취기준은 비우고 「단원을 골라 주세요」. 정답 · 유형은 그대로 */
+export const applySubject = (item, cur) => {
+  if (!cur) return item;
+  const rest = (item.issues || []).filter((i) => !['단원', '성취기준', '교육과정', '과목'].includes(i.field));
+  const isBasic = (item.track || 'curriculum') === 'basic';
+  return {
+    ...item,
+    curriculum: { ...item.curriculum, ...cur, standardsBasis: isBasic ? 'none' : 'unit', standards: [] },
+    unit: { ...(item.unit || { label: '' }), areaId: null, areaName: '', source: 'none' },
+    issues: isBasic ? rest : [{ level: 'warn', field: '단원', message: '단원을 골라 주세요.' }, ...rest],
+  };
+};
+/** 학교급 → 학년 → 교과 선택. onPick(curriculumOf 결과) */
+export const SubjectPicker = ({ cat, value, onPick, compact = false }) => {
+  const curOf = value ? curriculumOf(cat, value) : null;
+  const [level, setLevel] = useState(() => (curOf ? Object.keys(cat?.levels || {}).find((k) => cat.levels[k].code === curOf.schoolLevelCode) || '' : ''));
+  const [gradeId, setGradeId] = useState(() => (curOf?.gradeId != null ? String(curOf.gradeId) : ''));
+  if (!cat) return <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>교육과정 목록을 불러오는 중…</span>;
+  const grades = Object.entries(cat.grades).filter(([, g]) => g.level === level);
+  const subjects = Object.entries(cat.subjects).filter(([, s]) => String(cat.curricula[s.curriculumId]?.gradeId) === gradeId)
+    .map(([id, s]) => {
+      const cu = cat.curricula[s.curriculumId]?.name || '';
+      return { id, label: cu && cu !== s.name ? `${cu} › ${s.name}` : s.name };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label, 'ko'));
+  const sel = { ...selectStyle, fontSize: compact ? 'var(--neo-font-size-xs)' : 'var(--neo-font-size-sm)' };
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <select value={level} onChange={(e) => { setLevel(e.target.value); setGradeId(''); }} aria-label="학교급" style={sel}>
+        <option value="">학교급</option>
+        {Object.entries(cat.levels).sort((a, b) => a[1].code - b[1].code).map(([k, l]) => <option key={k} value={k}>{l.name}</option>)}
+      </select>
+      <select value={gradeId} onChange={(e) => setGradeId(e.target.value)} disabled={!level} aria-label="학년" style={sel}>
+        <option value="">학년</option>
+        {grades.map(([id, g]) => <option key={id} value={id}>{g.name}</option>)}
+      </select>
+      <select value={value != null && subjects.some((s) => s.id === String(value)) ? String(value) : ''} disabled={!gradeId} aria-label="교과"
+        onChange={(e) => { const cur = curriculumOf(cat, e.target.value); if (cur) onPick(cur); }} style={{ ...sel, maxWidth: 260 }}>
+        <option value="">교과</option>
+        {subjects.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+      </select>
+    </span>
+  );
+};
+
+/**
+ * 단원 지정 — 단원(핵심평가영역)을 고르면 그 단원의 성취기준을 연결한다. 정답 · 유형은 그대로.
+ *   opt 없음(선택 해제) → 단원 비움 + 「단원을 골라 주세요」
+ */
+export const applyUnit = (item, opt) => {
+  const unit = item.unit || { areaId: null, areaName: '', label: '', source: 'none' };
+  return {
+    ...item,
+    unit: { ...unit, areaId: opt?.areaId ?? null, areaName: opt?.name || '', source: opt ? 'teacher' : 'none' },
+    curriculum: { ...item.curriculum, standardsBasis: 'unit', standards: opt ? opt.standards : [] },
+    issues: [...(opt ? [] : [{ level: 'warn', field: '단원', message: '단원을 골라 주세요.' }]), ...(item.issues || []).filter((i) => i.field !== '단원' && i.field !== '성취기준')],
+  };
+};
+
+/**
+ * 고른 문항 단원 일괄 지정 — 학년 수준(교과) 문항에만, 단원 목록과 같은 교과의 문항에만 적용한다.
+ *   기초학력 문항 · 다른 교과 문항은 건너뛴다(정답 · 유형은 그대로)
+ */
+const UnitBulkSelect = ({ items, onApply, unitOptions }) => {
+  const opts = unitOptions || [];
+  const sid = items.find((it) => (it.track || 'curriculum') !== 'basic')?.curriculum?.subjectId;
+  const targets = items.filter((it) => (it.track || 'curriculum') !== 'basic' && it.curriculum?.subjectId === sid);
+  if (!opts.length) return null;
+  return (
+    <select value="" disabled={!targets.length} style={selectStyle}
+      title={targets.length < items.length ? `학년 수준 문항 ${targets.length}개에만 적용합니다` : '고른 문항의 단원을 한 번에 바꿉니다 · 정답은 그대로'}
+      onChange={(e) => {
+        const opt = opts.find((o) => o.areaId === Number(e.target.value));
+        if (!opt) return;
+        onApply(targets.map((it) => applyUnit(it, opt)));
+      }}>
+      <option value="">📘 단원 일괄 지정…</option>
+      {opts.map((o) => <option key={o.areaId} value={o.areaId}>📘 {o.name}</option>)}
+    </select>
+  );
 };
 
 /** 고른 문항 일괄 변경 바 — onApply(바뀐 문항 배열) */
@@ -49,9 +149,49 @@ export const BulkEditBar = ({ items, onApply, unitOptions, skill, children }) =>
       {Object.entries(TRACKS).map(([k, t]) => (
         <button key={k} type="button" disabled={!n} title={t.desc}
           onClick={() => onApply(items.map((it) => applyTrack(it, k, { unitOptions, skill })))} style={btn(false, !n)}>
-          {k === 'basic' ? '🧩' : '📘'} {t.label}로
+          {k === 'basic' ? '🧩' : '📘'} {t.label}으로
         </button>
       ))}
+      <UnitBulkSelect items={items} onApply={onApply} unitOptions={unitOptions} />
+      {children}
+    </div>
+  );
+};
+
+/** 문항 메뉴 선택 메뉴 — [유형 변경 ▾] [학년 수준으로] [기초학력으로] + children(문제집 만들기 · 삭제) */
+export const BulkActions = ({ items, onApply, unitOptions, skill, children }) => {
+  const [menu, setMenu] = useState(false);
+  const n = items.length;
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = () => setMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menu]);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ position: 'relative' }}>
+        <button type="button" aria-haspopup="menu" aria-expanded={menu} disabled={!n} title="유형을 바꿔도 정답은 지워지지 않습니다"
+          onClick={(e) => { e.stopPropagation(); setMenu((v) => !v); }} style={btn(false, !n)}>🔀 유형 변경 ▾</button>
+        {menu && (
+          <div role="menu" style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 30, minWidth: 150, background: 'white', border: '1px solid #E2E8F0', borderRadius: 10, boxShadow: '0 12px 28px rgba(15,23,42,0.16)', padding: 4 }}>
+            {ITEM_TYPE_KEYS.map((k) => (
+              <button key={k} type="button" role="menuitem" onClick={() => { setMenu(false); onApply(items.map((it) => changeItemType(it, k))); }}
+                style={{ display: 'flex', gap: 8, width: '100%', padding: '8px 10px', border: 'none', borderRadius: 6, background: 'transparent', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: '#334155', cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#EFF6FF'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                <span aria-hidden="true">{ITEM_TYPES[k].icon}</span>{ITEM_TYPES[k].label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {Object.entries(TRACKS).map(([k, t]) => (
+        <button key={k} type="button" disabled={!n} title={t.desc}
+          onClick={() => onApply(items.map((it) => applyTrack(it, k, { unitOptions, skill })))} style={btn(false, !n)}>
+          {k === 'basic' ? '🧩' : '📘'} {t.label}으로
+        </button>
+      ))}
+      <UnitBulkSelect items={items} onApply={onApply} unitOptions={unitOptions} />
       {children}
     </div>
   );

@@ -3,13 +3,14 @@
  *
  * 배치와 기본 정보를 한 화면에서 정한다 — 별도 「기본 정보」 단계를 두지 않는다.
  *   · BasicInfoCard: 과제명 · 교육과정(학교급·학년·교과·과목) · 문항 수·총점·유형 · 정답 없는 문항 경고 + 저장 버튼(children)
- *   · ArrangeRows: 문항마다 번호 · 배점 · ↑↓ · ✕ · 문항 카드([✏️ 문항 편집], 유형·정답 바로 수정)
+ *   · ArrangeRows: 문항마다 번호(⠿ 끌어서 옮기기) · 배점 · ✕ · 문항 카드([✏️ 문항 편집], 유형·정답 바로 수정)
  * 쓰는 곳: 정답형 직접·스마트 등록(AnswerTaskWizard 2단계) · 정답형 과제 › 문제집 상세(ItemBank)
  */
 import React from 'react';
 import ItemCard from './ItemCard';
 import { ITEM_TYPES, hasAnswer } from './lib/itemBank';
 import { loadCatalog } from './lib/taskFromFile';
+import { reorderByDrop, scrollParentOf } from './WorkbookLayout';
 
 const btn = (primary, disabled) => ({
   padding: '9px 16px', borderRadius: 10, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
@@ -91,19 +92,44 @@ export const BasicInfoCard = ({ title, onTitle, onTitleBlur, titleLabel = '과�
 
 // entries: [{ item, points }] · onChange(next) · onEdit(i) · onItemChange(i, item) — 유형·정답 바로 수정
 export const ArrangeRows = ({ entries, onChange, passages = {}, onEdit, onItemChange, removeLabel = '빼기' }) => {
-  const move = (i, d) => { const j = i + d; if (j < 0 || j >= entries.length) return; const n = [...entries]; [n[i], n[j]] = [n[j], n[i]]; onChange(n); };
-  return entries.map((e, i) => (
-    <div key={e.item.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+  // 순서 — [⠿ N번]을 잡고 끌어 놓는다 (v1.52 — ↑↓ 삭제). 손잡이를 잡을 때만 끌려 카드 안 정답 입력과 겹치지 않는다
+  //   공통 지문 묶음은 함께 움직이고, 묶음 안 다른 문항 위에 놓으면 묶음 안에서 순서만 바꾼다 (문제집 배치와 같은 규칙)
+  const [armed, setArmed] = React.useState(null);
+  const [dragId, setDragId] = React.useState(null);
+  const [over, setOver] = React.useState(null); // { id, before }
+  const ids = entries.map((e) => e.item.id);
+  const end = () => { setArmed(null); setDragId(null); setOver(null); };
+  const dnd = (id) => ({
+    draggable: armed === id,
+    onDragStart: (ev) => { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', id); setDragId(id); },
+    onDragEnd: end,
+    onDragOver: (ev) => {
+      if (!dragId) return;
+      ev.preventDefault();
+      const before = ids.indexOf(id) < ids.indexOf(dragId);
+      if (!over || over.id !== id || over.before !== before) setOver({ id, before });
+      const sp = scrollParentOf(ev.currentTarget); const sr = sp === document.scrollingElement ? { top: 0, bottom: innerHeight } : sp.getBoundingClientRect();
+      if (ev.clientY < sr.top + 60) sp.scrollBy(0, -24); else if (ev.clientY > sr.bottom - 60) sp.scrollBy(0, 24);
+    },
+    onDrop: (ev) => {
+      ev.preventDefault();
+      if (dragId) { const byId = Object.fromEntries(entries.map((e) => [e.item.id, e])); onChange(reorderByDrop(entries, dragId, id, ids.indexOf(id) < ids.indexOf(dragId)).map((x) => byId[x])); }
+      end();
+    },
+  });
+  return entries.map((e, i) => {
+    const id = e.item.id;
+    const target = over && over.id === id && dragId && dragId !== id;
+    return (
+    <div key={id} {...dnd(id)} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', position: 'relative', borderRadius: 8, opacity: dragId === id ? 0.4 : 1,
+      ...(target ? { boxShadow: over.before ? 'inset 0 4px 0 #2A75F3' : 'inset 0 -4px 0 #2A75F3', background: 'rgba(42,117,243,0.06)' } : {}) }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', paddingTop: 8, width: 64 }}>
-        <span style={{ fontWeight: 900, color: '#2A75F3' }}>{i + 1}번</span>
+        <span role="button" aria-label={`${i + 1}번 끌어서 옮기기`} title="끌어서 옮기기" onMouseDown={() => setArmed(id)} onMouseUp={() => setArmed(null)}
+          style={{ fontWeight: 900, color: '#2A75F3', cursor: 'grab', background: '#DBEAFE', borderRadius: 6, padding: '2px 6px', userSelect: 'none', whiteSpace: 'nowrap' }}>⠿ {i + 1}번</span>
         <input type="number" min={0} value={e.points} aria-label={`${i + 1}번 배점`}
           onChange={(ev) => onChange(entries.map((x, j) => (j === i ? { ...x, points: ev.target.value === '' ? '' : Number(ev.target.value) } : x)))}
           style={{ ...input, width: 56, textAlign: 'center', padding: '4px' }} />
         <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>점</span>
-        <div style={{ display: 'flex', gap: 2 }}>
-          <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label="위로" style={{ ...btn(false, i === 0), padding: '2px 6px' }}>↑</button>
-          <button type="button" onClick={() => move(i, 1)} disabled={i === entries.length - 1} aria-label="아래로" style={{ ...btn(false, i === entries.length - 1), padding: '2px 6px' }}>↓</button>
-        </div>
         <button type="button" onClick={() => onChange(entries.filter((_, j) => j !== i))} aria-label={removeLabel} title={removeLabel} style={{ ...btn(false), padding: '2px 8px' }}>✕</button>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -111,7 +137,8 @@ export const ArrangeRows = ({ entries, onChange, passages = {}, onEdit, onItemCh
           onChange={(x) => onItemChange?.(i, { ...x, number: e.item.number })} />
       </div>
     </div>
-  ));
+  );
+  });
 };
 
 // [TSK-15 v1.23] 문제집 기본 정보 — 위에서부터 성격 / 문제집 이름 / 학교급 · 학년 / 교과 · 과목

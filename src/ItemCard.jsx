@@ -8,7 +8,7 @@
  * 필수(정답) 누락은 잠금 대신 테두리 색으로만 강조한다 (단계 강제 UX 지양).
  */
 import React from 'react';
-import { ITEM_TYPES, ITEM_TYPE_KEYS, ANSWER_SOURCE, hasAnswer, answerText, changeItemType, recheckAnswer } from './lib/itemBank';
+import { ITEM_TYPES, ITEM_TYPE_KEYS, ANSWER_SOURCE, hasAnswer, answerText, changeItemType, recheckAnswer, stemParts, blankNo, blankCountOf } from './lib/itemBank';
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
 // 자료에 이미 (1)·(가)·ㄱ. 같은 표지가 붙어 있으면 번호를 또 붙이지 않는다
@@ -18,6 +18,39 @@ const chip = (bg, color) => ({ display: 'inline-flex', alignItems: 'center', gap
 const inputStyle = (bad) => ({ width: '100%', boxSizing: 'border-box', padding: '6px 10px', borderRadius: 8, fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', border: `1px solid ${bad ? '#FCA5A5' : '#CBD5E1'}` });
 const stop = (e) => e.stopPropagation();
 
+/**
+ * 허용 답 칩 — 답 하나를 쓰고 Enter(또는 칸을 벗어나면) 칩으로 쌓인다. 칩 [×]로 빼고, 빈 칸에서 Backspace는 마지막 칩을 뺀다
+ * 구분 기호를 쓰지 않아 1/2 · 1,000 · x=3 같은 답도 그대로 넣는다
+ */
+export const AnswerChips = ({ values, onChange, bad }) => {
+  const [draft, setDraft] = React.useState('');
+  const list = (values || []).map((v) => String(v).trim()).filter(Boolean);
+  const add = () => {
+    const t = draft.trim();
+    if (t && !list.includes(t)) onChange([...list, t]);
+    setDraft('');
+  };
+  return (
+    <div onClick={stop} style={{ ...inputStyle(bad && !list.length), display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '4px 6px', background: 'white' }}>
+      {list.map((v) => (
+        <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 4px 2px 8px', borderRadius: 999, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)' }}>
+          {v}
+          <button type="button" onClick={() => onChange(list.filter((x) => x !== v))} aria-label={`${v} 빼기`}
+            style={{ border: 'none', background: 'transparent', color: '#64748B', cursor: 'pointer', padding: '0 2px', fontSize: 'var(--neo-font-size-sm)' }}>×</button>
+        </span>
+      ))}
+      <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={add}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === 'Enter') { e.preventDefault(); add(); }
+          else if (e.key === 'Backspace' && !draft && list.length) onChange(list.slice(0, -1));
+        }}
+        placeholder={list.length ? '다른 답도 맞으면 입력 후 Enter' : '정답 입력 후 Enter · 여러 개 가능'}
+        style={{ flex: 1, minWidth: 220, border: 'none', outline: 'none', padding: '2px 4px', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)' }} />
+    </div>
+  );
+};
+
 export const TypeBadge = ({ type }) => {
   const t = ITEM_TYPES[type] || { label: type, icon: '?' };
   return <span style={chip(t.group === 'select' ? '#EFF6FF' : '#F5F3FF', t.group === 'select' ? '#1D4ED8' : '#6D28D9')}>{t.icon} {t.label}</span>;
@@ -26,7 +59,14 @@ export const TypeBadge = ({ type }) => {
 // dimUnchecked — 정답형 확인 단계처럼 「선택 안 함 = 저장에서 빠짐」일 때만 흐리게. 문제 은행 목록은 선택이 고르기일 뿐이라 흐리게 하지 않는다
 // active — 문제 은행에서 지금 상세에 열린 문항 (파란 테두리)
 // onEdit — [✏️ 문항 편집](직접 작성과 같은 편집 화면)을 연다. 그림 위 ✂️도 같은 화면으로
-const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false, active = false, onEdit }) => {
+// hideNumber — 문제 은행에서는 번호를 숨긴다. 번호는 원본 자료의 문항 번호라 은행 안에서는 뜻이 없다(자료가 다르면 겹침). 과제·문제집은 담은 순서로 번호를 새로 매겨 넘긴다
+/** 지문 — [빈칸] 자리를 ① 칸으로 그린다 (완성형) */
+export const StemWithBlanks = ({ stem }) => stemParts(stem).map((p, k) => ('blank' in p
+  ? <span key={k} style={{ display: 'inline-block', minWidth: 40, margin: '0 2px', padding: '0 8px', border: '1px solid #94A3B8', borderRadius: 4, textAlign: 'center', fontWeight: 700 }}>{blankNo(p.blank)}</span>
+  : <React.Fragment key={k}>{p.text}</React.Fragment>));
+
+const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onChange, onOpen, compact, unitOptions, dimUnchecked = false, active = false, onEdit, hideNumber = false, hideMeta = false, hideIssues = false }) => {
+  const showNumber = !hideNumber && !!item.number;
   const missing = !hasAnswer(item);
   const src = ANSWER_SOURCE[missing ? 'none' : item.answerSource] || ANSWER_SOURCE.none;
   const a = item.answer || {};
@@ -59,7 +99,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
     const on = cur.includes(no);
     setAnswer({ choices: single ? (on ? [] : [no]) : on ? cur.filter((n) => n !== no) : [...cur, no].sort() });
   };
-  const blankCount = Math.max(item.blankCount || 0, (a.blanks || []).length, 1);
+  const blankCount = blankCountOf(item);
   const showAnswerLine = !['multiple_choice', 'binary_choice', 'true_false'].includes(item.itemType) && !editable;
 
   return (
@@ -73,12 +113,13 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
       }}
     >
       {selectable && (
-        <input type="checkbox" checked={!!checked} onChange={onToggle} onClick={stop} aria-label={`${item.number}번 선택`}
+        <input type="checkbox" checked={!!checked} onChange={onToggle} onClick={stop} aria-label={showNumber ? `${item.number}번 선택` : '문항 선택'}
           style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0, cursor: 'pointer' }} />
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-          <span style={{ fontWeight: compact ? 600 : 800, color: '#0F172A', fontSize: 'var(--neo-font-size-base)' }}>{item.number}.</span>
+        {/* hideMeta — 문항 편집의 정답 칸: 유형·정답 출처·배점·단원 칩을 빼고 문항과 정답만 */}
+        {!hideMeta && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          {showNumber && <span style={{ fontWeight: compact ? 600 : 800, color: '#0F172A', fontSize: 'var(--neo-font-size-base)' }}>{item.number}.</span>}
           {editable ? (
             <select value={item.itemType} onClick={stop} onChange={(e) => onChange && onChange(changeItemType(item, e.target.value))}
               title="유형을 바꿔도 정답은 지워지지 않습니다"
@@ -87,6 +128,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
             </select>
           ) : <TypeBadge type={item.itemType} />}
           <span style={chip(src.bg, src.color)} title="정답 출처">{src.label}</span>
+          {item.copiedFromEduId && <span style={chip('#FEF3C7', '#92400E')} title="교육청 문제 은행에서 복제한 문항">🏛️ 교육청</span>}
           {item.points != null && <span style={chip('#F1F5F9', '#475569')}>{item.points}점</span>}
           {isBasic ? (
             <span style={chip('#FFF7ED', '#C2410C')} title="기초학력 문항 — 단원·성취기준 없이 기초 기능으로 관리">🧩 기초학력{item.skill ? ` · ${item.skill}` : ''}</span>
@@ -100,12 +142,12 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
             <span style={chip(unitStyle[0], unitStyle[1])} title={unitTitle}>📘 {unit.areaName || unit.label || '단원 미지정'}{unit.source === 'ai' ? ' · 추정' : ''}</span>
           )}
           {item.lineage?.parentId && <span style={chip('#FDF4FF', '#A21CAF')}>파생</span>}
-          {!editable && (errCount + warnCount) > 0 && <span style={chip(errCount ? '#FEE2E2' : '#FEF3C7', errCount ? '#B91C1C' : '#92400E')}>확인 {errCount + warnCount}</span>}
+          {!editable && (errCount + warnCount) > 0 && <span style={chip(errCount ? '#FEE2E2' : '#FEF3C7', errCount ? '#B91C1C' : '#92400E')}>확인 필요 {errCount + warnCount}</span>}
           {onEdit && (
             <button type="button" onClick={(e) => { stop(e); onEdit(); }} title="발문·보기·그림·정답 등 문항 전체를 고칩니다"
               style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: 'white', color: '#334155', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>✏️ 문항 편집</button>
           )}
-        </div>
+        </div>}
 
         {passage && !compact && (
           <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', background: '#F8FAFC', borderRadius: 6, padding: '6px 8px', marginBottom: 6, whiteSpace: 'pre-wrap', maxHeight: 72, overflow: 'hidden' }}>
@@ -113,7 +155,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
           </div>
         )}
         <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#0F172A', fontWeight: 400, lineHeight: 1.6, whiteSpace: 'pre-wrap', ...(compact ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>
-          {item.stem || '(발문 없음)'}
+          {item.stem ? <StemWithBlanks stem={item.stem} /> : '(지문 및 문항 없음)'}
         </div>
         {item.material && !compact && (
           <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#334155', border: '1px solid #E2E8F0', borderRadius: 6, padding: '6px 10px', marginTop: 6, whiteSpace: 'pre-wrap' }}>{item.material}</div>
@@ -193,18 +235,16 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
         )}
         {/* 단답형 */}
         {!compact && editable && item.itemType === 'short_answer' && (
-          <input value={(a.texts || []).join(' / ')} onClick={stop} onChange={(e) => setAnswer({ texts: e.target.value.split('/').map((t) => t.trim()) })}
-            placeholder="정답 (여러 개 허용 시 / 로 구분)" style={{ ...inputStyle(missing), marginTop: 8 }} />
+          <div style={{ marginTop: 8 }}><AnswerChips values={a.texts || []} bad={missing} onChange={(texts) => setAnswer({ texts })} /></div>
         )}
         {/* 완성형 — 빈칸마다 허용 답 */}
         {!compact && editable && item.itemType === 'completion' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
             {Array.from({ length: blankCount }, (_, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', width: 44 }}>빈칸 {i + 1}</span>
-                <input value={((a.blanks || [])[i] || []).join(' / ')} onClick={stop}
-                  onChange={(e) => { const next = Array.from({ length: blankCount }, (_, k) => [...((a.blanks || [])[k] || [])]); next[i] = e.target.value.split('/').map((t) => t.trim()); setAnswer({ blanks: next }); }}
-                  placeholder="허용 답 (/ 로 구분)" style={inputStyle(missing)} />
+                <span style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#475569', width: 44 }}>빈칸 {blankNo(i)}</span>
+                <div style={{ flex: 1 }}><AnswerChips values={(a.blanks || [])[i] || []} bad={missing}
+                  onChange={(vals) => { const next = Array.from({ length: blankCount }, (_, k) => [...((a.blanks || [])[k] || [])]); next[i] = vals; setAnswer({ blanks: next }); }} /></div>
               </div>
             ))}
           </div>
@@ -222,7 +262,7 @@ const ItemCard = ({ item, passage, selectable, checked, onToggle, editable, onCh
           </div>
         )}
 
-        {editable && (item.issues || []).filter((i) => i.level !== 'info').length > 0 && (
+        {editable && !hideIssues && (item.issues || []).filter((i) => i.level !== 'info').length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {item.issues.filter((i) => i.level !== 'info').map((i, k) => (
               <div key={k} style={{ fontSize: 'var(--neo-font-size-xs)', color: i.level === 'error' ? '#B91C1C' : '#92400E' }}>{i.level === 'error' ? '⛔' : '⚠️'} {i.field} — {i.message}</div>
