@@ -24,9 +24,13 @@ const StudentManagement = ({ onAdd }) => {
 
     return (
         <div className="content-container">
-            <header className="content-header" style={{ marginBottom: '0.25rem' }}>
-                <h1 className="content-title">학생 관리</h1>
-                <p className="content-subtitle">전체 학생 회원을 확인 할 수 있습니다.</p>
+            {/* [디자인 v2] 교사 관리 · 학교 관리와 같은 머리 — 제목 · 설명은 위아래, 등록 버튼은 오른쪽 */}
+            <header className="content-header">
+                <div>
+                    <h1 className="content-title">학생 관리</h1>
+                    <p className="content-subtitle">전체 학생 회원을 확인 할 수 있습니다.</p>
+                </div>
+                <button className="btn-primary-filled" onClick={onAdd}>+ 학생 등록</button>
             </header>
 
             <div className="stu-action-bar">
@@ -39,9 +43,6 @@ const StudentManagement = ({ onAdd }) => {
                     />
                     <span className="search-icon">🔍</span>
                 </div>
-                <button className="btn-primary-filled" onClick={onAdd} style={{ width: '160px' }}>
-                    + 학생 등록
-                </button>
             </div>
 
             <div className="table-responsive">

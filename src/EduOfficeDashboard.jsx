@@ -2,13 +2,17 @@
  * EduOfficeDashboard.jsx
  * 교육청 관리자(시도교육청) 전용 대시보드 — mockup 1:1 재현 (v1.0)
  * 본인 교육청 범위만 보는 단순화된 뷰: 헤더(날짜/학년도/사용학교) + 3카드(학생/교사/미활용)
- *   + 공지사항 + 과목별 AI 채점 활용률(도넛) + 이용시간(주차별/월별 막대)
+ *   + 공지사항 + 과목별 AI 채점 비중(도넛) + 이용시간(주차별/월별 막대)
+ *   [v1.4] 과목을 누르면 학교별 채점 건수(0건·미활용 학교 포함) → 학교를 누르면 학교 대시보드
  * 차트는 모두 inline SVG (Dashboard.jsx 패턴 정합)
  */
 import React, { useState } from 'react';
+import DashboardTopV24 from './DashboardTopV24'; // [v2.4] 대시보드 공통 상단
 
-const EduOfficeDashboard = ({ onNavigate }) => {
+const EduOfficeDashboard = ({ onNavigate, onOpenSchool, appVersion = '2.3' }) => {
   const [academicYear, setAcademicYear] = useState('2026');
+  const [pickedSubject, setPickedSubject] = useState(null); // [v1.4] 학교 목록을 펼친 과목
+  const [usageView, setUsageView] = useState('weekly'); // [v1.5] 이용시간 차트 — weekly(주차별) | monthly(월 합계)
 
   // ── Mock 데이터 ─────────────────────────────────────────────
   const officeName = '충청남도교육청';
@@ -43,6 +47,41 @@ const EduOfficeDashboard = ({ onNavigate }) => {
     { name: '정보',       count: 1,  pct: 1,  color: '#EC4899' },
     { name: '제2외국어',  count: 1,  pct: 1,  color: '#A855F7' },
   ];
+
+  // [v1.4] 도입 학교 — 활용 7곳(과제 1건↑) + 미활용 4곳(과제 0건). 위 adoptedSchools·activeSchools와 같은 수
+  const schools = [
+    { name: '천안중앙고등학교', active: true },
+    { name: '공주고등학교', active: true },
+    { name: '아산중학교', active: true },
+    { name: '논산여자고등학교', active: true },
+    { name: '서산중학교', active: true },
+    { name: '당진초등학교', active: true },
+    { name: '홍성고등학교', active: true },
+    { name: '보령중학교', active: false },
+    { name: '예산초등학교', active: false },
+    { name: '부여고등학교', active: false },
+    { name: '태안중학교', active: false },
+  ];
+  // 과목 × 학교 AI 채점 건수 — 학교별 합이 위 subjects의 count와 같다
+  const subjectBySchool = {
+    '수학': { '천안중앙고등학교': 14, '공주고등학교': 11, '아산중학교': 9, '서산중학교': 6, '홍성고등학교': 5 },
+    '국어': { '공주고등학교': 8, '논산여자고등학교': 7, '천안중앙고등학교': 6, '아산중학교': 4, '당진초등학교': 2 },
+    '영어': { '천안중앙고등학교': 3, '서산중학교': 3, '논산여자고등학교': 2 },
+    '과학': { '아산중학교': 2, '홍성고등학교': 2 },
+    '사회': { '공주고등학교': 3, '서산중학교': 1 },
+    '도덕': { '아산중학교': 1 },
+    '바른 생활': { '당진초등학교': 1 },
+    '정보': { '홍성고등학교': 1 },
+    '제2외국어': { '논산여자고등학교': 1 },
+  };
+  // 고른 과목의 학교 목록 — 채점한 학교(건수 순) → 이 과목 0건인 활용 학교 → 미활용 학교
+  const schoolRows = (subjectName) => {
+    const counts = subjectBySchool[subjectName] || {};
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return schools
+      .map((sc) => ({ ...sc, count: counts[sc.name] || 0, pct: total ? Math.round(((counts[sc.name] || 0) / total) * 100) : 0 }))
+      .sort((a, b) => b.count - a.count || Number(b.active) - Number(a.active));
+  };
 
   const usageSummary = {
     today: 0,
@@ -79,7 +118,7 @@ const EduOfficeDashboard = ({ onNavigate }) => {
   };
 
   // ── 도넛 차트 (inline SVG, stroke-dasharray 기반) ───────────
-  const Donut = ({ data, size = 200, thickness = 36 }) => {
+  const Donut = ({ data, size = 200, thickness = 36, picked = null, onPick }) => {
     const r = (size - thickness) / 2;
     const cx = size / 2;
     const cy = size / 2;
@@ -103,14 +142,20 @@ const EduOfficeDashboard = ({ onNavigate }) => {
               strokeDasharray={`${arc} ${C - arc}`}
               strokeDashoffset={dashoffset}
               transform={`rotate(-90 ${cx} ${cy})`}
-            />
+              opacity={picked && picked !== d.name ? 0.25 : 1}
+              style={{ cursor: onPick ? 'pointer' : 'default' }}
+              onClick={(e) => { e.stopPropagation(); if (onPick) onPick(d.name); }}
+            >
+              <title>{`${d.name} ${d.count}건 (${d.pct}%)`}</title>
+            </circle>
           );
           cum += d.pct;
           return el;
         })}
         {/* 가장 큰 세그먼트에 % 라벨 */}
-        {data.slice(0, 1).map((d, i) => (
-          <text key={`lbl-${i}`} x={cx} y={cy + 5} textAnchor="middle" fontSize="22" fontWeight="800" fill="#1E293B">
+        {/* 가운데 — 고른 과목이 있으면 그 과목, 없으면 가장 큰 과목의 % */}
+        {[data.find((d) => d.name === picked) || data[0]].filter(Boolean).map((d, i) => (
+          <text key={`lbl-${i}`} x={cx} y={cy + 5} textAnchor="middle" fontSize="22" fontWeight="800" fill="#1E293B" style={{ pointerEvents: 'none' }}>
             {d.pct}%
           </text>
         ))}
@@ -206,10 +251,20 @@ const EduOfficeDashboard = ({ onNavigate }) => {
   // ── 컴포넌트들 ─────────────────────────────────────────────
   const UsageCard = ({ chartLabels, chartDataSets }) => (
     <div style={card}>
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flex: 1 }}>
         <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>이용시간</div>
         <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', marginTop: 2 }}>
           이용시간 파악으로 실제 업무 효율화의 기여도를 측정할 수 있습니다.
+        </div>
+        </div>
+        {/* [v1.5] 주차별 · 월별 — 舊 같은 카드를 두 줄로 반복하던 구성을 한 카드의 보기 전환으로 합쳤다 */}
+        <div role="tablist" aria-label="이용시간 보기" style={{ display: 'inline-flex', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+          {[['weekly', '주차별'], ['monthly', '월별']].map(([k, lb]) => (
+            <button key={k} type="button" role="tab" aria-selected={usageView === k} onClick={() => setUsageView(k)}
+              style={{ padding: '6px 12px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700,
+                background: usageView === k ? '#1E293B' : 'white', color: usageView === k ? 'white' : '#475569' }}>{lb}</button>
+          ))}
         </div>
       </div>
       {/* 3-card 요약 */}
@@ -244,28 +299,71 @@ const EduOfficeDashboard = ({ onNavigate }) => {
     </div>
   );
 
+  // [v1.6] 과목을 고른 뒤 카드의 빈 곳·도넛 가운데·다른 영역을 누르면 전체 보기로 돌아온다
+  //   (고른 과목 범례 · 도넛 조각 · 학교 목록은 각자 처리하고 여기까지 올라오지 않는다)
   const SubjectUsageCard = () => (
-    <div style={card}>
+    <div style={{ ...card, cursor: pickedSubject ? 'pointer' : 'default' }} onClick={() => pickedSubject && setPickedSubject(null)}
+      title={pickedSubject ? '빈 곳을 누르면 전체 보기로 돌아갑니다' : undefined}>
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>과목별 AI 채점 활용률</div>
+        {/* [v1.4] 「활용률」 → 「비중」 — 값은 전체 AI 채점 중 그 과목이 차지하는 비율이다 (과목 안의 사용 비율이 아님) */}
+        <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>과목별 AI 채점 비중</div>
         <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', marginTop: 2 }}>
-          과목별 서·논술 AI 채점 활용율을 확인할 수 있습니다.
+          과목을 누르면 학교별 채점 건수를 볼 수 있습니다.
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 28, marginTop: 16 }}>
-        <Donut data={subjects} size={220} thickness={42} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', flex: 1, fontSize: 'var(--neo-font-size-sm)' }}>
-          {subjects.map((s, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ display: 'inline-block', width: 10, height: 10, background: s.color, borderRadius: 999 }} />
-              <span style={{ color: '#475569', fontWeight: 600, minWidth: 64 }}>{s.name}</span>
-              <span style={{ color: '#94A3B8', fontWeight: 600, marginLeft: 'auto' }}>
-                {s.count}건 ({s.pct}%)
-              </span>
-            </div>
-          ))}
+        <Donut data={subjects} size={220} thickness={42} picked={pickedSubject} onPick={(n) => setPickedSubject((cur) => (cur === n ? null : n))} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', flex: 1, fontSize: 'var(--neo-font-size-sm)' }}>
+          {subjects.map((s, i) => {
+            const on = pickedSubject === s.name;
+            return (
+              <button key={i} type="button" onClick={(e) => { e.stopPropagation(); setPickedSubject(on ? null : s.name); }} aria-pressed={on}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', textAlign: 'left',
+                  border: `1px solid ${on ? '#93C5FD' : 'transparent'}`, background: on ? '#EFF6FF' : 'transparent', opacity: pickedSubject && !on ? 0.55 : 1 }}>
+                <span style={{ display: 'inline-block', width: 10, height: 10, background: s.color, borderRadius: 999, flexShrink: 0 }} />
+                <span style={{ color: '#475569', fontWeight: 600, minWidth: 64 }}>{s.name}</span>
+                <span style={{ color: '#94A3B8', fontWeight: 600, marginLeft: 'auto' }}>
+                  {s.count}건 ({s.pct}%)
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
+      {pickedSubject && (() => {
+        const rows = schoolRows(pickedSubject);
+        const subj = subjects.find((x) => x.name === pickedSubject);
+        const max = Math.max(1, ...rows.map((x) => x.count));
+        const zero = rows.filter((x) => x.count === 0).length;
+        return (
+          <div style={{ marginTop: 18, borderTop: '1px solid #F1F5F9', paddingTop: 14, cursor: 'default' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+              <b style={{ fontSize: 'var(--neo-font-size-base)', color: '#1E293B' }}>{pickedSubject} · 학교별 {subj?.count ?? 0}건</b>
+              <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>채점 0건 {zero}곳</span>
+              <button type="button" onClick={() => setPickedSubject(null)} aria-label="학교 목록 닫기"
+                style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: 'var(--neo-font-size-base)', fontFamily: 'inherit' }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {rows.map((sc) => (
+                <button key={sc.name} type="button" onClick={() => onOpenSchool && onOpenSchool(sc.name)} title={`${sc.name} 학교 대시보드 보기`}
+                  style={{ display: 'grid', gridTemplateColumns: '150px 1fr 90px 16px', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, border: 'none', background: 'transparent',
+                    cursor: onOpenSchool ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-sm)', textAlign: 'left' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                  <span style={{ color: sc.count ? '#1E293B' : '#94A3B8', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</span>
+                  <span style={{ height: 8, borderRadius: 999, background: '#F1F5F9', overflow: 'hidden' }}>
+                    <span style={{ display: 'block', height: '100%', width: `${(sc.count / max) * 100}%`, background: subj?.color || '#3B82F6' }} />
+                  </span>
+                  <span style={{ textAlign: 'right', fontWeight: 700, color: sc.count ? '#475569' : '#CBD5E1', whiteSpace: 'nowrap' }}>
+                    {sc.count ? `${sc.count}건 (${sc.pct}%)` : sc.active ? '0건' : '미활용'}
+                  </span>
+                  <span style={{ color: '#CBD5E1' }}>›</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
@@ -280,7 +378,17 @@ const EduOfficeDashboard = ({ onNavigate }) => {
   const monthLabels = monthlyWeeks.map((m) => m.month);
 
   return (
-    <div style={{ padding: '24px 32px', background: '#F8FAFC', minHeight: '100vh' }}>
+    <div style={{ padding: '24px 32px', background: '#F8FAFC', height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
+      {/* [v2.4] 대시보드 공통 상단 — 2.3은 아래 舊 상단 그대로 */}
+      {appVersion === '2.4' ? (
+        <DashboardTopV24 year={academicYear} onYearChange={setAcademicYear} orgName={officeName}
+          cards={[
+            { icon: '👤', label: '등록된 학생', value: '1,020' },
+            { icon: '💙', label: '등록된 교사', value: 42 },
+            { icon: '🏫', label: '도입 학교', value: adoptedSchools },
+            { icon: '⚠️', label: '미활용 학교', value: inactiveSchools },
+          ]} />
+      ) : (<>
       {/* ── 헤더 카드 (그라데이션) ─────────────────────────── */}
       <div style={{
         background: 'linear-gradient(135deg, #2A75F3 0%, #1D4ED8 100%)',
@@ -334,6 +442,8 @@ const EduOfficeDashboard = ({ onNavigate }) => {
         ))}
       </div>
 
+      </>)}
+
       {/* ── 공지사항 ──────────────────────────────────────────── */}
       <div style={{ ...card, marginBottom: 20 }}>
         <div style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B', marginBottom: 14 }}>공지사항</div>
@@ -360,23 +470,18 @@ const EduOfficeDashboard = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* ── 차트 1: 과목별 도넛 + 주차별 막대 ─────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+      {/* ── 차트: 과목별 도넛 + 이용시간(주차별/월별 전환) ───────
+           [v1.5] 舊 시안의 두 변형(주차별 줄 · 월별 줄)을 그대로 옮겨 같은 도넛이 두 번 나왔다 → 한 줄로 합침 */}
+      {/* [v2.4] 좁은 화면(1280px 이하)에서는 한 줄에 하나씩 — 두 칸이 내용 폭보다 좁아져 가로 스크롤이 생기던 문제 */}
+      {appVersion === '2.4' && <style>{`@media (max-width: 1280px) { .edsh24-charts { grid-template-columns: minmax(0, 1fr) !important; } }`}</style>}
+      <div className={appVersion === '2.4' ? 'edsh24-charts' : undefined}
+        style={{ display: 'grid', gridTemplateColumns: appVersion === '2.4' ? 'repeat(2, minmax(0, 1fr))' : '1fr 1fr', gap: 16 }}>
         <SubjectUsageCard />
         <UsageCard
           chartLabels={monthLabels}
-          chartDataSets={weeklyDataSets}
-        />
-      </div>
-
-      {/* ── 차트 2: 과목별 도넛(동일) + 월별 막대(합계) ───────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <SubjectUsageCard />
-        <UsageCard
-          chartLabels={monthLabels}
-          chartDataSets={[
-            { label: '월 합계', color: '#2A75F3', values: monthlyWeeks.map((m) => m.total) },
-          ]}
+          chartDataSets={usageView === 'weekly'
+            ? weeklyDataSets
+            : [{ label: '월 합계', color: '#2A75F3', values: monthlyWeeks.map((m) => m.total) }]}
         />
       </div>
     </div>

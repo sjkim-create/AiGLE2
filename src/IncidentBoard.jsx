@@ -72,17 +72,22 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast, title = '�
   const cell = { padding: '11px 12px', fontSize: 'var(--neo-font-size-sm)', borderBottom: '1px solid #F1F5F9', verticalAlign: 'middle' };
   const th = (key, text) => (
     <th key={text} onClick={key ? () => toggleSort(key) : undefined}
-      style={{ ...cell, background: '#F8FAFC', color: sort.key === key ? '#1D4ED8' : '#64748B', fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap', cursor: key ? 'pointer' : 'default', userSelect: 'none' }}>
+      style={{ ...cell, borderBottom: '1px solid #CBD5E1', color: sort.key === key ? '#1E293B' : '#64748B', fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap', cursor: key ? 'pointer' : 'default', userSelect: 'none' }}>
       {text}{key && <span style={{ marginLeft: 4, fontSize: 'var(--neo-font-size-xs)', color: sort.key === key ? '#1D4ED8' : '#CBD5E1' }}>{sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}</span>}
     </th>
   );
 
   return (
-    <div className="content-container" style={{ padding: 24, height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0, fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B' }}>🚨 {title}</h1>
-        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>교사 화면에서 접수된 장애 신고 — 행을 누르면 상세에서 확인·답변합니다</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+    <div className="content-container" style={{ height: '100%', overflowY: 'auto' }}>
+      {/* [디자인 v2] 게시판 공통 머리 — 제목 · 설명 위아래, 필터 · 일괄 동작은 다음 줄 (제목 앞 이모지 없이) */}
+      <header className="content-header">
+        <div>
+          <h1 className="content-title">{title}</h1>
+          <p className="content-subtitle">교사 화면에서 접수된 장애 신고 — 행을 누르면 상세에서 확인·답변합니다</p>
+        </div>
+      </header>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           {selected.size > 0 && (
             <button type="button" onClick={() => setConfirmDelete(true)} title="선택한 신고를 게시판에서 삭제합니다 (Jira 이슈는 남습니다)"
               style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #FCA5A5', background: 'white', color: '#DC2626', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', marginRight: 6 }}>🗑 선택 삭제 ({selected.size})</button>
@@ -92,18 +97,18 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast, title = '�
               style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', fontFamily: 'inherit', marginRight: 6 }}>{syncing ? '가져오는 중…' : '↻ Jira 동기화'}</button>
           )}
           {['전체', ...INCIDENT_STATUS].map((s) => (
-            <button key={s} onClick={() => setFilter(s)} style={btn({ borderColor: filter === s ? '#2A75F3' : '#E2E8F0', color: filter === s ? '#1D4ED8' : '#475569', background: filter === s ? '#EFF6FF' : 'white' })}>
-              {s} ({s === '전체' ? items.length : items.filter((r) => r.status === s).length})
+            <button key={s} type="button" className={`btn-outline${filter === s ? ' active' : ''}`} onClick={() => setFilter(s)}>
+              {s} <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.8 }}>{s === '전체' ? items.length : items.filter((r) => r.status === s).length}</span>
             </button>
           ))}
         </div>
       </div>
 
-      <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={{ ...cell, background: '#F8FAFC', width: 36, textAlign: 'center' }}>
+              <th style={{ ...cell, borderBottom: '1px solid #CBD5E1', width: 36, textAlign: 'center' }}>
                 <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="전체 선택" title="목록 전체 선택" style={{ cursor: 'pointer' }} />
               </th>
               {th('createdAt', SORT_KEYS.createdAt)}
@@ -117,7 +122,7 @@ const IncidentList = ({ items, onOpen, onSyncAll, syncing, showToast, title = '�
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={8} style={{ ...cell, textAlign: 'center', color: '#94A3B8', padding: 28 }}>접수된 장애 신고가 없습니다.</td></tr>
+              <tr><td colSpan={8} style={{ ...cell, textAlign: 'center', color: '#64748B', padding: 40 }}>접수된 장애 신고가 없습니다.</td></tr>
             )}
             {rows.map((r) => (
               <tr key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: 'pointer' }}

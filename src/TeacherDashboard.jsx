@@ -7,9 +7,12 @@
  *  - 신규: 학습 추이 분석(개인/그룹/학년) + 강·약점 분석 + 인사이트 카드
  */
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import DashboardTopV24, { BannerLinkButton } from './DashboardTopV24';
+import TeacherAnalysisV24 from './TeacherAnalysisV24'; // [v2.4] 점수 기준으로 다시 짠 분석 영역 // [v2.4] 대시보드 공통 상단
 import SmartpenMonitor from './SmartpenMonitor';
 
-const TeacherDashboard = ({ onNavigate }) => {
+const TeacherDashboard = ({ onNavigate, appVersion = '2.3' }) => {
+  const [yearV24, setYearV24] = useState('2026'); // [v2.4] 공통 상단 학년도
   // 스마트펜 모니터링 풀 오버레이 모달 — 교사 대시보드 헤더에서만 진입
   const [showSmartpenModal, setShowSmartpenModal] = useState(false);
   // [v2.1] 본인 계약 기간 + 데이터 학년 분리 — MY-01 「내 정보」 계약 일자와 동일 source
@@ -1098,6 +1101,21 @@ const TeacherDashboard = ({ onNavigate }) => {
           </div>
         </div>
       )}
+      {/* [v2.4] 대시보드 공통 상단 — 2.3은 아래 舊 상단 그대로 */}
+      {appVersion === '2.4' ? (
+        <DashboardTopV24 year={yearV24} onYearChange={setYearV24} yearFixed
+          right={<>
+            <BannerLinkButton label="과제 등록" onClick={() => onNavigate && onNavigate('과제 등록')} />
+            <BannerLinkButton label="채점 관리" onClick={() => onNavigate && onNavigate('채점 관리')} />
+          </>}
+          cards={[
+            // 아래 KPI(stats)와 같은 목 값
+            { icon: '📂', label: '등록한 과제', value: 20, onClick: () => onNavigate && onNavigate('TaskManagement') },
+            { icon: '📝', label: '미채점', value: 90, onClick: () => onNavigate && onNavigate('GradingManagement') },
+            { icon: '👤', label: '관리 학생', value: 30, onClick: () => onNavigate && onNavigate('StudentManagement') },
+            { icon: '⭐', label: '관리 그룹', value: 3 },
+          ]} />
+      ) : (<>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 900 }}>대시보드</h1>
@@ -1265,8 +1283,20 @@ const TeacherDashboard = ({ onNavigate }) => {
         ))}
       </div>
 
-      {/* 공지사항 + Q&A + 단계별 진행 현황 — 단계별 진행을 게시판 줄로 옮겨 점수 분포표와 나눈다 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+      </>)}
+
+      {/* 공지사항 + Q&A + 단계별 진행 현황 — 단계별 진행을 게시판 줄로 옮겨 점수 분포표와 나눈다
+          [v2.4] 좁은 화면(1280px 이하)에서는 공지·Q&A 2열 + 단계별 진행 아래 한 줄 — 세 칸에서 Q&A 제목이 한 글자씩 줄바꿈되던 문제 */}
+      {appVersion === '2.4' && <style>{`
+        @media (max-width: 1280px) {
+          .tdsh24-board { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .tdsh24-board > section:nth-child(3) { grid-column: 1 / -1; }
+          .tdsh24-board > section:nth-child(3) svg { max-width: 360px; display: block; margin: 0 auto; }
+        }
+        .tdsh24-board h3 { white-space: nowrap; }
+        .tdsh24-board button { white-space: nowrap; flex-shrink: 0; }
+      `}</style>}
+      <div className={appVersion === '2.4' ? 'tdsh24-board' : undefined} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         <section style={{ background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: 'var(--shadow)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800 }}>공지사항 ›</h3>
@@ -1317,6 +1347,10 @@ const TeacherDashboard = ({ onNavigate }) => {
         </section>
       </div>
 
+      {/* [v2.4] 분석 영역 — 등급 대신 점수, 교사 질문 순서(과제 결과 → 추이 → 영역 → 살펴볼 학생)로 다시 짰다. 2.3은 아래 舊 구성 그대로 */}
+      {appVersion === '2.4' ? (
+        <TeacherAnalysisV24 students={students} />
+      ) : (<>
       {/* 그룹 점수 분포 — 한 줄 전체 폭(단계별 진행 현황은 위 게시판 줄로 옮김) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '1.5rem', marginBottom: '1.5rem' }}>
         <section style={{ background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: 'var(--shadow)' }}>
@@ -2685,6 +2719,7 @@ const TeacherDashboard = ({ onNavigate }) => {
           })}
         </div>
       </section>
+      </>)}
 
       {/* ════════════════════════════════════════════════════════════ */}
       {/* 점수 분포표 셀 클릭 시 학생 정보 툴팁 (간략 popover)              */}

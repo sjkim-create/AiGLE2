@@ -208,24 +208,25 @@ const SchoolTeacherManagement = ({ onAdd }) => {
   const hasNoData = teachers.length === 0;
 
   return (
-    <div className="content-container" style={{ padding: '2rem 2.5rem', height: '100%', overflowY: 'auto', background: '#F8FAFC', position: 'relative' }}>
+    <div className="content-container" style={{ height: '100%', overflowY: 'auto', background: 'white', position: 'relative' }}>
       <header style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
-            <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, color: '#1E2225', margin: 0 }}>👥 교사관리 (학교 모드)</h1>
+            {/* [디자인 v2] 다른 목록 화면과 같은 제목 — 제목 앞 이모지 없이 */}
+            <h1 className="content-title">교사관리 (학교 모드)</h1>
             <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', margin: '0.4rem 0 0' }}>
               <strong>{SCHOOL_NAME}</strong> 소속 교사를 조회하고 인계 처리합니다.
             </p>
           </div>
-          <button onClick={onAdd} style={{ padding: '10px 18px', background: '#2A75F3', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-base)', cursor: 'pointer' }}>+ 교사등록</button>
+          <button type="button" className="btn-primary-filled" onClick={onAdd}>+ 교사등록</button>
         </div>
       </header>
 
-      <section style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '14px', padding: '1rem 1.25rem', marginBottom: '1.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <section style={{ marginBottom: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: '1 1 280px', minWidth: '220px' }}>
           <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }}>🔍</span>
           <input type="text" placeholder="교사명 / 아이디 / 이메일로 검색" value={query} onChange={(e) => setQuery(e.target.value)}
-            style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', outline: 'none', boxSizing: 'border-box', background: '#F8FAFC' }} />
+            style={{ width: '100%', padding: '9px 12px 9px 34px', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', outline: 'none', boxSizing: 'border-box', background: 'white' }} />
         </div>
         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
           {TYPE_FILTER.map((t) => {
@@ -250,17 +251,17 @@ const SchoolTeacherManagement = ({ onAdd }) => {
           </p>
         </section>
       ) : (
-        <section style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '14px', overflow: 'auto' }}>
+        <section style={{ overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', width: '50px' }}>No.</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', width: '110px' }}>회원 유형</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', width: '110px', cursor: 'pointer' }} onClick={() => handleSort('name')}>이름{sortIndicator('name')}</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', cursor: 'pointer' }} onClick={() => handleSort('id')}>아이디{sortIndicator('id')}</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>이메일</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', width: '100px', cursor: 'pointer' }} onClick={() => handleSort('joinDate')}>가입일{sortIndicator('joinDate')}</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', width: '220px' }}>상태</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', width: '50px' }}>No.</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', width: '110px' }}>회원 유형</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', width: '110px', cursor: 'pointer' }} onClick={() => handleSort('name')}>이름{sortIndicator('name')}</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', cursor: 'pointer' }} onClick={() => handleSort('id')}>아이디{sortIndicator('id')}</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1' }}>이메일</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', width: '100px', cursor: 'pointer' }} onClick={() => handleSort('joinDate')}>가입일{sortIndicator('joinDate')}</th>
+                <th style={{ padding: '12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', width: '220px' }}>상태</th>
               </tr>
             </thead>
             <tbody>
@@ -277,7 +278,7 @@ const SchoolTeacherManagement = ({ onAdd }) => {
                       <span style={{ padding: '2px 8px', borderRadius: '6px', background: t.type === '유료회원' ? '#DBEAFE' : '#F3F4F6', color: t.type === '유료회원' ? '#1D4ED8' : '#4B5563', fontWeight: 700 }}>{t.type}</span>
                     </td>
                     <td style={{ padding: '12px', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E2225', borderBottom: '1px solid #F1F5F9' }}>{t.name}</td>
-                    <td style={{ padding: '12px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', borderBottom: '1px solid #F1F5F9', fontFamily: 'monospace' }}>{t.id}</td>
+                    <td style={{ padding: '12px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', borderBottom: '1px solid #F1F5F9', fontVariantNumeric: 'tabular-nums' }}>{t.id}</td>
                     <td style={{ padding: '12px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', borderBottom: '1px solid #F1F5F9' }}>{t.email}</td>
                     <td style={{ padding: '12px', fontSize: 'var(--neo-font-size-sm)', color: '#475569', borderBottom: '1px solid #F1F5F9' }}>{t.joinDate}</td>
                     <td style={{ padding: '12px', fontSize: 'var(--neo-font-size-sm)', borderBottom: '1px solid #F1F5F9' }}>

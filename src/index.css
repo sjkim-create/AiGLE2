@@ -6109,3 +6109,186 @@ body {
     animation: none;
   }
 }
+/* ============================================================
+   [디자인 v2 · 2026-10-28] 공통 목록 화면 — 회원 관리 · 게시판 등 (2.3 · 2.4 공통)
+   · 빠져 있던 공통 클래스 정의: content-container · content-title · content-subtitle ·
+     btn-primary-filled · btn-outline · table-responsive (그동안 브라우저 기본 버튼 모양으로 보였다)
+   · 목록 표는 칸 띠 대신 아래 선만, 숫자는 자릿수 맞춤 · 검색 줄은 그림자 상자 대신 위아래 여백만
+   · 키보드 포커스는 파란 테두리로 보이게
+   ============================================================ */
+.content-container {
+  padding: 2rem 2.25rem;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.content-container .content-header {
+  padding: 0 0 1.25rem;
+  border-bottom: none;
+  align-items: flex-end;
+  gap: 1rem;
+}
+.content-title {
+  font-size: var(--neo-font-size-xl);
+  font-weight: 800;
+  color: #1E2225;
+  margin: 0;
+}
+.content-subtitle {
+  font-size: var(--neo-font-size-sm);
+  color: #64748B;
+  margin: 4px 0 0;
+}
+
+.btn-primary-filled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  font-family: inherit;
+  font-size: var(--neo-font-size-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease-out;
+}
+.btn-primary-filled:hover:not(:disabled) { background: #1D63D8; border-color: #1D63D8; }
+.btn-primary-filled:disabled { background: #CBD5E1; border-color: #CBD5E1; cursor: not-allowed; }
+
+/* 필터 · 보조 버튼 — neoUI Toggle(outlined) 규칙: 고른 것 = 브랜드 연한 배경 + 브랜드 글자 + semibold (아이글 브랜드 = --primary) */
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  background: white;
+  color: #475569;
+  font-family: inherit;
+  font-size: var(--neo-font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease-out, color 0.15s ease-out, border-color 0.15s ease-out;
+}
+.btn-outline:hover:not(:disabled) { background: #F8FAFC; color: #1E293B; }
+.btn-outline.active { background: var(--primary-light); border-color: var(--primary); color: var(--primary); font-weight: 700; }
+.btn-outline.active:hover:not(:disabled) { background: #DCE8FF; color: var(--primary); }
+
+.btn-primary-filled:focus-visible, .btn-outline:focus-visible, .p-btn:focus-visible,
+.stu-search-box input:focus-visible, .stu-table th.th-sortable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.table-responsive { width: 100%; overflow-x: auto; }
+
+/* 검색 · 필터 줄 — 그림자 상자 대신 여백 */
+.stu-action-bar {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+  margin-bottom: 1rem;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.stu-search-box { flex: 0 1 400px; min-width: 240px; }
+.stu-search-box input {
+  padding: 9px 40px 9px 14px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: var(--neo-font-size-sm);
+  box-sizing: border-box;
+}
+.stu-search-box input::placeholder { color: #94A3B8; }
+
+/* 목록 표 — 머리 띠 · 줄 사이 틈 없이 아래 선만 */
+.stu-table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin-top: 0;
+}
+.stu-table th {
+  background: none;
+  padding: 10px 12px;
+  font-size: var(--neo-font-size-sm);
+  font-weight: 700;
+  color: #64748B;
+  border-bottom: 1px solid #CBD5E1;
+  white-space: nowrap;
+}
+.stu-table td {
+  padding: 12px;
+  border-bottom: 1px solid #EEF2F6;
+  font-variant-numeric: tabular-nums;
+}
+.stu-table tr:hover td { background: #F8FAFC; }
+.stu-table th.th-sortable { cursor: pointer; user-select: none; }
+.stu-table th.th-sortable:hover { color: #1E293B; }
+
+.badge-text {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: var(--neo-font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pagination { margin-top: 1.5rem; padding-bottom: 1rem; gap: 4px; }
+.p-btn { border-radius: 8px; border-color: transparent; font-variant-numeric: tabular-nums; }
+.p-btn:hover { border-color: #E2E8F0; color: #1E293B; }
+.p-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+/* 검색 아이콘 — 전역 .search-icon(left)이 오른쪽 배치를 덮어 글자 위에 겹쳤다 */
+.stu-search-box .search-icon { left: auto; right: 12px; pointer-events: none; }
+/* 등록 화면(학생 · 교사)은 안쪽 스크롤 영역이 여백을 갖는다 — 바깥 여백을 겹치지 않게 */
+.content-container.bg-white { padding: 0; }
+
+/* ============================================================
+   [디자인 v2 · 2026-10-28] 과제 관리 목록 (서·논술형 · 정답형 과제) — 2.3 · 2.4 공통
+   · 상태 태그 · 날짜가 글자 단위로 쪼개지던 줄바꿈 수정 (nowrap)
+   · 카드 안 회색 상자(상자 속 상자) 제거 — 위아래 선으로 구분
+   · 카드 · 필터 상자는 그림자 · 떠오르는 효과 대신 1px 테두리
+   ============================================================ */
+.task-management-container { padding: 2rem 2.25rem; }
+.task-management-container > .content-header { padding: 0 0 1.25rem; border-bottom: none; }
+.task-management-container .page-title { font-size: var(--neo-font-size-xl); font-weight: 800; color: #1E2225; margin: 0; }
+.task-filter-wrapper { margin-bottom: 1.25rem; }
+.task-filter-card { border-radius: 12px; padding: 1rem 1.25rem; box-shadow: none; border: 1px solid #E2E8F0; }
+.task-cards-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+.task-card-item { border-radius: 14px; padding: 1.25rem 1.25rem 1.1rem; box-shadow: none; border: 1px solid #E2E8F0; }
+.task-card-item:hover { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06); transform: none; border-color: #BFDBFE; }
+.task-card-item .card-header-row { margin-bottom: 0.9rem; gap: 8px; }
+.status-tags { flex-wrap: wrap; gap: 4px; }
+.task-status-tag { white-space: nowrap; font-weight: 700; border-radius: 6px; }
+.t-date { white-space: nowrap; color: #64748B; }
+.card-task-title { font-size: var(--neo-font-size-lg); margin-bottom: 0.9rem; }
+.card-task-details { background: none; border-radius: 0; padding: 0.75rem 0; margin-bottom: 0.9rem; border-top: 1px solid #EEF2F6; border-bottom: 1px solid #EEF2F6; gap: 0.5rem; }
+.card-task-details .detail-row { gap: 1rem; flex-wrap: wrap; }
+.card-task-details .d-text { font-weight: 500; color: #475569; }
+.card-competency-section { margin-bottom: 1rem; }
+.comp-label { color: #64748B; font-weight: 700; margin-bottom: 0.25rem; }
+.btn-task-preview, .btn-task-open { padding: 0.6rem; border-radius: 8px; font-size: var(--neo-font-size-sm); }
+.btn-task-preview:focus-visible, .btn-task-open:focus-visible, .btn-filter-reset:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 과제 목록 보기 — 학교급 · 날짜가 글자 단위로 쪼개지지 않게, 머리 띠 · 그림자 없이 (과제명 · 교과만 줄바꿈 허용) */
+.task-list-table-wrapper { box-shadow: none; border-radius: 12px; border-color: #E2E8F0; overflow-x: auto; }
+.task-list-table thead { background: none; border-bottom: 1px solid #CBD5E1; }
+.task-list-table thead th { padding: 10px 12px; color: #64748B; }
+.task-list-table tbody td { padding: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.task-list-table tbody td:nth-child(2) { white-space: normal; width: 100%; max-width: 0; } /* 남는 폭을 과제명이 갖고, 핵심 역량 줄은 말줄임 */
+.task-list-table tbody td:nth-child(4) { white-space: normal; min-width: 96px; }
+.task-list-table tbody tr.task-list-row { border-bottom-color: #EEF2F6; }
+
+/* [일괄 채점 통합 · 디자인 v2] 상태 탭(미채점 · 채점 확인 · 결과 발송) — neoUI Tabs pill 규칙 (채점 관리 이전 버전은 .tabs 그대로) */
+.tabs-neo { flex-wrap: wrap; gap: 4px; }
+.tabs-neo .tab { background: white; border: 1px solid #CBD5E1; color: #475569; border-radius: 999px; padding: 7px 16px; font-size: var(--neo-font-size-sm); font-weight: 500; }
+.tabs-neo .tab:hover { background: #F1F5F9; color: #334155; }
+.tabs-neo .tab.active { background: var(--primary); border-color: var(--primary); color: white; font-weight: 700; }
+.tabs-neo .tab.active:hover { background: #1D63D8; border-color: #1D63D8; color: white; }

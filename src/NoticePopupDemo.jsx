@@ -43,28 +43,27 @@ export default function NoticePopupDemo() {
   const togglePopup = (id) => setNotices(list => list.map(n => n.id === id ? { ...n, popup: !n.popup } : n));
   const removeNotice = (id) => setNotices(list => list.filter(n => n.id !== id));
 
-  const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 14, padding: 18 };
+  const card = { background: 'white', border: '1px solid #E2E8F0', borderRadius: 12, padding: 20 };
   const label = { fontSize: 'var(--neo-font-size-sm)', fontWeight: 800, color: '#475569', marginBottom: 6, display: 'block' };
   const inp = { width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '9px 12px', fontSize: 'var(--neo-font-size-sm)', fontFamily: 'inherit', boxSizing: 'border-box' };
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 900, margin: 0 }}>📢 공지 팝업 데모</h2>
-        <button onClick={() => setPopupOpen(true)} disabled={popupNotices.length === 0}
-          style={{ padding: '10px 18px', borderRadius: 10, border: 'none', fontWeight: 800, fontSize: 'var(--neo-font-size-base)',
-            background: popupNotices.length === 0 ? '#CBD5E1' : '#2A75F3', color: 'white', cursor: popupNotices.length === 0 ? 'not-allowed' : 'pointer' }}>
+    <div className="content-container">
+      {/* [디자인 v2] 게시판 공통 머리 — 가운데 좁은 폭 대신 다른 목록 화면처럼 전체 폭, 제목 앞 이모지 없이 */}
+      <header className="content-header">
+        <div>
+          <h1 className="content-title">공지 팝업 데모</h1>
+          <p className="content-subtitle">「팝업 노출」 ON 공지가 한 개의 팝업에서 슬라이딩으로 표시됩니다. 첨부 이미지가 있으면 이미지, 없으면 본문 내용이 노출됩니다.</p>
+        </div>
+        <button type="button" className="btn-primary-filled" onClick={() => setPopupOpen(true)} disabled={popupNotices.length === 0}>
           팝업 미리보기 ({popupNotices.length})
         </button>
-      </div>
-      <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginBottom: 16 }}>
-        「팝업 노출」 ON 공지가 한 개의 팝업에서 슬라이딩으로 표시됩니다. 첨부 이미지가 있으면 이미지, 없으면 본문 내용이 노출됩니다.
-      </p>
+      </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
         {/* 좌: 공지 추가 폼 */}
         <div style={card}>
-          <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: 12 }}>① 공지 등록</div>
+          <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: 12, color: '#1E293B' }}>공지 등록</div>
           <label style={label}>제목</label>
           <input style={inp} value={form.title} maxLength={50} onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))} placeholder="제목을 입력하세요 (최대 50자)" />
 
@@ -109,16 +108,15 @@ export default function NoticePopupDemo() {
             팝업 노출하기
           </label>
 
-          <button onClick={addNotice} disabled={!form.title.trim()}
-            style={{ width: '100%', marginTop: 14, padding: 12, borderRadius: 10, border: 'none', fontWeight: 800, fontSize: 'var(--neo-font-size-base)',
-              background: form.title.trim() ? '#10B981' : '#CBD5E1', color: 'white', cursor: form.title.trim() ? 'pointer' : 'not-allowed' }}>
+          {/* [디자인 v2] 실행 버튼은 다른 화면과 같은 파란 기본 버튼 (舊 초록) */}
+          <button type="button" className="btn-primary-filled" onClick={addNotice} disabled={!form.title.trim()} style={{ width: '100%', marginTop: 14, padding: 11 }}>
             + 공지 등록
           </button>
         </div>
 
         {/* 우: 공지 목록 */}
         <div style={card}>
-          <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: 12 }}>② 공지 목록 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#94A3B8', fontWeight: 600 }}>(팝업 노출 {popupNotices.length}건)</span></div>
+          <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, marginBottom: 12, color: '#1E293B' }}>공지 목록 <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', fontWeight: 600 }}>팝업 노출 {popupNotices.length}건</span></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 460, overflowY: 'auto' }}>
             {notices.map(n => (
               <div key={n.id} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px', background: n.popup ? '#F0F9FF' : '#FAFAFA' }}>

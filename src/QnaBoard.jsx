@@ -74,38 +74,40 @@ const QnaBoard = ({ showToast }) => {
   }
 
   return (
-    <div className="content-container" style={{ padding: '1.5rem 2rem' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 16 }}>
-        <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 900, margin: 0, color: '#1E293B' }}>Q&A</h1>
-        <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#E11D48', fontWeight: 700 }}>답변 대기 {waiting}건</span>
-      </div>
+    <div className="content-container">
+      {/* [디자인 v2] 게시판 공통 머리 — 제목 · 설명(답변 대기 건수) / 필터 / 목록 표 (회원 관리 목록과 같은 모양) */}
+      <header className="content-header">
+        <div>
+          <h1 className="content-title">Q&A</h1>
+          <p className="content-subtitle">답변 대기 <b style={{ color: waiting ? '#E11D48' : '#1E293B' }}>{waiting}건</b></p>
+        </div>
+      </header>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         {['전체', '답변 대기', '답변 완료'].map((f) => (
-          <button key={f} type="button" onClick={() => setFilter(f)}
-            style={btn(filter === f ? { background: '#1E293B', color: 'white', borderColor: '#1E293B' } : {})}>{f}</button>
+          <button key={f} type="button" className={`btn-outline${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
         ))}
       </div>
-      <div style={{ background: 'white', borderRadius: 16, border: '1px solid #EEF2F7', overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)' }}>
           <thead>
-            <tr style={{ background: '#F8FAFC', color: '#64748B', textAlign: 'left' }}>
-              {['등록일', '학교명', '작성자', '제목', '상태'].map((h) => <th key={h} style={{ padding: '10px 14px', fontWeight: 800 }}>{h}</th>)}
+            <tr style={{ color: '#64748B', textAlign: 'left' }}>
+              {['등록일', '학교명', '작성자', '제목', '상태'].map((h) => <th key={h} style={{ padding: '10px 12px', fontWeight: 700, borderBottom: '1px solid #CBD5E1', whiteSpace: 'nowrap' }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((q) => (
-              <tr key={q.id} onClick={() => openDetail(q)} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer' }}
+              <tr key={q.id} onClick={() => openDetail(q)} style={{ borderBottom: '1px solid #EEF2F6', cursor: 'pointer' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#F8FAFC'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; }}>
-                <td style={{ padding: '12px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>{q.createdAt}</td>
-                <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{q.school}</td>
-                <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{q.author}</td>
-                <td style={{ padding: '12px 14px', color: '#1E293B', fontWeight: 600 }}>{q.title}</td>
-                <td style={{ padding: '12px 14px' }}><Badge status={statusOf(q)} /></td>
+                <td style={{ padding: '12px', color: '#64748B', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{q.createdAt}</td>
+                <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>{q.school}</td>
+                <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>{q.author}</td>
+                <td style={{ padding: '12px', color: '#1E293B', fontWeight: 600 }}>{q.title}</td>
+                <td style={{ padding: '12px' }}><Badge status={statusOf(q)} /></td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: '2.5rem', textAlign: 'center', color: '#94A3B8' }}>해당하는 문의가 없습니다.</td></tr>
+              <tr><td colSpan={5} style={{ padding: '2.5rem', textAlign: 'center', color: '#64748B' }}>해당하는 문의가 없습니다.</td></tr>
             )}
           </tbody>
         </table>

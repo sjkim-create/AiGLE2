@@ -292,21 +292,19 @@ const SchoolManagement = () => {
     </span>
   );
 
-  const th = { padding: '14px 12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#475569', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', userSelect: 'none' };
-  const td = { padding: '16px 12px', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', borderBottom: '1px solid #F1F5F9' };
+  // [디자인 v2] 목록 표 — 공통 목록(교사 관리 등)과 같게: 머리 띠 없이 아래 선만, 숫자 자릿수 맞춤
+  const th = { padding: '10px 12px', textAlign: 'left', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#64748B', borderBottom: '1px solid #CBD5E1', userSelect: 'none', whiteSpace: 'nowrap' };
+  const td = { padding: '12px', fontSize: 'var(--neo-font-size-sm)', color: '#1E293B', borderBottom: '1px solid #EEF2F6', fontVariantNumeric: 'tabular-nums' };
 
   return (
-    <div style={{ padding: '24px 32px', height: '100%', overflowY: 'auto', background: 'white', position: 'relative' }}>
-      {/* 헤더 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+    <div style={{ padding: '2rem 2.25rem', height: '100%', overflowY: 'auto', background: 'white', position: 'relative', boxSizing: 'border-box' }}>
+      {/* 헤더 — [디자인 v2] 공통 목록 화면과 같은 제목 · 버튼 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, color: '#1E293B', margin: 0, marginBottom: 6 }}>학교 관리</h1>
-          <p style={{ fontSize: 'var(--neo-font-size-base)', color: '#94A3B8', margin: 0 }}>전체 학교를 관리할 수 있습니다.</p>
+          <h1 className="content-title">학교 관리</h1>
+          <p className="content-subtitle">전체 학교를 관리할 수 있습니다.</p>
         </div>
-        <button onClick={openRegister}
-          style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#2A75F3', color: 'white', fontWeight: 800, fontSize: 'var(--neo-font-size-base)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 'var(--neo-font-size-base)' }}>+</span> 학교 등록
-        </button>
+        <button type="button" className="btn-primary-filled" onClick={openRegister}>+ 학교 등록</button>
       </div>
 
       {/* [v3.62~v3.65] 필터 영역 — 선택 없으면 검색창, 선택 1개+ 시 일괄 액션 바로 대체 */}
@@ -314,18 +312,18 @@ const SchoolManagement = () => {
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
             <input type="text" placeholder="학교 선택" value={schoolFilter} onChange={(e) => { setSchoolFilter(e.target.value); setPage(1); }}
-              style={{ width: '100%', padding: '11px 38px 11px 14px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)', boxSizing: 'border-box', outline: 'none' }} />
+              style={{ width: '100%', padding: '9px 38px 9px 14px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)', boxSizing: 'border-box' }} />
             <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: '#CBD5E1', pointerEvents: 'none' }}>🔍</span>
           </div>
           <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
             <input type="text" placeholder="관리교사 이름으로 검색" value={managerSearch} onChange={(e) => { setManagerSearch(e.target.value); setPage(1); }}
-              style={{ width: '100%', padding: '11px 38px 11px 14px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)', boxSizing: 'border-box', outline: 'none' }} />
+              style={{ width: '100%', padding: '9px 38px 9px 14px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)', boxSizing: 'border-box' }} />
             <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: '#CBD5E1', pointerEvents: 'none' }}>🔍</span>
           </div>
           {/* [v3.66] 상태 필터 셀렉트 */}
           <select value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            style={{ padding: '11px 14px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)', background: 'white', cursor: 'pointer', minWidth: 200, color: statusFilter === 'all' ? '#94A3B8' : '#1E293B', fontWeight: statusFilter === 'all' ? 500 : 700 }}>
+            style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 'var(--neo-font-size-sm)', background: 'white', cursor: 'pointer', minWidth: 200, color: statusFilter === 'all' ? '#94A3B8' : '#1E293B', fontWeight: statusFilter === 'all' ? 500 : 700 }}>
             <option value="all">상태 필터 전체</option>
             <option value="extension">계약 연장 전 (D-30 이하)</option>
             <option value="expired">계약 종료</option>
@@ -358,7 +356,7 @@ const SchoolManagement = () => {
       )}
 
       {/* 테이블 */}
-      <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>

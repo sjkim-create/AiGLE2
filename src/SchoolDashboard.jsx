@@ -5,11 +5,14 @@
  * - 운영 KPI 카드 4종 + 공지사항 + 단계별 진행 + 학년별 진행 + 교사 활동도 + 학생 학습 분포 + 그룹 과제 점수 분포
  */
 import React, { useState, useMemo } from 'react';
+import DashboardTopV24 from './DashboardTopV24'; // [v2.4] 대시보드 공통 상단
 
-const SchoolDashboard = ({ onNavigate }) => {
+// [DSH-05] schoolName·onBack — 교육청 대시보드에서 학교를 골라 들어온 경우 (그 학교 이름 · [← 교육청 대시보드])
+const SchoolDashboard = ({ onNavigate, schoolName, onBack, appVersion = '2.3' }) => {
+  const [yearV24, setYearV24] = useState('2026'); // [v2.4] 공통 상단 학년도
   // [v1.0] 본인 계약 기간 + 데이터 학년 분리 (MY-01과 동일 source)
   const myInfo = {
-    schoolName: '충남 중학교',
+    schoolName: schoolName || '충남 중학교',
     tier: 'paid',
     contractAt: '2025.03.01',
     createdAt: '2025.03.01',
@@ -102,9 +105,29 @@ const SchoolDashboard = ({ onNavigate }) => {
 
   return (
     <div style={{ padding: '2rem', background: '#F4F7FB', minHeight: '100%', overflowY: 'auto' }}>
+      {/* [v2.4] 대시보드 공통 상단 — 2.3은 아래 舊 상단 그대로 */}
+      {appVersion === '2.4' ? (
+        <DashboardTopV24 year={yearV24} onYearChange={setYearV24} orgName={myInfo.schoolName}
+          actions={onBack && (
+            <button type="button" onClick={onBack}
+              style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #CBD5E1', background: 'white', color: '#334155', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+              ← 교육청 대시보드
+            </button>
+          )}
+          cards={['students', 'tasks', 'teachers', 'groups'].map((id) => kpiCards.find((c) => c.id === id)).map((c) => ({
+            icon: { students: '👤', tasks: '📝', teachers: '💙', groups: '⭐' }[c.id], label: c.label, value: c.value,
+            onClick: () => onNavigate && onNavigate(c.target),
+          }))} />
+      ) : (<>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 900 }}>대시보드</h1>
+        {onBack && (
+          <button type="button" onClick={onBack}
+            style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #CBD5E1', background: 'white', color: '#334155', fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ← 교육청 대시보드
+          </button>
+        )}
       </div>
 
       {/* Main Banner — [v1.0] 「내 서비스 기간」 + 「데이터 학년」 분리 */}
@@ -165,6 +188,8 @@ const SchoolDashboard = ({ onNavigate }) => {
           </div>
         ))}
       </div>
+
+      </>)}
 
       {/* 공지사항 */}
       <div style={{ background: 'white', padding: '1.5rem', borderRadius: '20px', boxShadow: '0 2px 10px rgba(15,23,42,0.04)', marginBottom: '1.5rem' }}>

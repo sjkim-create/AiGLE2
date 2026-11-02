@@ -906,7 +906,8 @@ const SharedAssignments = ({ onNavigateToTaskManagement, onCopyTask, copiedShare
       <header style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
-            <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, color: '#1E2225', margin: 0 }}>📂 공유된 과제 목록</h1>
+            {/* [디자인 v2] 다른 목록 화면과 같은 제목 크기 · 이모지 없이 */}
+            <h1 className="content-title">공유된 과제 목록</h1>
             <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', margin: '0.4rem 0 0' }}>
               다른 교사가 공유한 과제를 살펴보고, 내 과제 목록으로 복사하여 자유롭게 활용할 수 있습니다.
             </p>

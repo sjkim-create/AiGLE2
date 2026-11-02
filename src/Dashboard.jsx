@@ -4,9 +4,126 @@
  * 과제관리, 채점현황, 학생분포 등 주요 지표를 시각화하여 보여줍니다.
  */
 import React, { useState, useRef, useMemo } from 'react';
+import DashboardTopV24 from './DashboardTopV24'; // [v2.4] 대시보드 공통 상단
 import DashboardGuide from './DashboardGuide';
 
-const Dashboard = ({ onNavigate }) => {
+// 운영 지표 목 값 — 2.3 운영 KPI와 2.4 상단 KPI가 같은 값을 쓴다 (한 곳에서만 정의)
+const OPS_REALTIME = { total: 184, paid: 142, free: 42 };   // 현재 접속 중 교사
+// [v2.60] 활성 계약 학교 = accessData.schools.length 단일 source (33 = 3월 15 + 4월 15 + 5월 3)
+const OPS_CONTRACTS = { total: 33, thisMonth: 3, pending: 0 };
+const OPS_SIGNUP = { today: 0, week: 2, month: OPS_CONTRACTS.thisMonth }; // 신규 계약 학교 (오늘 · 이번 주 · 이번 달)
+const OPS_APPROVALS = [
+  { label: '승인 대기 학교', sub: '유효 회원 신청 대기', value: 0, target: 'schoolMgmt' },
+  { label: '승인 대기 교사', sub: '유료 전환 신청 대기', value: 0, target: 'teacherMgmt' },
+];
+// 섹션 바로가기 — 2.3은 KPI 아래 고정 바, 2.4는 제목 옆
+const SECTION_NAV = [
+  { id: 'sec-region',      label: '🗺️ 교육청별 가입', short: '교육청별 가입' },
+  { id: 'sec-notice',      label: '📢 공지/Q&A',       short: '공지/Q&A' },
+  { id: 'sec-token',       label: '💰 AI 토큰 사용량', short: 'AI 토큰 사용량' },
+  { id: 'sec-access',      label: '👨‍🏫 교사 접속률',    short: '교사 접속률' },
+  { id: 'sec-school-task', label: '📂 학교급별 활동',  short: '학교급별 활동' },
+  { id: 'sec-subject-ai',  label: '📚 교과별 AI 채점', short: '교과별 AI 채점' },
+];
+const scrollToSection = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+
+/* [v2.4] 시스템 관리자 상단 — 상용 화면 기준 (2026-10-28)
+ *   제목 + 섹션 바로가기(같은 줄, 스크롤해도 고정) → 파란 배너(날짜 · 학년도 · 오른쪽 승인 대기 2종) → KPI 3장(실시간 접속자 · 계약자 · 회원가입)
+ *   舊 2.4의 상단 카드 4장 + 운영 KPI + 바로가기 바를 이 구성으로 바꿨다 */
+const AdminTopV24 = ({ year, onYearChange, onNavigate }) => {
+  const kpiCard = { background: 'white', borderRadius: 14, padding: '18px 22px', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' };
+  const kpiLabel = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, color: '#475569', marginBottom: 10 };
+  const bigNum = { fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, color: '#1E2225', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' };
+  const kv = (label, value, last) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderBottom: last ? 'none' : '1px solid #EEF2F6' }}>
+      <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{label}</span>
+      <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 700, color: '#1E2225', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+    </div>
+  );
+  const note = (t) => <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 6, paddingLeft: 2 }}>* {t}</div>;
+  return (
+    <>
+      <style>{`
+        .adm24-nav button:hover { background: #EFF6FF; color: #1D4ED8; }
+        .adm24-nav button:focus-visible { outline: 2px solid #2A75F3; outline-offset: 2px; }
+        .adm24-approve:hover { background: rgba(255,255,255,0.12); }
+        .adm24-approve:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+        @media (max-width: 1100px) { .adm24-kpis { grid-template-columns: minmax(0, 1fr) !important; } }
+        /* 교육청별 가입 — 좁은 화면에서 요약 2열 · 교육청 칸 3열 (가로 스크롤 방지) */
+        @media (max-width: 1280px) {
+          .adm24-region-top { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .adm24-region-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+        }
+      `}</style>
+      {/* 제목 + 섹션 바로가기 — 긴 화면이라 스크롤해도 위에 고정 (스크롤 영역 위쪽 여백 2rem만큼 위로 붙이고 배경으로 덮는다) */}
+      <div style={{ position: 'sticky', top: '-2rem', zIndex: 50, background: '#F4F7FB', margin: '-2rem -2rem 1rem', padding: '1.25rem 2rem 0.75rem',
+        display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', margin: 0 }}>대시보드</h1>
+        <nav className="adm24-nav" aria-label="섹션 바로가기" style={{ display: 'flex', flexWrap: 'wrap', gap: 2, background: 'white', borderRadius: 10, padding: 4, boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}>
+          {SECTION_NAV.map((n) => (
+            <button key={n.id} type="button" onClick={() => scrollToSection(n.id)}
+              style={{ padding: '6px 12px', border: 'none', borderRadius: 7, background: 'transparent', color: '#475569', fontSize: 'var(--neo-font-size-sm)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              {n.short}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <DashboardTopV24 bare year={year} onYearChange={onYearChange} cards={[]}
+        right={OPS_APPROVALS.map((a) => (
+          <button key={a.label} type="button" className="adm24-approve" onClick={() => onNavigate && onNavigate(a.target)}
+            style={{ minWidth: 220, padding: '14px 18px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.7)', background: 'transparent', color: 'white',
+              fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 16, textAlign: 'left' }}>
+            <span style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700 }}>{a.label}</span>
+              <span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', opacity: 0.9, marginTop: 2 }}>{a.sub}</span>
+            </span>
+            <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{a.value}개</span>
+            <span aria-hidden>›</span>
+          </button>
+        ))} />
+
+      <div className="adm24-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div>
+          <div style={kpiCard}>
+            <div style={kpiLabel}><span aria-hidden>🟢</span>실시간 접속자</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 20, alignItems: 'center' }}>
+              <div style={bigNum}>{OPS_REALTIME.total.toLocaleString()}</div>
+              <div>{kv('유료', OPS_REALTIME.paid)}{kv('무료', OPS_REALTIME.free, true)}</div>
+            </div>
+          </div>
+          {note('최근 5분 이내 활동 교사')}
+        </div>
+        <div>
+          <div style={kpiCard}>
+            <div style={kpiLabel}><span aria-hidden>🏫</span>계약자 (학교)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 20, alignItems: 'center' }}>
+              <div style={bigNum}>{OPS_CONTRACTS.total.toLocaleString()}</div>
+              <div>{kv('이번 달 신규', OPS_CONTRACTS.thisMonth)}{kv('승인 대기', OPS_CONTRACTS.pending, true)}</div>
+            </div>
+          </div>
+          {note('학교 단위 계약 — 가입 시점부터 유료')}
+        </div>
+        <div>
+          <div style={kpiCard}>
+            <div style={kpiLabel}><span aria-hidden>👥</span>회원가입 (학교)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', alignItems: 'center', minHeight: 62 }}>
+              {[['오늘', OPS_SIGNUP.today], ['이번 주', OPS_SIGNUP.week], ['이번 달', OPS_SIGNUP.month]].map(([l, v], i) => (
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, paddingLeft: i ? 14 : 0, paddingRight: i < 2 ? 14 : 0, borderLeft: i ? '1px solid #EEF2F6' : 'none' }}>
+                  <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{l}</span>
+                  <span style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E2225', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {note('신규 계약 학교')}
+        </div>
+      </div>
+    </>
+  );
+};
+
+const Dashboard = ({ onNavigate, appVersion = '2.3' }) => {
   // [v3.9] 학년도 단일화 — servicePeriod / regionYear / signupYear 모두 globalYear 단일 state로 통합.
   // 헤더 드롭다운만 학년도 제어, 모든 분석 섹션은 globalYear 자동 sync.
   const [globalYear, setGlobalYear] = useState('2026');
@@ -966,6 +1083,11 @@ const Dashboard = ({ onNavigate }) => {
 
   return (
     <div className="dashboard-content" style={{ padding: '2rem', background: '#F4F7FB', height: '100%', overflowY: 'auto' }}>
+      {/* [v2.4] 대시보드 공통 상단 — 2.3은 아래 舊 상단 그대로 */}
+      {appVersion === '2.4' ? (
+        <AdminTopV24 year={globalYear} onNavigate={onNavigate}
+          onYearChange={(v) => { setGlobalYear(v); setSignupHoverIdx(null); setSignupWeekOffset(0); }} />
+      ) : (<>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 900 }}>대시보드</h1>
@@ -1042,15 +1164,17 @@ const Dashboard = ({ onNavigate }) => {
         </div>
       </div>
 
+      </>)}
+
       {/* ════════════════════════════════════════════════════════════ */}
       {/* [v2.49] 운영 KPI — 실시간 접속자 / 계약자 / 회원가입 DAU·WAU·MAU  */}
       {/* 회원=교사(유료/무료), 계약자=학교(유료 단일 등급), 실시간=접속 중인 교사 */}
       {/* ════════════════════════════════════════════════════════════ */}
-      {(() => {
-        // mock 운영 지표 — 숫자 중심 (그래프 제거, v2.52)
-        const realtime = { total: 184, paid: 142, free: 42 };       // 현재 접속 중 교사
-        // [v2.60] 활성 계약 학교 = accessData.schools.length 단일 source (33 = 3월 15 + 4월 15 + 5월 3)
-        const contracts = { total: 33, thisMonth: 3, pending: 0 };
+      {/* [v2.4] 운영 KPI는 상단 KPI 3장으로 옮겼다 — 2.3에서만 */}
+      {appVersion !== '2.4' && (() => {
+        // mock 운영 지표 — 숫자 중심 (그래프 제거, v2.52) · 값은 파일 위 OPS_* 한 곳
+        const realtime = OPS_REALTIME;
+        const contracts = OPS_CONTRACTS;
         // 기준일자 (mock today = 2026-05-06 수)
         const todayDate = new Date(2026, 4, 6);
         const todayDow = todayDate.getDay(); // 0=일, 3=수
@@ -1062,8 +1186,8 @@ const Dashboard = ({ onNavigate }) => {
         const fmtFull = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         // 회원가입 = 신규 계약 학교 (학교 단위, paid 단일)
         const schoolSignup = {
-          DAU: { value: 0, desc: '오늘 신규 계약', period: fmtFull(todayDate),                                  short: '오늘' },
-          WAU: { value: 2, desc: '이번 주 신규 계약', period: `${fmtMD(weekStart)} ~ ${fmtMD(weekEnd)} (월~일)`, short: '이번 주' },
+          DAU: { value: OPS_SIGNUP.today, desc: '오늘 신규 계약', period: fmtFull(todayDate),                    short: '오늘' },
+          WAU: { value: OPS_SIGNUP.week, desc: '이번 주 신규 계약', period: `${fmtMD(weekStart)} ~ ${fmtMD(weekEnd)} (월~일)`, short: '이번 주' },
           MAU: { value: contracts.thisMonth, desc: '이번 달 신규 계약', period: `${todayDate.getFullYear()}년 ${todayDate.getMonth() + 1}월`, short: '이번 달' },
         };
 
@@ -1160,9 +1284,9 @@ const Dashboard = ({ onNavigate }) => {
       })()}
 
       {/* ════════════════════════════════════════════════════════════ */}
-      {/* Quick Nav — 섹션 바로가기 (sticky)                              */}
+      {/* Quick Nav — 섹션 바로가기 (sticky) · [v2.4] 제목 옆으로 옮겨 2.3에서만 */}
       {/* ════════════════════════════════════════════════════════════ */}
-      <div style={{
+      {appVersion !== '2.4' && <div style={{
         position: 'sticky',
         top: '-2rem',
         zIndex: 50,
@@ -1180,20 +1304,10 @@ const Dashboard = ({ onNavigate }) => {
         boxShadow: '0 6px 18px -8px rgba(15,23,42,0.18)',
       }}>
         <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', fontWeight: 700, marginRight: '4px' }}>바로가기</span>
-        {[
-          { id: 'sec-region',      label: '🗺️ 교육청별 가입' },
-          { id: 'sec-notice',      label: '📢 공지/Q&A' },
-          { id: 'sec-token',       label: '💰 AI 토큰 사용량' },
-          { id: 'sec-access',      label: '👨‍🏫 교사 접속률' },
-          { id: 'sec-school-task', label: '📂 학교급별 활동' },
-          { id: 'sec-subject-ai',  label: '📚 교과별 AI 채점' },
-        ].map(nav => (
+        {SECTION_NAV.map(nav => (
           <button
             key={nav.id}
-            onClick={() => {
-              const el = document.getElementById(nav.id);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
+            onClick={() => scrollToSection(nav.id)}
             style={{
               padding: '6px 12px',
               border: '1px solid #E2E8F0',
@@ -1219,23 +1333,37 @@ const Dashboard = ({ onNavigate }) => {
             {nav.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ════════════════════════════════════════════════════════════ */}
       {/* 교육청별 가입 현황 — Stats Cards 자리 대체                          */}
       {/* ════════════════════════════════════════════════════════════ */}
       <section id="sec-region" style={{ background: 'white', padding: '1.5rem', borderRadius: '24px', boxShadow: 'var(--shadow)', marginBottom: '1.5rem', scrollMarginTop: '80px' }}>
+        {/* [v2.4] 상용 화면 기준 — 학교/교사/학생을 카드 맨 위 밑줄 탭으로, 제목은 보는 대상에 맞춰 「교육청별 ○○ 가입 현황」 */}
+        {appVersion === '2.4' && (
+          <div role="tablist" aria-label="가입 현황 대상" style={{ display: 'flex', gap: 4, borderBottom: '1px solid #E2E8F0', margin: '-0.25rem 0 1.25rem' }}>
+            {[{ id: 'schools', label: '학교' }, { id: 'teachers', label: '교사' }, { id: 'students', label: '학생' }].map((m) => (
+              <button key={m.id} type="button" role="tab" aria-selected={mapMetric === m.id} onClick={() => setMapMetric(m.id)}
+                style={{ padding: '8px 14px', marginBottom: -1, border: 'none', borderBottom: `2px solid ${mapMetric === m.id ? '#1E2225' : 'transparent'}`, background: 'transparent',
+                  color: mapMetric === m.id ? '#1E2225' : '#64748B', fontSize: 'var(--neo-font-size-base)', fontWeight: mapMetric === m.id ? 800 : 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
           <div>
             <h3 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, marginBottom: '0.25rem' }}>
-              교육청별 가입 현황
-              <span style={{ marginLeft: '8px', fontSize: 'var(--neo-font-size-sm)', color: '#FB923C', background: '#FFF7ED', border: '1px solid #FED7AA', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, verticalAlign: 'middle' }}>{regionYear} 학년도</span>
+              {appVersion === '2.4'
+                ? `교육청별 ${{ schools: '학교', teachers: '교사', students: '학생' }[mapMetric]} 가입 현황`
+                : '교육청별 가입 현황'}
+              {appVersion !== '2.4' && <span style={{ marginLeft: '8px', fontSize: 'var(--neo-font-size-sm)', color: '#FB923C', background: '#FFF7ED', border: '1px solid #FED7AA', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, verticalAlign: 'middle' }}>{regionYear} 학년도</span>}
             </h3>
-            <p style={{ fontSize: 'var(--neo-font-size-sm)', color: '#8A94A1', marginBottom: 0 }}>전국 17개 시·도교육청 단위로 학년도별 학교/등록 교사/등록 학생 분포를 한눈에 확인합니다.</p>
+            <p style={{ fontSize: 'var(--neo-font-size-sm)', color: appVersion === '2.4' ? '#64748B' : '#8A94A1', marginBottom: 0 }}>전국 17개 시·도교육청 단위로 학년도별 학교/등록 교사/등록 학생 분포를 한눈에 확인합니다.</p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
             {/* [v3.9] 섹션별 학년도 셀렉트 폐기 — 헤더 글로벌 학년도 컨트롤로 통일. 정보는 헤딩의 chip으로 노출 */}
-            <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: '10px', padding: '4px', gap: '2px' }}>
+            {appVersion !== '2.4' && <div style={{ display: 'inline-flex', background: '#F1F5F9', borderRadius: '10px', padding: '4px', gap: '2px' }}>
               {[
                 { id: 'schools',  label: '🏫 학교', unit: '개' },
                 { id: 'teachers', label: '👨‍🏫 교사', unit: '명' },
@@ -1256,7 +1384,7 @@ const Dashboard = ({ onNavigate }) => {
                   }}
                 >{m.label}</button>
               ))}
-            </div>
+            </div>}
             {/* 교사 메트릭 sub-filter — 조회 학년도 마지막 날짜 기준 마지막 이력 */}
             {mapMetric === 'teachers' && (
               <div
@@ -1343,8 +1471,18 @@ const Dashboard = ({ onNavigate }) => {
           return (
             <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* 1행 — 전국 누적 + Top 3 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: '14px' }}>
+              <div className={appVersion === '2.4' ? 'adm24-region-top' : undefined} style={{ display: 'grid', gridTemplateColumns: appVersion === '2.4' ? 'repeat(4, minmax(0, 1fr))' : '1.4fr 1fr 1fr 1fr', gap: '14px' }}>
                 {/* 전국 누적 */}
+                {appVersion === '2.4' ? (
+                  /* [v2.4] 상용 화면 기준 — 그라데이션 대신 흰 카드 + 숫자만 강조색 */
+                  <div style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '14px', padding: '1.25rem' }}>
+                    <div style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, color: '#1E2225', marginBottom: '6px' }}>전국 누적 {cur.label}</div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, lineHeight: 1.1, color: cur.accent, fontVariantNumeric: 'tabular-nums' }}>
+                      {total.toLocaleString()}<span style={{ fontSize: 'var(--neo-font-size-base)', marginLeft: '4px', fontWeight: 700 }}>{cur.unit}</span>
+                    </div>
+                    <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: '6px' }}>전국 17개 시·도교육청 합계</div>
+                  </div>
+                ) : (
                 <div style={{ background: cur.accent === '#FB923C' ? 'linear-gradient(135deg, #FB923C, #EA580C)' : 'linear-gradient(135deg, #2A75F3, #1D4ED8)', borderRadius: '14px', padding: '1.5rem 1.25rem', color: 'white' }}>
                   <div style={{ fontSize: 'var(--neo-font-size-sm)', opacity: 0.9, fontWeight: 700, marginBottom: '6px' }}>전국 누적 {cur.label}</div>
                   <div style={{ fontSize: '2.2rem', fontWeight: 900, lineHeight: 1.1 }}>
@@ -1352,6 +1490,7 @@ const Dashboard = ({ onNavigate }) => {
                   </div>
                   <div style={{ fontSize: 'var(--neo-font-size-sm)', opacity: 0.8, marginTop: '6px' }}>전국 17개 시·도교육청 합계</div>
                 </div>
+                )}
                 {/* Top 3 — null 슬롯은 "데이터 없음" 플레이스홀더 */}
                 {top3.map((r, i) => {
                   const medalColor = i === 0 ? '#F59E0B' : i === 1 ? '#94A3B8' : '#CD7F32';
@@ -1418,7 +1557,7 @@ const Dashboard = ({ onNavigate }) => {
                     })}
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+                <div className={appVersion === '2.4' ? 'adm24-region-tiles' : undefined} style={{ display: 'grid', gridTemplateColumns: appVersion === '2.4' ? 'repeat(5, minmax(0, 1fr))' : 'repeat(5, 1fr)', gap: '10px' }}>
                   {/* [v2.62] 17개 시·도 카드 위치 고정 — 교육청 정식 명칭 가나다순(Korean Collator).
                       메트릭 토글 시 위치는 그대로, 카드 안 숫자·비중%·색상 강도만 변경. 같은 교육청을 항상 같은 위치에서 찾을 수 있도록 학습 안정성 확보.
                       필터는 Top 3와 통일 (현재 메트릭 값 > 0). 정렬·강조 역할은 Top 3 메달 카드가 담당. */}

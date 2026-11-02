@@ -30,7 +30,7 @@ const AppTopBar = ({
   showToast,
   appVersion = '2.3',  // [v2.4] 버전 트리거 — 좌측 칩으로 2.3/2.4 전환
   onChangeVersion,     // (version) => void
-  appRole = 'admin',   // [v2.4] 사용자 모드 — 2.4에서만 칩이 보인다
+  appRole = 'admin',   // 사용자 모드 — 2.3 · 2.4 모두 칩이 보인다
   onChangeRole,        // (role) => void
 }) => {
   const [open, setOpen] = useState(null); // 'ver' | 'role' | 'pen' | 'help' | 'lang' | 'profile' | null
@@ -89,7 +89,7 @@ const AppTopBar = ({
       borderTopLeftRadius: 24, borderTopRightRadius: 24,
     }}>
       {/* ⓪ 버전 트리거 — 왼쪽 끝. 2.4에서 빠지는 메뉴는 lib/appVersion.js 에 모아 둔다 */}
-      <div style={{ position: 'relative', marginRight: appVersion === '2.4' ? 6 : 'auto' }}>
+      <div style={{ position: 'relative', marginRight: 6 }}>
         <button type="button" onClick={() => toggle('ver')} aria-haspopup="menu" aria-expanded={open === 'ver'} title="프로토 버전 전환"
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
@@ -116,8 +116,7 @@ const AppTopBar = ({
         )}
       </div>
 
-      {/* ⓪-2 [v2.4] 사용자 모드 — 모드별 메뉴는 lib/appVersion.js ROLES */}
-      {appVersion === '2.4' && (
+      {/* ⓪-2 사용자 모드 (2.3 · 2.4) — 모드별 메뉴는 lib/appVersion.js ROLES */}
         <div style={{ position: 'relative', marginRight: 'auto' }}>
           <button type="button" onClick={() => toggle('role')} aria-haspopup="menu" aria-expanded={open === 'role'} title="사용자 모드 전환"
             style={{
@@ -142,14 +141,13 @@ const AppTopBar = ({
             </div>
           )}
         </div>
-      )}
 
       {/* ① 펜 — 스마트펜 모니터링 · 펜 초기화 */}
       <div style={{ position: 'relative' }}>
         {iconBtn('pen', '🖊', '스마트펜')}
         {open === 'pen' && menu(
           <>
-            {isMenuVisible(appVersion, '스마트펜 모니터링') && menuItem('스마트펜 모니터링', () => onNavigate && onNavigate('스마트펜 모니터링'))}
+            {isMenuVisible(appVersion, '스마트펜 모니터링', appRole) && menuItem('스마트펜 모니터링', () => onNavigate && onNavigate('스마트펜 모니터링'))}
             {menuItem('펜 초기화', () => onOpenPenReset && onOpenPenReset())}
           </>
         )}
