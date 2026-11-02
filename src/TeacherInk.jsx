@@ -138,7 +138,7 @@ export const TeacherPenPanel = ({ inkKey: key, locked, conn, onConnect, tool, on
       {/* 머리 — 패널 이름 + 연결 상태 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: P.soft }}>
         <span aria-hidden="true">🖊</span>
-        <b style={{ fontSize: 'var(--neo-font-size-sm)', color: P.text }}>교사펜</b>
+        <b style={{ fontSize: 'var(--neo-font-size-sm)', color: P.text }}>교사 첨삭</b>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, color: locked ? P.mute : conn ? '#047857' : P.sub }}>
           <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: !locked && conn ? '#10B981' : '#D1D5DB' }} />
           {locked ? '잠김' : conn ? '연결됨' : '연결 안 됨'}

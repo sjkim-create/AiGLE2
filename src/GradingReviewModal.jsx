@@ -15,6 +15,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { lookupPattern } from './handwritingPatternMatrix';
 import SolutionReplay, { teacherReplayNote } from './SolutionReplay';
+import GuideReplay from './GuideReplay';
 import InkedPen, { TeacherPenPanel } from './TeacherInk';
 import { inkKey } from './lib/teacherInk';
 import { MATH_RAT_TASK } from './data/solutionSamples';
@@ -290,6 +291,8 @@ const GradingReviewModal = ({
     // [SCR-06] 퇴고 — 채점 관리 2(v2)에서만 전달된다. 미전달 시 관련 UI 전부 미노출
     isV2 = false,
     aiGradingLimitPerRound = 2,
+    // [SCR-03 v5.14 구현] 일괄 채점 통합 — [AI 재채점]을 누르면 이력이 한 건 늘어난다. 미전달(채점 관리)이면 예전처럼 동작 없음
+    onRegrade,
     onRevisionRequest,
     // [SCR-08 v1.35] 일괄 채점 통합 — 피드백 보기에는 점수만(등급 노출 안 함). 채점 결과는 점수만 저장, 등급은 결과 발송 때 환산
     scoreOnlyFeedback = false,
@@ -299,6 +302,8 @@ const GradingReviewModal = ({
     solutionReplay = false
 }) => {
     const [replayOpen, setReplayOpen] = useState(false);
+    /* [AI 첨삭] 학습 안내 순서(항목마다 해당 필기 확대 · 구간 재생) · 풀이 단계 순서 */
+    const [replayMode, setReplayMode] = useState('guide');
     /* 닫기 — 책장이 접히는 동작(0.32초)이 끝난 뒤 패널을 뺀다 */
     const [rpClosing, setRpClosing] = useState(false);
     const closeReplay = () => {
@@ -345,7 +350,7 @@ const GradingReviewModal = ({
     const [critPicks, setCritPicks] = useState({});
     const fmt = (grade, score) => formatResult(grade, { resultMode, maxPoints, score });
     const [rightTab, setRightTab] = useState('feedback'); // 'feedback' | 'basis' | 'original'
-    /* [풀이 과정] 필기 분석은 원본 보기에서만 — 피드백 보기 · 채점 근거로 옮기면 왼쪽 풀이 과정 패널을 닫는다 */
+    /* [풀이 과정] AI 첨삭은 원본 보기에서만 — 피드백 보기 · 채점 근거로 옮기면 왼쪽 풀이 과정 패널을 닫는다 */
     useEffect(() => { if (rightTab !== 'original') closeReplay(); }, [rightTab]); // eslint-disable-line react-hooks/exhaustive-deps
     const [isSaved, setIsSaved] = useState(false);
 
@@ -656,6 +661,9 @@ const GradingReviewModal = ({
     // [SCR-03 v5.30] 학생에 문항별 답안 · 풀이 데이터가 있으면(유리함수 과제) 원본 · 필기 재생 모두 그 문항 것. 없으면 시연 샘플
     const origQ = selectedStudent?.replayQ?.[activeQuestion] || null;
     const replayData = origQ?.solution ? { q: origQ, A: MATH_RAT_TASK, sample: null } : { q: MATH_RAT_TASK.questions[0], A: MATH_RAT_TASK, sample: '시연 샘플 필기' };
+    /* 학습 안내 항목에 필기 구간이 연결돼 있고 펜 데이터가 있어야 「학습 안내 순서」를 쓸 수 있다 */
+    const guideReplay = replayData.q.solution?.pen && replayData.q.guide?.items?.some((it) => it.pen?.s) ? replayData.q.guide : null;
+    const mode = guideReplay ? replayMode : 'steps';
     /* [교사 첨삭] AI 채점이 끝난 뒤 — 채점 확인 · 결과 발송 전 단계에서 쓸 수 있다. 결과 발송 완료면 잠기고, 발송을 취소하면 다시 열린다 */
     const showInkPanel = solutionReplay && !!origQ?.pen && !isPlaybackMode;
     const inkLocked = selectedStudent?.status === '채점 확인' || selectedStudent?.status === '결과 발송 전' ? null
@@ -675,7 +683,7 @@ const GradingReviewModal = ({
                     {canReplay ? (
                         <button className="toolbar-btn btn-playback" aria-pressed={replayOpen}
                             title="학생 필기를 실제 순서대로 다시 그리고, 왼쪽에 풀이 단계 · 정리를 엽니다 — 결과 발송 후 학생도 같은 풀이 과정을 봅니다"
-                            onClick={() => (replayOpen ? closeReplay() : setReplayOpen(true))}>{replayOpen ? '■ 필기 분석 닫기' : '▶ 필기 분석'}</button>
+                            onClick={() => (replayOpen ? closeReplay() : setReplayOpen(true))}>{replayOpen ? '■ AI 첨삭 닫기' : '▶ AI 첨삭'}</button>
                     ) : (
                         <button className="toolbar-btn btn-playback" onClick={() => { setIsPlaybackMode(v => !v); setIsPlaying(false); setPlaybackProgress(0); }}>
                             {isPlaybackMode ? '이미지 보기' : '▶ 필기 재생'}
@@ -686,7 +694,19 @@ const GradingReviewModal = ({
                 <div style={{ height: '100%', overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isFullscreen ? '3rem 2rem 8rem' : '3.5rem 2rem 4rem' }}>
                     {canReplay && replayOpen ? (
                         /* [SCR-03 v5.29] 필기 재생 — 원본 자리에서(장면 자막 · 재생 막대는 그 아래). 시연은 실제 펜 샘플이라 답안지 이미지 대신 흰 바탕에 그린다 */
-                        <div ref={setStageEl} className="srp-stage-in" style={{ width: '100%', maxWidth: isFullscreen ? 900 : 640 }} />
+                        <div style={{ width: '100%', maxWidth: isFullscreen ? 900 : 640 }}>
+                            {guideReplay && (
+                                <div role="group" aria-label="AI 첨삭 순서" style={{ display: 'inline-flex', gap: 2, background: '#F1F5F9', borderRadius: 8, padding: 2, marginBottom: 10 }}>
+                                    {[['guide', '학습 안내 순서'], ['steps', '풀이 단계 순서']].map(([k, label]) => (
+                                        <button key={k} type="button" aria-pressed={mode === k} onClick={() => setReplayMode(k)}
+                                            style={{ border: 'none', font: 'inherit', fontSize: 'var(--neo-font-size-xs)', padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+                                                background: mode === k ? 'white' : 'transparent', color: mode === k ? '#1D4ED8' : '#475569', fontWeight: mode === k ? 600 : 400,
+                                                boxShadow: mode === k ? '0 1px 2px rgba(15,23,42,.12)' : 'none' }}>{label}</button>
+                                    ))}
+                                </div>
+                            )}
+                            <div ref={setStageEl} key={mode} className="srp-stage-in" style={{ width: '100%' }} />
+                        </div>
                     ) : (
                     /* [교사 첨삭] 펜 답안이면 원본 보기 맨 오른쪽에 교사펜 패널 — 답안은 남은 폭의 가운데 */
                     <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', width: '100%' }}>
@@ -832,12 +852,18 @@ const GradingReviewModal = ({
                 <div ref={rowRef} style={{ flex: 1, display: 'flex', gap: solutionReplay ? 0 : 16, padding: 16, minHeight: 0 }}>
                     {/* ── 좌측 ── [v5.13] 폭을 절반으로(46% → 23%, 최소 360px) — 피드백·채점 근거를 넓게 */}
                     <div style={{ flex: solutionReplay && leftW ? `0 0 ${leftW}px` : '0 0 max(360px, 23%)', display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
-                        {/* [SCR-03 v5.29] 풀이 단계 패널 — 왼쪽 채점 결과 위에 얹힌다(✕ · [■ 필기 분석 닫기]로 닫으면 채점 결과). 필기 재생은 오른쪽 원본 보기 */}
+                        {/* [SCR-03 v5.29] 풀이 단계 패널 — 왼쪽 채점 결과 위에 얹힌다(✕ · [■ AI 첨삭 닫기]로 닫으면 채점 결과). 필기 재생은 오른쪽 원본 보기 */}
                         {canReplay && replayOpen && (
                             <div style={{ position: 'absolute', left: 0, right: 0, top: HEAD_H, bottom: 0, zIndex: 6 }}>
+                                {mode === 'guide' ? (
+                                <GuideReplay key={`g-${selectedStudent?.id}-${activeQuestion}`} guide={guideReplay} pen={replayData.q.solution.pen} penFrom={replayData.q.solution.penFrom || 0}
+                                    onClose={closeReplay} closing={rpClosing} sampleNote={replayData.sample} studentName={selectedStudent?.name}
+                                    stageTarget={rightTab === 'original' ? stageEl : null} />
+                                ) : (
                                 <SolutionReplay panel key={`${selectedStudent?.id}-${activeQuestion}`} q={replayData.q} A={replayData.A} viewer="teacher" studentName={selectedStudent?.name}
                                     sampleNote={replayData.sample} onClose={closeReplay} side="left" closing={rpClosing}
                                     stageTarget={rightTab === 'original' ? stageEl : null} stagePaperClass="srp-sheet" stageLineClass="srp-hand" qButtonTarget={qBtnEl} />
+                                )}
                             </div>
                         )}
                         {/* [v5.18] 좌우 머리줄 높이를 같게(HEAD_H) — 아래 흰 카드의 위 끝이 좌우로 맞는다 */}
@@ -948,7 +974,7 @@ const GradingReviewModal = ({
                                         {(() => {
                                             const left = Math.max(0, aiGradingLimitPerRound - gradingHistory.length);
                                             return (
-                                                <button type="button" className="btn-regrading" disabled={left === 0}
+                                                <button type="button" className="btn-regrading" disabled={left === 0} onClick={() => onRegrade?.(selectedStudent)}
                                                     title={left === 0
                                                         ? `AI 채점을 ${aiGradingLimitPerRound}회 모두 진행해 더 이상 재채점할 수 없습니다. 이력에서 반영할 결과를 고르세요.`
                                                         : '기존 채점 결과는 유지되고 새 결과가 이력에 추가됩니다.'}

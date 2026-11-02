@@ -42,6 +42,7 @@ export const MATH_RAT_TASK = {
               example: '0 = k/(3−2) − 1, so 0 = k − 1, and therefore k = 1.',
               tip: "Don't mix up the equals sign (=) and the minus sign (−).",
               check: 'Check that the line has only one equals sign.',
+              pen: { s: [155, 182], mark: [164, 167] },
             },
             {
               ask: 'Write the final answer as a function.',
@@ -50,6 +51,7 @@ export const MATH_RAT_TASK = {
               example: 'So the rational function is y = 1/(x−2) − 1.',
               tip: 'It only becomes a function when it starts with "y =".',
               check: 'Check that x = 3 gives y = 0.',
+              pen: { s: [183, 207], mark: [200, 207] },
             },
           ],
         },
@@ -75,6 +77,7 @@ export const MATH_RAT_TASK = {
             example: '0 = k/(3−2) − 1 이므로 0 = k − 1, 따라서 k = 1 이다.',
             tip: '등호(=)와 빼기(−)를 헷갈리지 않게 써요.',
             check: '대입한 줄의 등호가 하나인지 확인해요.',
+            pen: { s: [155, 182], mark: [164, 167] }, // [AI 첨삭] 이 안내에 해당하는 학생 필기 획 구간 · 고칠 곳
           },
           {
             ask: '마지막 답을 함수식으로 써 봐요.',
@@ -83,6 +86,7 @@ export const MATH_RAT_TASK = {
             example: '따라서 구하는 유리함수의 식은 y = 1/(x−2) − 1 이다.',
             tip: '「y =」가 있어야 함수의 식이 돼요.',
             check: 'x = 3을 넣었을 때 y = 0이 나오는지 확인해요.',
+            pen: { s: [183, 207], mark: [200, 207] },
           },
         ],
       },

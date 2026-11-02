@@ -30,7 +30,10 @@ const QUESTIONS = [
 const NAMES = ['김민지', '이서준', '박하은', '최도윤', '정서연', '강지호', '조유나', '윤시우', '장하린', '임준서', '한지아', '오건우', '서예린', '신도현'];
 /* 그룹 명단(GROUP)과 채점 대상(ROSTER)을 나눈다 — 교사는 미채점 탭에서 그룹을 고르고 학생을 선택해 들어온다.
  *   시연: 서예린(1-1-13)은 선택하지 않은 학생 → 그 학생의 답안은 「채점 목록에서 선택하지 않은 학생」(판정 #8)으로 미분류 */
-const GROUP = NAMES.map((name, i) => ({ id: `s${i + 1}`, name, no: `1-1-${i + 1}`, grade: `1학년 1반 ${i + 1}번`, hasAnswer: i === 3 || i === 10 }));
+const GROUP = NAMES.map((name, i) => ({ id: `s${i + 1}`, name, no: `1-1-${i + 1}`, grade: `1학년 1반 ${i + 1}번`, hasAnswer: i === 10 || i === 11 }));
+/* 시연 학생 — 한 학생에 한 경우만 둔다 (2026-10-27)
+ *   최도윤(3) 펜을 OCR이 정서연으로 잘못 읽음 → 정서연 중복 (최도윤은 다른 답안 없음)
+ *   한지아(10) 학생 제출 + 펜 → 펜 답안으로 교체 · 오건우(11) 학생 제출만, 펜 없음 → 학생 제출로 채점 */
 /* 채점 관리형 목록에서 들어오면 거기서 고른 학생이 ROSTER가 된다(컴포넌트 안에서 다시 정의). 아래는 단독 실행 기본값 */
 const DEFAULT_ROSTER = GROUP.filter((s) => s.id !== 's13');
 /** 목록 화면(GradingManagement unified)에 쓰는 학생 행 — 같은 목 명단을 그대로 공유한다 */
@@ -40,6 +43,7 @@ const studentById = (id) => GROUP.find((s) => s.id === id);
 const IDENT_UNREAD = '학생 미매칭 — 답안지 학생정보를 읽을 수 없습니다';
 const NOT_IN_ROSTER = (read) => `학생 미매칭 — 답안지 학생정보의 학생이 명단에 없습니다 [읽음: ${read}]`;
 const NOT_SELECTED = '학생 미매칭 — 채점 목록에서 선택하지 않은 학생입니다'; // 판정 #8
+// [SCR-08 v1.62 · v1.63] 선택한 학생만 채점 — 셀렉트에는 선택한 학생만. OCR이 선택하지 않은 학생으로 읽은 펜도 선택한 학생에게는 매칭할 수 있다(오인식 대비)
 const OTHER_TASK_PEN = '학생 미매칭 — 이 과제 데이터가 아닙니다';        // 판정 #3
 const REPLACED = '학생 제출 답안 — 스캔본이 자리를 대신하고 있습니다';
 /* 스캔 답안지 코드 — 과제당 1개가 아니라 장마다 1개 (SCR-05 v4.4) */
@@ -92,6 +96,7 @@ const buildPens = () => {
   const otherClasses = [{ label: '1학년 3반', owner: '1학년 3반 6번 김서준', pages: 2 }, { label: '1학년 4반', owner: '1학년 4반 3번 이도윤', pages: 1 }];
   GROUP.forEach((s, i) => {
     if (i === 5) return;                                                      // 결석 — 펜 없음
+    if (i === 11) return;                                                     // 펜 없음 — 학생 제출(키보드 · 파일)로 이미 냄
     if (i === 1) return add({ scenario: 'no_ident', owner: s.id, pages: fullPages(), extraBooks: otherClasses });
     if (i === 3) return add({ scenario: 'ok', owner: s.id, identSid: GROUP[4].id, pages: fullPages() }); // 답안지엔 최도윤 — OCR이 정서연으로 잘못 읽음 → 중복
     if (i === 8) return add({ scenario: 'no_answer', owner: s.id, identSid: s.id, pages: {} });
@@ -105,6 +110,10 @@ const buildPens = () => {
   return pens;
 };
 const PEN_POOL = buildPens();
+/* [SCR-08 v1.63 · v1.64] 채점이 정상 완료돼 데이터를 지운 펜(펜 답안으로 채점한 펜 + 학생 제출로 되돌려 쓰지 않은 그 학생의 펜) { penId: 채점된 학생 id } — 화면을 나갔다 다시 들어와도 남는다(실제로는 펜 안이 비어 있다).
+ *   다시 꽂으면 미분류로 답안을 보여 주지 않고 「데이터 삭제」로 둔다 */
+const ERASED_PENS = new Map(); // [SCR-08 v1.65 · 판정 규칙 v2.3] 채점 기록 = 펜 식별번호 → 채점한 학생 (시연 과제 하나라 과제 구분 생략)
+const eraseGraded = (list) => list.forEach((x) => { if (x.penId) ERASED_PENS.set(x.penId, x.sid); });
 /** [SCR-08 v1.20] 미채점 목록의 「상태」 — 학생 제출(학생이 낸 답안) · 데이터 있음(펜 필기가 있음) · 데이터 없음 */
 export const UNIFIED_DATA_STATE = Object.fromEntries(GROUP.map((s) => [s.id,
   s.hasAnswer ? '학생 제출' : PEN_POOL.some((p) => p.owner === s.id && Object.values(p.pages).some((n) => n > 0)) ? '데이터 있음' : '데이터 없음']));
@@ -233,28 +242,16 @@ const SheetMock = ({ studentLabel, question, sheetNo, small, answer, writer = 0 
 /* ════════════════════════════════════════════════════════════
  * 본 화면
  * ════════════════════════════════════════════════════════════ */
-// onRosterChange — 채점 대상(ROSTER)이 바뀌면 알린다(목록 화면 왼쪽 열의 「채점 대상 학생」 · 매칭으로 추가된 학생 포함)
+// onRosterChange — 채점 대상(ROSTER)이 바뀌면 알린다(목록 화면 왼쪽 열의 「채점 대상 학생」)
 const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit, onCompleted, onRosterChange } = {}) => {
   const TASK = task ? { ...BASE_TASK, ...task } : BASE_TASK; // 목록에서 고른 과제명을 그대로 쓴다
   /* 채점 관리와 같은 목록에서 [크래들 일괄 채점]/[스캔 채점] 버튼으로 들어온다 — 고른 학생만 대상 */
-  /* 매핑 중 「선택하지 않은 학생」에게 답안을 매칭하면 그 학생도 채점 대상에 더한다 */
-  const [addedIds, setAddedIds] = useState([]);
-  const ROSTER = React.useMemo(() => {
-    const base = targetIds ? GROUP.filter((s) => targetIds.includes(s.id)) : DEFAULT_ROSTER;
-    return addedIds.length ? GROUP.filter((s) => base.includes(s) || addedIds.includes(s.id)) : base;
-  }, [targetIds, addedIds]);
-  const addTarget = (sid) => { if (!ROSTER.some((s) => s.id === sid)) setAddedIds((prev) => [...prev, sid]); };
+  /* [SCR-08 v1.62] 선택한 학생만 채점한다 — 매핑 중 선택하지 않은 학생을 채점 대상에 더하지 않는다(舊 v1.3 「매칭하면 채점 대상에 추가」 폐기) */
+  const ROSTER = React.useMemo(() => (targetIds ? GROUP.filter((s) => targetIds.includes(s.id)) : DEFAULT_ROSTER), [targetIds]);
+  const addTarget = () => {}; // 채점 대상은 목록에서 고른 학생으로 고정
   useEffect(() => { onRosterChange?.(ROSTER.map((s) => s.id)); }, [ROSTER]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* 학생 선택 목록 — 선택 그룹 전체 명단. 미채점 목록에서 고르지 않은 학생은 따로 묶는다 */
-  const studentOptions = () => {
-    const others = GROUP.filter((s) => !ROSTER.includes(s));
-    return (
-      <>
-        <optgroup label="채점 대상 학생">{ROSTER.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}</optgroup>
-        {others.length > 0 && <optgroup label="선택하지 않은 학생 — 매칭하면 채점 대상에 추가">{others.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>)}</optgroup>}
-      </>
-    );
-  };
+  /* 학생 선택 목록 — 미채점 목록에서 선택한 학생만 [SCR-08 v1.62] */
+  const studentOptions = () => ROSTER.map((s) => <option key={s.id} value={s.id}>{s.no} {s.name}</option>);
   const isTarget = (sid) => ROSTER.some((s) => s.id === sid);
   const fromList = !!onExit;
   const [source, setSource] = useState(initialSource); // 'cradle' | 'scan'
@@ -356,7 +353,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     setSource(nextSource); setStep('import'); setReading(false); setSel(null); setTab('all');
     setProgress(0); setGradingDone(false); setGradedIds([]); setFailedIds([]); setRetrying(false); failedOnce.current = false;
     setDocked({}); setUnrecognized([]); failedDock.current = new Set(); setJudged([]); setManual({}); setDupPick({}); setAssignPick({}); setFwDone({}); setFwProg({}); setDeletedPens([]);
-    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false); setAddedIds([]); setUseSubmitted([]);
+    setGradedList([]); setConfirm(null); setRowMenu(null); setShowCodes(false); setUseSubmitted([]);
     if (nextSource === 'cradle' && !connectorSessionReady) setConnector('checking');
     files.forEach((f) => f.url && URL.revokeObjectURL(f.url));
     splitJobs.forEach((j) => { splitCancel.current.add(j.id); j.pages.forEach((p) => p.url && URL.revokeObjectURL(p.url)); });
@@ -434,7 +431,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     setLink(k); setDocked({}); setUnrecognized([]); setJudged([]); setManual({}); setDupPick({}); setSel(null);
   };
   const connected = Object.values(docked).filter((p) => p.link === 'connected').sort((a, b) => a.slot - b.slot);
-  const capacityOf = (p) => (deletedPens.includes(p.id) ? 99 : p.capacity);
+  const capacityOf = (p) => (deletedPens.includes(p.id) || ERASED_PENS.has(p.id) ? 99 : p.capacity);
   /* 펌웨어 업데이트 — 진행 막대. 채점의 필수 요건은 아니다 */
   const runFirmware = (penId) => {
     if (fwProg[penId] != null || fwDone[penId]) return;
@@ -455,7 +452,9 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const bySid = {};
     const unc = [];
     const empty = [];
+    const erased = [];
     read.forEach((p) => {
+      if (ERASED_PENS.has(p.id)) { erased.push(p); return; } // [SCR-08 v1.63] 채점 완료로 지운 펜 — 답안 데이터 없음
       const m = manual[p.id];
       if (m) { (bySid[m] = bySid[m] || []).push({ pen: p, manual: true }); return; }
       if (p.scenario === 'empty') { empty.push(p); return; }
@@ -485,7 +484,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       if (!penPageCount(pen)) return { ...s, badge: 'none', detail: '답안 없음 — 답안지 미작성', pens: list };
       if (s.hasAnswer && useSubmitted.includes(s.id)) {
         unc.push({ id: pen.id, pen, reason: `학생 제출 답안으로 채점 — ${s.name}의 이 펜 답안은 쓰지 않습니다` });
-        return { ...s, badge: 'submitted', detail: '학생 제출 — 펜 답안 대신 학생이 낸 답안으로 채점합니다', pens: [], submitted: true, restored: true };
+        return { ...s, badge: 'submitted', detail: '학생 제출 — 펜 답안 대신 학생이 낸 답안으로 채점합니다', pens: [], submitted: true, restored: true, restoredPenId: pen.id }; // [SCR-08 v1.64] 채점이 끝나면 이 펜도 지운다
       }
       return { ...s, badge: 'ok', detail: `펜 연결 · 슬롯 ${slotShort(pen.slot)}${mm ? ' · 직접 매칭' : ''}${s.hasAnswer ? ' · 학생 제출 답안 교체' : ''}`, pens: list, replacedSubmitted: !!s.hasAnswer };
     });
@@ -499,11 +498,12 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const penInfo = {};
     unread.forEach((p) => { penInfo[p.id] = { kind: 'unread' }; });
     empty.forEach((p) => { penInfo[p.id] = { kind: 'empty' }; });
+    erased.forEach((p) => { penInfo[p.id] = { kind: 'erased', gradedSid: ERASED_PENS.get(p.id) }; });
     unc.forEach((u) => { penInfo[u.id] = { kind: 'unc', reason: u.reason, noAssign: u.noAssign }; });
     students.forEach((s) => s.pens.forEach((x) => { penInfo[x.pen.id] = { kind: s.dup ? 'dup' : s.badge === 'none' ? 'noans' : 'ok', sid: s.id, manual: !!x.manual }; }));
     const absent = students.filter((s) => s.pens.length === 0 && !s.submitted);
     const submitted = students.filter((s) => s.submitted);
-    return { students, unc, empty, unread, gradable, penInfo, absent, submitted, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — 자동으로 읽는 중입니다.` : blockReason,
+    return { students, unc, empty, erased, unread, gradable, penInfo, absent, submitted, blocked: blocked || unread.length > 0, blockReason: unread.length ? `⚠ 아직 읽지 않은 펜 ${unread.length}자루가 있습니다 — 자동으로 읽는 중입니다.` : blockReason,
       note: excluded ? `⚠ 학생 ${excluded}명이 채점 대상에서 제외됩니다 — 거치된 펜에서 이 학생들의 답안을 찾지 못했거나 답안이 없습니다.` : '',
       manifest: `채점을 시작하면 채점 대상 ${gradable.length}명의 답안만 서버로 올라갑니다. 나머지 펜은 올리지 않고 펜 데이터도 지우지 않습니다.` };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -739,14 +739,14 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   /** [SCR-08 v1.48] [↰ 다시 매칭] — 펜 연결로 가지 않고 이 화면에서 처음부터 다시 매칭. 교사가 고친 매칭은 모두 초기화 */
   const rematchAll = () => {
     setConfirm(null);
-    setManual({}); setDupPick({}); setUseSubmitted([]); setAssignPick({}); setAddedIds([]); setSel(null); setChangePen(null);
+    setManual({}); setDupPick({}); setUseSubmitted([]); setAssignPick({}); setSel(null); setChangePen(null);
     appLogger.info('usePenDataBatchUploadModalController', '다시 매칭 — 교사 매칭 초기화', { pens: connected.length });
     reread();
   };
   /** [SCR-09 v1.35] 스캔 [↰ 다시 매칭] — 파일 업로드로 가지 않고 올린 파일 전체를 이 화면에서 다시 판별. 교사가 고친 매칭은 모두 초기화 */
   const rematchScan = () => {
     setConfirm(null);
-    setAssignPick({}); setAddedIds([]); setSel(null); setRowMenu(null);
+    setAssignPick({}); setSel(null); setRowMenu(null);
     setReading(true);
     setTimeout(() => { readScan(); setReading(false); }, 1400);
     appLogger.info('scan-ocr', '다시 매칭 — 교사 매칭 초기화', { files: files.length });
@@ -780,7 +780,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   const startGrading = () => {
     setConfirm(null);
     const ids = model.gradable.map((s) => s.id);
-    const list = model.gradable.map((s) => (source === 'cradle' ? (s.submitted ? { sid: s.id, submitted: true } : { sid: s.id, slot: s.pens[0].pen.slot, penId: s.pens[0].pen.id }) : { sid: s.id, sheets: s.qs.reduce((a, x) => a + x.list.length, 0), full: s.qs.every((x) => x.list.length) }));
+    const list = model.gradable.map((s) => (source === 'cradle' ? (s.submitted ? { sid: s.id, submitted: true, penId: s.restoredPenId } : { sid: s.id, slot: s.pens[0].pen.slot, penId: s.pens[0].pen.id }) : { sid: s.id, sheets: s.qs.reduce((a, x) => a + x.list.length, 0), full: s.qs.every((x) => x.list.length) }));
     setGradedList(list);
     if (source === 'cradle') {
       recordGradingSession({ source: '스마트 펜 채점(통합)', task: TASK.title, group: TASK.group, pens: connected.map((p) => ({ mac: p.id, books: [{ code: '334212', pages: penPageCount(p) }] })) });
@@ -795,13 +795,13 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         clearInterval(iv);
         if (failId) { failedOnce.current = true; setFailedIds([failId]); appLogger.error('useBatchUploadPipeline', 'AI 채점 실패', { studentId: failId, error: { message: 'context length exceeded', code: 'E-AI-TOKEN-LIMIT' } }); }
         // 채점이 정상 완료된 펜만 데이터를 지운다 (SCR-07 §4.6) — 실패 펜은 남겨 다시 채점
-        if (source === 'cradle') setDeletedPens(list.filter((x) => x.sid !== failId).map((x) => x.penId));
+        if (source === 'cradle') { const ok = list.filter((x) => x.sid !== failId); setDeletedPens(ok.map((x) => x.penId)); eraseGraded(ok); }
         setGradingDone(true);
         setTimeout(() => setStep('done'), 500);
       }
     }, 120);
   };
-  const retry = () => { setRetrying(true); setTimeout(() => { if (source === 'cradle') setDeletedPens((d) => [...d, ...gradedList.filter((x) => failedIds.includes(x.sid)).map((x) => x.penId)]); setFailedIds([]); setRetrying(false); setToast(source === 'cradle' ? '실패했던 답안의 채점이 완료되었습니다. 해당 펜의 데이터도 삭제되었습니다.' : '실패했던 답안의 채점이 완료되었습니다.'); }, 2000); };
+  const retry = () => { setRetrying(true); setTimeout(() => { if (source === 'cradle') { const ok = gradedList.filter((x) => failedIds.includes(x.sid)); setDeletedPens((d) => [...d, ...ok.map((x) => x.penId)]); eraseGraded(ok); } setFailedIds([]); setRetrying(false); setToast(source === 'cradle' ? '실패했던 답안의 채점이 완료되었습니다. 해당 펜의 데이터도 삭제되었습니다.' : '실패했던 답안의 채점이 완료되었습니다.'); }, 2000); };
 
   const stepIdx = STEPS.findIndex((s) => s.key === step);
   const canStartMapping = source === 'cradle' ? connector === 'ready' && connected.length > 0 : files.length > 0 && !pendingSplit.length;
@@ -962,6 +962,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <div style={{ fontWeight: 800, color: '#1E3A8A' }}>스캔 파일을 끌어놓거나 선택하세요</div>
         <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>PDF · PNG · JPG · 낱장 20MB 이하 · 파일명·순서 무관</div>
         <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', fontWeight: 700 }}>📑 여러 쪽 PDF(자동 급지 일괄 스캔)는 쪽마다 나눈 뒤 올립니다 · 200MB 이하</div>
+        {/* [SCR-09] 권장 입력 — 학생정보 OCR 인식률 때문에 스캐너 PDF를 권장한다. 막지는 않고 안내만 */}
+        <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#B45309', fontWeight: 700 }}>📠 스캐너로 스캔한 PDF를 권장합니다 — 휴대폰 사진은 학생정보 인식이 잘 안 돼 미분류가 늘어납니다.</div>
         <label style={{ ...primaryBtn(true), marginTop: 4, display: 'inline-block' }}>파일 선택
           <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }} onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
         </label>
@@ -1055,6 +1057,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         <span style={{ color: '#B91C1C' }}>확인 필요 {counts.check}{source === 'cradle' ? '자루' : '건'}</span>
         <span style={{ color: '#94A3B8' }}>채점 제외 {counts.none}명</span>
         <span style={{ color: '#C2410C' }}>미분류 {counts.unc}{source === 'scan' ? '장' : '자루'}</span>
+        {source === 'cradle' && cradleModel.erased.length > 0 && <span style={{ color: '#94A3B8' }}>데이터 삭제 {cradleModel.erased.length}자루</span>}
         {source === 'cradle' && cradleModel.empty.length > 0 && <span style={{ color: '#94A3B8' }} title="학생과 연결되지 않은 필기 없는 펜 — 채점과 무관해 목록에 넣지 않습니다">빈 펜 {cradleModel.empty.length}자루</span>}
         <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 500, flex: 1, minWidth: 200 }}>{model.manifest}</span>
         {/* [SCR-08 v1.8] [↻ 다시 매칭]은 슬롯 그림(미니맵) 위로 옮겼다 */}
@@ -1069,6 +1072,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     unc: { label: '미분류', bg: '#FFF7ED', border: '#FDBA74', color: '#C2410C', dot: '#F97316' },
     noans: { ...BADGE.none, label: '답안 없음' },
     empty: { ...BADGE.none, label: '필기 없음' },
+    erased: { ...BADGE.none, label: '데이터 삭제' }, // [SCR-08 v1.63]
     unread: { label: '읽지 않음', bg: '#EFF6FF', border: '#BFDBFE', color: '#1D4ED8', dot: '#60A5FA' },
   };
   const penText = (info) => ({
@@ -1077,9 +1081,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     unc: info.reason,
     noans: '답안 없음 — 답안지 미작성',
     empty: '필기 데이터가 없습니다',
+    erased: '채점 완료 — 펜 데이터를 지웠습니다',
     unread: '아직 읽지 않음 — 읽는 중',
   }[info.kind]);
-  const penTab = (info) => (info.kind === 'dup' || info.kind === 'unc' ? 'check' : info.kind === 'ok' ? 'ok' : 'none');
+  const penTab = (info) => (info.kind === 'dup' || info.kind === 'unc' ? 'check' : info.kind === 'ok' ? 'ok' : info.kind === 'erased' ? 'erased' : 'none'); // erased는 전체에서만
 
   /** 크래들 1대의 10구 띠 — 목록 묶음 머리에 붙는 에뮬레이터 */
   /** 크래들 1대 — 검은 본체에 펜을 꽂은 모양. 점 한 줄 높이(20px)로 줄여 미니맵에 3대를 쌓는다.
@@ -1118,7 +1123,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     const infos = cradleModel.penInfo;
     const info = infos[p.id] || { kind: 'unread' };
     const k = PEN_KIND[info.kind];
-    const st = info.sid ? studentById(info.sid) : null;
+    const st = info.sid ? studentById(info.sid) : info.gradedSid ? studentById(info.gradedSid) : null;
     const on = sel?.type === 'pen' && sel.penId === p.id;
     return (
       <button key={p.id} id={`pen-row-${p.id}`} type="button" onClick={() => { setSel({ type: 'pen', penId: p.id }); setPageIdx(0); }}
@@ -1316,19 +1321,21 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
   };
 
   /* ── 우측: 매핑(조치) 영역 — 입력 방식별 ── */
-  const assignRow = (penId, noAssign) => {
+  // [SCR-08 v1.61] 학생 선택 카드는 셀렉트 · [매칭]만 — 「이 답안을 … 의 답안으로」 문장 없음 (미분류 · 학생 변경 · 중복 공통)
+  // dupSid — [SCR-08 v1.60] 중복 데이터 펜: 중복된 그 학생을 고르면 이 펜을 그 학생의 답안으로 고른다(舊 [이 펜이 {학생}의 답안입니다])
+  const assignRow = (penId, noAssign, dupSid) => {
     if (noAssign) return <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{noAssign}</div>;
     const pick = assignPick[penId] || '';
     return (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--neo-font-size-sm)' }}>
-        이 답안을
         <select value={pick} onChange={(e) => setAssignPick((p) => ({ ...p, [penId]: e.target.value }))} style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', minWidth: 170 }}>
           <option value="">학생 선택</option>
           {studentOptions()}
         </select>
-        의 답안으로
         <button type="button" disabled={!pick} style={{ ...primaryBtn(!!pick), padding: '5px 14px' }}
-          onClick={() => { addTarget(pick); setChangePen(null); setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
+          onClick={() => {
+            if (dupSid && pick === dupSid) { setDupPick((d) => ({ ...d, [pick]: penId })); setAssignPick((p) => ({ ...p, [penId]: '' })); return; }
+            addTarget(pick); setChangePen(null); setManual((m) => ({ ...m, [penId]: pick })); setDupPick((d) => { const n = { ...d }; delete n[pick]; return n; }); setAssignPick((p) => ({ ...p, [penId]: '' })); }}>매칭</button>
       </div>
     );
   };
@@ -1366,7 +1373,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
     if (!pen) return <div style={{ color: '#94A3B8' }}>왼쪽 목록이나 크래들 슬롯에서 펜을 선택하세요.</div>;
     const info = cradleModel.penInfo[pen.id] || { kind: 'unread' };
     const k = PEN_KIND[info.kind];
-    const st = info.sid ? studentById(info.sid) : null;
+    const st = info.sid ? studentById(info.sid) : info.gradedSid ? studentById(info.gradedSid) : null;
     return (
       <>
         {renderLocationCard(pen)}
@@ -1384,11 +1391,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         {info.kind === 'dup' && (
           <div style={{ ...noteBox('warn'), display: 'flex', flexDirection: 'column', gap: 8 }}>
             {/* [SCR-08 v1.14] 긴 설명문 삭제 — 상태 배지(확인 필요 — 중복 데이터)와 버튼만 */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button type="button" style={{ ...primaryBtn(true), padding: '5px 14px' }} onClick={() => setDupPick((d) => ({ ...d, [info.sid]: pen.id }))}>이 펜이 {st.name}의 답안입니다</button>
-              <span style={{ color: '#94A3B8' }}>또는</span>
-              {assignRow(pen.id)}
-            </div>
+            {/* [SCR-08 v1.60] 셀렉트 · [매칭]만 — [이 펜이 {학생}의 답안입니다] · 「또는」 · 「이 답안을 … 의 답안으로」 삭제 */}
+            {assignRow(pen.id, null, info.sid)}
           </div>
         )}
         {info.kind === 'unc' && (
@@ -1399,6 +1403,8 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         )}
         {info.kind === 'noans' && <div style={noteBox('muted')}>답안지 학생정보는 읽혔지만 답안이 없습니다. 채점에서 제외됩니다.</div>}
         {info.kind === 'empty' && <div style={noteBox('muted')}>이 펜에는 필기가 없습니다. 채점 대상이 아닙니다.</div>}
+        {/* [SCR-08 v1.63] 채점이 끝나 지운 펜 — 답안을 보여 주지 않고 이유만 */}
+        {info.kind === 'erased' && <div style={noteBox('muted')}>{st ? `${st.name}의 ` : ''}답안은 채점이 끝나 펜에서 지웠습니다. 채점 결과는 「채점 확인」에서 볼 수 있습니다.</div>}
         {info.kind === 'unread' && <div style={noteBox('info')}>판정 이후에 꽂은 펜이라 지금 읽고 있습니다.</div>}
         {info.kind === 'ok' && <div style={noteBox('ok')}>✓ {st.name}의 답안으로 채점됩니다.{info.manual ? ' (직접 매칭)' : ''}</div>}
         {info.kind === 'ok' && st?.hasAnswer && (
@@ -1462,11 +1468,10 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               </div>
               {/* 다른 과제 답안지는 이 과제에 붙이지 않는다 — 크래들의 「그룹 불일치」와 같은 취급 */}
               {r.noAssign ? (
-                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>다른 과제의 답안지라 이 과제에 지정할 수 없습니다. 해당 과제에서 채점하세요.</div>
+                <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{typeof r.noAssign === 'string' ? r.noAssign : '다른 과제의 답안지라 이 과제에 지정할 수 없습니다. 해당 과제에서 채점하세요.'}</div>
               ) : (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--neo-font-size-xs)', color: '#475569' }}>
-                {/* [SCR-09 v1.31] 펜과 같은 결 — 고른 뒤 [매칭]으로 확정 */}
-                이 답안을
+                {/* [SCR-09 v1.31] 펜과 같은 결 — 고른 뒤 [매칭]으로 확정 · [SCR-09 v1.43] 문장 없이 셀렉트 · [매칭]만 */}
                 <select value={assignPick[`${r.id}:s`] || ''} onChange={(e) => setAssignPick((p) => ({ ...p, [`${r.id}:s`]: e.target.value }))}
                   style={{ flex: '1 1 140px', padding: '5px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontFamily: 'inherit', fontSize: 'var(--neo-font-size-xs)' }}>
                   <option value="">학생 선택</option>
@@ -1477,7 +1482,6 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
                   <option value="">문항</option>
                   {QUESTIONS.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
                 </select>
-                의 답안으로
                 <button type="button" disabled={!assignPick[`${r.id}:s`] || !assignPick[`${r.id}:q`]} onClick={() => assignUncRow(r)}
                   style={{ ...primaryBtn(!!(assignPick[`${r.id}:s`] && assignPick[`${r.id}:q`])), padding: '5px 14px', flex: 'none' }}>매칭</button>
               </div>
@@ -1629,6 +1633,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
       const pen = sel.type === 'pen' ? connected.find((p) => p.id === sel.penId) : null;
       if (!pen) return [];
       const info = cradleModel.penInfo[pen.id] || {};
+      if (info.kind === 'erased') return []; // [SCR-08 v1.63] 지운 데이터 — 답안 · 다른 반 답안 모두 볼 수 없다
       const handLabel = pen.scenario === 'no_ident' ? '' : (pen.scenario === 'other_group' || pen.scenario === 'other_task') ? pen.ownerLabel : pen.scenario === 'not_in_roster' ? pen.read
         /* 답안지에는 실제로 쓴 학생(owner)이 적혀 있다 — OCR이 다른 학생으로 잘못 읽으면(identSid ≠ owner) 중복이 생긴다 */
         : (() => { const s = studentById(pen.owner || pen.identSid); return s ? `${s.grade} ${s.name}` : ''; })();
@@ -1637,6 +1642,13 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
         writer: pen.owner ? GROUP.findIndex((g) => g.id === pen.owner) : pen.slot, // 실제로 쓴 사람 — 답안지에 적힌 이름과 다를 수 있다
         warn: pen.scenario === 'other_task' ? '다른 과제 데이터' : pen.scenario === 'other_group' ? `${pen.detected} 답안지` : null,
       })));
+      /* [SCR-08 v1.59] 답안 없음 — 답안 칸 필기는 없지만 학생정보는 썼다. 빈 답안지에 학생정보 필기만 얹어 보여 준다(채점 제외는 그대로) */
+      if (info.kind === 'noans' && !own.length) {
+        QUESTIONS.forEach((q) => { for (let i = 0; i < (q.sheets || 1); i += 1) own.push({
+          id: `${pen.id}-${q.id}-blank-${i}`, label: `${q.title}-${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: handLabel, question: q.title, sheetNo: i + 1, kind: info.kind,
+          writer: GROUP.findIndex((g) => g.id === pen.owner), blankAnswer: true, warn: '답안 미작성',
+        }); });
+      }
       /* [SCR-07 v2.0] 비정상 펜은 이 과제의 다른 반 답안까지 열람한다(매칭은 불가) — 정상 펜은 선택 그룹 답안만 */
       const extra = info.kind !== 'ok' ? pen.extraBooks.flatMap((b) => Array.from({ length: b.pages }, (_, i) => ({
         id: `${pen.id}-${b.label}-${i}`, label: `${b.label} 답안 ${i + 1}`, sub: `슬롯 ${slotShort(pen.slot)}`, studentLabel: b.owner, question: '문항 1', sheetNo: i + 1, warn: '다른 반 답안지 — 열람만',
@@ -1672,7 +1684,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
           )}
         </div>
         <div style={{ position: 'relative', flex: 1, minHeight: 0, overflowY: 'auto', background: '#E2E8F0', padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          {!pages.length && <div style={{ margin: 'auto', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>{sel ? '미리볼 답안이 없습니다.' : '왼쪽에서 선택하면 답안을 크게 볼 수 있습니다.'}</div>}
+          {!pages.length && <div style={{ margin: 'auto', color: '#64748B', fontSize: 'var(--neo-font-size-sm)' }}>{!sel ? '왼쪽에서 선택하면 답안을 크게 볼 수 있습니다.' : sel.type === 'pen' && cradleModel?.penInfo[sel.penId]?.kind === 'erased' ? '채점이 끝나 지운 데이터라 답안을 볼 수 없습니다.' : '미리볼 답안이 없습니다.'}</div>}
           {pages.map((p, k) => (
             <div key={p.id} id={`pv-${p.id}`} onClick={() => setPageIdx(k)} style={{ width: '100%', maxWidth: 720, flex: 'none', cursor: 'pointer' }}>
               {/* 장 머리 — 문항·장 번호 + 주의 표시 */}
@@ -1684,7 +1696,7 @@ const BatchGradingUnified = ({ initialSource = 'cradle', targetIds, task, onExit
               <div style={{ borderRadius: 8, outline: k === i ? '3px solid #60A5FA' : 'none', outlineOffset: 2 }}>
                 {p.url
                   ? <img src={p.url} alt={p.label} style={{ display: 'block', width: '100%', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', background: 'white' }} />
-                  : <SheetMock studentLabel={p.studentLabel} question={p.question} sheetNo={p.sheetNo} answer={!p.existing} writer={Math.max(0, p.writer ?? 0)} />}
+                  : <SheetMock studentLabel={p.studentLabel} question={p.question} sheetNo={p.sheetNo} answer={!p.existing && !p.blankAnswer} writer={Math.max(0, p.writer ?? 0)} />}
               </div>
             </div>
           ))}

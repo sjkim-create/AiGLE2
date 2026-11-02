@@ -413,7 +413,7 @@ const UI = {
     result: '채점 결과', grading: <><b>선생님이 채점하고 있어요.</b> 채점 결과가 발송되면 이 과제가 「결과 확인」으로 바뀌고, 채점 결과와 리포트를 볼 수 있어요.</>,
     answerOf: (l) => `답안 · ${l}`, close: '닫기', terms: '이용약관', privacy: '개인정보 처리방침',
     rPage: '— PAGE 1 — 본문', rHead: '채점 결과 리포트', rSchool: '학교명', rCls: '학년/반/번호', rName: '학생이름', rTask: '과제명', rSubj: '교과', rPub: '출제일자',
-    rByQ: '◆ 문항별 성취도', thQ: '문항', thPt: '배점', thScore: '점수', thGrade: '등급', scoreOf: (s, p) => `${s} / ${p}점`,
+    rByQ: '문항별 성취도', rResult: '결과', rFull: (p) => `${p}점 만점`, rPubOf: (d) => `출제 ${d}`, thQ: '문항', thPt: '배점', thScore: '점수', thGrade: '등급', scoreOf: (s, p) => `${s} / ${p}점`,
     evalT: '등급 평가', score: '점수', scale: '평가 기준', scale5: '5단계 기준', scoreV: (s, p) => <><b>{s}</b> / {p}점</>,
     fb: '학습 피드백', fbRows: ['이런 점이 좋아요', '조금만 더 노력해볼까요', '함께 성장해요'],
     guide: '학습 안내', guideEmpty: GUIDE_EMPTY_MESSAGE, written: '학생이 작성한 내용', tryIt: '이렇게 해봐요', check: '확인',
@@ -438,7 +438,7 @@ const UI = {
     result: 'Results', grading: <><b>Your teacher is grading.</b> Once results are sent, this assignment moves to “Results” and you can see your results and report.</>,
     answerOf: (l) => `Answer · ${l}`, close: 'Close', terms: 'Terms of use', privacy: 'Privacy policy',
     rPage: '— PAGE 1 — Main', rHead: 'Grading report', rSchool: 'School', rCls: 'Grade/Class/No.', rName: 'Student', rTask: 'Assignment', rSubj: 'Subject', rPub: 'Assigned',
-    rByQ: '◆ Results by question', thQ: 'Question', thPt: 'Points', thScore: 'Score', thGrade: 'Grade', scoreOf: (s, p) => `${s} / ${p}`,
+    rByQ: 'Results by question', rResult: 'Result', rFull: (p) => `out of ${p}`, rPubOf: (d) => `Assigned ${d}`, thQ: 'Question', thPt: 'Points', thScore: 'Score', thGrade: 'Grade', scoreOf: (s, p) => `${s} / ${p}`,
     evalT: 'Grade', score: 'Score', scale: 'Scale', scale5: '5-level scale', scoreV: (s, p) => <><b>{s}</b> / {p}</>,
     fb: 'Feedback', fbRows: ['What you did well', 'What to work on', 'Let’s grow together'],
     guide: 'Study guide', guideEmpty: 'You met every grading criterion, so there is nothing to fix. Keep organizing your thinking step by step, and try a harder task next.',
@@ -784,21 +784,32 @@ const StudentMyTasks = () => {
  *   머리 정보 → 문항별 성취도 → 문항마다 등급 평가 · 학습 피드백 · 학습 안내 · AI 필기 분석 ── */
 const ReportPreview = ({ A, lang = BASE_LANG }) => {
   const U = uiOf(UI, lang);
+  // 머리의 결과 = 문항 점수 합 / 배점 합 (표의 문항 줄과 같은 값에서 계산)
+  const totalScore = A.questions.reduce((sum, qq) => sum + (Number(qq.score) || 0), 0);
+  const totalPoint = A.questions.reduce((sum, qq) => sum + (Number(qq.point) || 0), 0);
   return (
     <div className="smt-report" lang={lang}>
       {missingLang(A, lang) && <div className="smt-nolang">{U.noLang}</div>}
-      <div className="smt-rpage">{U.rPage}</div>
-      <div className="smt-rcard">
-        <div className="smt-rhead">{U.rHead}</div>
-        <div className="smt-rinfo">
-          <div><span>{U.rSchool}</span><b>{STUDENT.school}</b></div>
-          <div><span>{U.rCls}</span><b>{STUDENT.cls}</b></div>
-          <div><span>{U.rName}</span><b>{STUDENT.name}</b></div>
-          <div><span>{U.rTask}</span><b>{tr(A, 'title', lang)}</b></div>
-          <div><span>{U.rSubj}</span><b>{tr(A, 'subject', lang)}</b></div>
-          <div><span>{U.rPub}</span><b>{tr(A, 'pub', lang)}</b></div>
+      {/* [TSK-10 · 리포트 디자인 v2 2026-10-28] 교사 리포트(POP-19)와 같은 머리 — 이름 · 과제 · 결과를 크게, 내부 표기(— PAGE 1 —, ◆)는 뺀다 */}
+      <header className="smt-rhead2">
+        <div className="smt-rhead2-top">
+          <span className="smt-rhead2-t">{U.rHead}</span>
+          <span>{STUDENT.school} · {U.rPubOf(tr(A, 'pub', lang))}</span>
         </div>
-      </div>
+        <div className="smt-rhead2-main">
+          <div style={{ minWidth: 0 }}>
+            <div className="smt-rname">{STUDENT.name}</div>
+            <div className="smt-rmeta">{STUDENT.cls}</div>
+            {/* 과제명에 이미 [교과]가 붙어 있으면 앞에 또 붙이지 않는다 */}
+            <div className="smt-rtask">{/^\[/.test(tr(A, 'title', lang)) ? tr(A, 'title', lang) : <><span>[{tr(A, 'subject', lang)}]</span> {tr(A, 'title', lang)}</>}</div>
+          </div>
+          <div className="smt-rresult">
+            <div className="k">{U.rResult}</div>
+            <div className="v">{totalScore}{lang === BASE_LANG ? '점' : ''}</div>
+            <div className="s">{U.rFull(totalPoint)}</div>
+          </div>
+        </div>
+      </header>
       <div className="smt-rsec">{U.rByQ}</div>
       <table className="smt-rtable">
         <thead><tr><th scope="col">{U.thQ}</th><th scope="col">{U.thPt}</th><th scope="col">{U.thScore}</th><th scope="col">{U.thGrade}</th></tr></thead>
@@ -808,7 +819,7 @@ const ReportPreview = ({ A, lang = BASE_LANG }) => {
       </table>
       {A.questions.map((qq, i) => (
         <div key={i} className="smt-rq">
-          <div className="smt-rsec">◆ {tr(qq, 'label', lang)}</div>
+          <div className="smt-rsec">{tr(qq, 'label', lang)}</div>
           <ResultPane A={A} q={qq} lang={lang} />
         </div>
       ))}
@@ -874,7 +885,7 @@ const ResultPane = ({ A, q, lang = BASE_LANG }) => {
           </div>
           {g.items.map((it, i) => (
             <div key={i} className="smt-gitem">
-              <div className="smt-gask">{i + 1}. {it.ask}</div>
+              <div className="smt-gask"><span className="smt-gnum" aria-hidden>{i + 1}</span><span className="smt-sr">{i + 1}. </span>{it.ask}</div>
               <div className="smt-gwritten"><span>{U.written}</span>{it.written}</div>
               <div className="smt-gtry">
                 <div className="smt-gtry-k">{U.tryIt}</div>
@@ -929,7 +940,7 @@ const ResultPane = ({ A, q, lang = BASE_LANG }) => {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap');
 .smt-root{--blue:#2563EB;--blue-dark:#1D4ED8;--blue-soft:#EEF3FD;--vio:#6D5BD0;--vio-dark:#5646B8;--vio-soft:#F1EFFB;
-  --page:#F4F7FB;--line:#E4EAF3;--line-soft:#EFF2F7;--t1:#17212F;--t2:#3C4858;--t3:#6B7684;--t4:#98A3B0;--dark:#3A4353;
+  --page:#F4F7FB;--line:#E4EAF3;--line-soft:#EFF2F7;--t1:#17212F;--t2:#3C4858;--t3:#6B7684;--t4:#6B7684;--dark:#3A4353;
   --ok:#2E6B32;--ok-bg:#EAF6E9;--mid:#8A5A12;--mid-bg:#FBF1DE;
   flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;background:var(--page);color:var(--t1);font-size:var(--neo-font-size-sm)}
 .smt-root *{box-sizing:border-box}
@@ -971,10 +982,12 @@ const CSS = `
 .smt-searchbox input::-webkit-search-cancel-button{display:none}
 .smt-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px}
 .smt-card{background:#fff;border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
-.smt-card:hover{border-color:#A9C4F7;box-shadow:0 4px 14px rgba(37,99,235,.09);transform:translateY(-2px)}
+.smt-card:hover{border-color:#A9C4F7;box-shadow:0 4px 14px rgba(37,99,235,.09)}
+.smt-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .smt-card-in{padding:20px}
 .smt-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.smt-badge{font-size:var(--neo-font-size-xs);font-weight:500;color:#5F7020;background:#F2F6DC;padding:5px 10px;border-radius:6px;white-space:nowrap}
+/* [디자인 v2] 「결과 확인」 배지 — neoUI success 색 (舊 올리브 #5F7020 / #F2F6DC는 팔레트에 없음) · 보조 글자 --t4는 대비 4.5:1 이상으로 (舊 #98A3B0 = 2.6:1) */
+.smt-badge{font-size:var(--neo-font-size-xs);font-weight:500;color:#15803D;background:#F0FDF4;padding:5px 10px;border-radius:6px;white-space:nowrap}
 .smt-badge.grading{color:#1D4ED8;background:#E8F0FE}
 .smt-badge.todo{color:#B45309;background:#FEF3C7}
 .smt-notice{padding:14px 18px;background:#F5F9FF;border:1px solid #DBEAFE;border-radius:10px;font-size:var(--neo-font-size-sm);color:var(--t2);line-height:1.7}
@@ -1062,6 +1075,45 @@ table.smt-rtable th{background:#F1F4F9;font-weight:500;color:var(--t2)}
 .smt-report .smt-evalsec-p{margin-top:22px;padding-top:18px}
 .smt-report .smt-pattern{flex-wrap:wrap}
 .smt-report .smt-char{width:72px;height:72px}
+/* [리포트 디자인 v2] 흰 문서 · 머리(이름 · 과제 · 결과) · 제목 + 아래 선 · 칸선 없는 표 · 색 점 피드백 · 번호 원 학습 안내 */
+.smt-report{background:#fff;padding:22px 26px}
+.smt-rhead2{margin-bottom:4px}
+.smt-rhead2-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:10px;border-bottom:2px solid var(--t1);font-size:var(--neo-font-size-sm);color:var(--t3)}
+.smt-rhead2-t{font-size:var(--neo-font-size-base);font-weight:800;color:var(--t1)}
+.smt-rhead2-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:end;padding:18px 0 16px;border-bottom:1px solid var(--line)}
+.smt-rname{font-size:var(--neo-font-size-xxl);font-weight:800;color:var(--t1);line-height:1.2}
+.smt-rmeta{margin-top:4px;font-size:var(--neo-font-size-sm);color:var(--t3)}
+.smt-rtask{margin-top:10px;font-size:var(--neo-font-size-base);font-weight:700;color:var(--t2)}
+.smt-rtask span{color:var(--blue)}
+.smt-rresult{text-align:right}
+.smt-rresult .k{font-size:var(--neo-font-size-xs);font-weight:600;color:var(--t3)}
+.smt-rresult .v{font-size:var(--neo-font-size-xxl);font-weight:800;color:var(--blue-dark);line-height:1.2;font-variant-numeric:tabular-nums}
+.smt-rresult .s{margin-top:2px;font-size:var(--neo-font-size-sm);color:var(--t3)}
+.smt-report .smt-rsec{margin:26px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);font-size:var(--neo-font-size-lg);font-weight:800;color:var(--t1)}
+.smt-report .smt-rq{margin-top:8px;background:none;border:none;border-radius:0;padding:0}
+.smt-report .smt-rq .smt-rsec{margin-top:26px}
+.smt-report table.smt-rtable th,.smt-report table.smt-rtable td{border:none;border-bottom:1px solid var(--line-soft);padding:9px 4px}
+.smt-report table.smt-rtable th{background:none;border-bottom:1px solid var(--line);font-weight:700;color:var(--t3)}
+.smt-report table.smt-rtable td:nth-child(2),.smt-report table.smt-rtable td:nth-child(3),.smt-report table.smt-rtable th:nth-child(2),.smt-report table.smt-rtable th:nth-child(3){text-align:right;font-variant-numeric:tabular-nums}
+.smt-report table.smt-rtable td:nth-child(4),.smt-report table.smt-rtable th:nth-child(4){text-align:right}
+.smt-report .smt-gradebar{background:none;border:none;border-bottom:1px solid var(--line-soft);border-radius:0;padding:4px 0 16px}
+.smt-report .smt-sect > h3{font-size:var(--neo-font-size-base);font-weight:800}
+.smt-report .smt-bar{width:8px;height:8px;border-radius:50%}
+.smt-report .smt-fb{border-bottom:none;padding:8px 0}
+.smt-report .smt-lab{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--t1)}
+.smt-report .smt-lab::before{content:"";width:8px;height:8px;border-radius:50%;flex:none;background:currentColor}
+.smt-report .smt-lab.good::before{background:#65A30D} .smt-report .smt-lab.more::before{background:#F97316} .smt-report .smt-lab.grow::before{background:#2563EB}
+.smt-report .smt-lab.good,.smt-report .smt-lab.more,.smt-report .smt-lab.grow{color:var(--t1)}
+.smt-report .smt-txt{padding-left:16px;line-height:1.8;max-width:68ch}
+.smt-report .smt-guide{border:none;border-radius:10px}
+.smt-report .smt-gitem{border:none;background:none;padding:0 0 0 32px;position:relative;margin-top:18px}
+.smt-report .smt-gask{font-weight:800}
+.smt-gnum{display:none}
+.smt-report .smt-gnum{position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:50%;background:var(--t1);color:#fff;font-size:var(--neo-font-size-xs);font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.smt-report .smt-gask .smt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.smt-report .smt-gwritten{background:none;border:none;padding:0;color:var(--t3)}
+.smt-report .smt-gtry{background:#F8FAFC;border:none}
+.smt-report .smt-pattern{background:none}
 .smt-board{background:#fff;border:1px solid var(--line);border-radius:0 12px 12px 12px;padding:24px 26px}
 .smt-cols{display:grid;grid-template-columns:minmax(0,1fr) 24px var(--aside-w,420px);align-items:stretch}
 .smt-col-l{min-width:0}

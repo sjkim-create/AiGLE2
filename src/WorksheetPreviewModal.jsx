@@ -12,7 +12,7 @@
  *     · 선 없는 답안
  *   인쇄는 Ncode Print Doctor 설치 시에만 가능(미설치면 안내 모달). PDF 다운받기는 드라이버 없이 가능.
  *   [v4.1] 채점 방식 선택(gradingModeSelect) — 스캔 채점용(기본) / 스마트펜 채점용
- *     · 스캔 채점용: Ncode 없이 일반 인쇄(Print Doctor 불필요) · 연필로 써도 된다 · 스캔해서 채점
+ *     · 스캔 채점용: Ncode 없이 인쇄(Print Doctor 불필요) · 펜 채점 불가 · 스캔해서 채점
  *     · 스마트펜 채점용: Ncode를 함께 인쇄(Print Doctor 필요) · 스마트펜으로 쓴다 · 펜 채점 실패 시 스캔 채점 가능
  *   Print Doctor 설치 여부: localStorage['ncodePrintDoctor:downloaded']
  */
@@ -56,8 +56,8 @@ export const sheetTypeLabel = (key) => {
 
 /* [v4.1] 채점 방식 — 인쇄에 Ncode를 넣을지가 여기서 정해진다 */
 export const PRINT_MODES = [
-  { key: 'scan', label: '스캔 채점용', desc: 'Ncode 없이 일반 인쇄 · 연필 사용 가능', ncode: false },
-  { key: 'pen', label: '스마트펜 채점용', desc: 'Ncode 포함 인쇄 · 스마트펜 사용 · 펜 채점 실패 시 스캔 채점 가능', ncode: true },
+  { key: 'scan', label: '스캔 채점용', desc: 'Ncode 없이 인쇄되며 펜 채점을 할 수 없다', ncode: false },
+  { key: 'pen', label: '스마트펜 채점용', desc: 'Ncode와 함께 인쇄되며 펜 채점 실패 시 스캔 채점을 할 수 있다', ncode: true },
 ];
 export const printModeLabel = (key) => (PRINT_MODES.find((m) => m.key === key) || PRINT_MODES[0]).label;
 

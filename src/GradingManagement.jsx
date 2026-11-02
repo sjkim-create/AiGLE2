@@ -304,6 +304,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     setSelectedIds([]); setInvalidAsk(false);
     setInvalidMsg(`${ids.length}명의 제출을 무효 처리했습니다 — 「결과 발송」 탭에서 확인할 수 있습니다.`);
   };
+  // [SCR-08 v1.58] 미채점에는 「전체 그룹」이 없다 — 다른 탭에서 고른 채로 넘어오면 「그룹 선택」으로 되돌린다
+  useEffect(() => {
+    if (unifiedUngraded && selectedGroup === '전체 그룹') setSelectedGroup('그룹 선택');
+  }, [unifiedUngraded, selectedGroup]);
   useEffect(() => {
     if (!unifiedUngraded) return;
     setSelectedIds(ungradedIds);
@@ -623,6 +627,24 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
     setSelectedIds([]);
   };
 
+  // [SCR-03 v5.14 구현] 일괄 채점 통합 — AI 채점 이력은 학생마다 실제 실행 횟수(aiCount)만큼만 보인다.
+  //   舊: 모든 학생이 같은 2건 이력을 써서 누구를 열어도 「횟수 소진」으로 보였다. 채점 관리는 그대로
+  const reviewRound = selectedStudent?.round ?? 1;
+  const reviewHistory = isUnified && selectedStudent
+    ? gradingHistory.slice(0, Math.min(gradingHistory.length, Math.max(1, selectedStudent.aiCount?.[reviewRound] ?? 1)))
+    : gradingHistory;
+  useEffect(() => { if (isUnified) setReflectedHistoryId(reviewHistory.length); }, [isUnified, selectedStudent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // [AI 재채점] — 이력 한 건 추가 · 새 결과를 반영 회차로
+  const handleUnifiedRegrade = (student) => {
+    if (!student) return;
+    const r = student.round ?? 1;
+    const next = Math.min(AI_GRADING_LIMIT_PER_ROUND, Math.max(1, student.aiCount?.[r] ?? 1) + 1);
+    const bump = (s) => ({ ...s, aiCount: { ...(s.aiCount || { 1: 0, 2: 0 }), [r]: next } });
+    setStudents(prev => prev.map(s => (s.id === student.id ? bump(s) : s)));
+    setSelectedStudent(prev => (prev && prev.id === student.id ? bump(prev) : prev));
+    setReflectedHistoryId(next);
+  };
+
   const handleRevertToReview = () => {
     if (isUnified && bulkPreSendIds.length > 1) { // [일괄 채점 통합] 여러 명을 한 번에 채점 확인으로
       const ids = bulkPreSendIds;
@@ -894,7 +916,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <div key={st.id} className="task-item" style={{ cursor: 'default' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span className="title" style={{ margin: 0 }}>{st.name}</span>
-                        {!selectedIds.includes(st.id) && <span title="데이터 매핑에서 답안을 매칭해 채점 대상에 더한 학생" style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#7C3AED', background: '#F5F3FF', borderRadius: 6, padding: '0 6px' }}>추가</span>}
+                        {/* [SCR-08 v1.62] 선택한 학생만 채점 — 매칭으로 추가되는 학생이 없어 「추가」 표시 삭제 */}
                         {(() => { const v = dataStateOf(st); const [bg, color] = DATA_STATE_STYLE[v]; return <span style={{ marginLeft: 'auto', background: bg, color, fontSize: 'var(--neo-font-size-xs)', fontWeight: 700, borderRadius: 6, padding: '1px 8px', whiteSpace: 'nowrap' }}>{v}</span>; })()}
                       </div>
                       <div className="meta"><span>{st.grade}</span></div>
@@ -970,7 +992,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
               {/* [v3.18] control-bar 2단 레이아웃 — 1단: 탭 필터 (전체 탭 폐기, 3개) / 2단: 그룹 선택·전체 선택·일괄 채점·뷰 토글 */}
               <div className="control-bar" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '12px' }}>
-                <div className="tabs">
+                {/* [일괄 채점 통합 · 디자인 v2] tabs-neo — neoUI Tabs(pill) 규칙: 고른 탭 = 브랜드 파랑 + 흰 글자 (舊 검정). 채점 관리(이전 버전)는 그대로 */}
+                <div className={`tabs${isUnified ? ' tabs-neo' : ''}`}>
                   {['미채점', '채점 확인', '결과 발송'].map(tab => (
                     <div
                       key={tab}
@@ -986,7 +1009,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     return (
                       <button type="button" className="btn-bulk-grading" onClick={openExport} disabled={!can}
                         title={can ? '결과를 발송한 학생의 리포트를 PDF · 엑셀로 내보냅니다.' : '결과를 발송한 학생이 있어야 내보낼 수 있습니다.'}
-                        style={{ marginLeft: 'auto', alignSelf: 'center', background: '#0F766E', ...(can ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}>
+                        style={{ marginLeft: 'auto', alignSelf: 'center', padding: '9px 16px', fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, boxShadow: 'none', animation: 'none', ...(can ? {} : { opacity: 0.45, cursor: 'not-allowed' }) }}>
                         📄 채점 결과 내보내기
                       </button>
                     );
@@ -1039,7 +1062,8 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     onChange={(e) => setSelectedGroup(e.target.value)}
                   >
                     <option>그룹 선택</option>
-                    <option>전체 그룹</option>
+                    {/* [SCR-08 v1.58] 일괄 채점 통합 미채점 — 「전체 그룹」 없음. 「그룹 선택」(초기값) = 선택 없이 전체 학생 목록 */}
+                    {!unifiedUngraded && <option>전체 그룹</option>}
                     <option>1학년 1반</option>
                     <option>1학년 2반</option>
                   </select>
@@ -1515,8 +1539,9 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
         maxPoints={totalPoints}
         activeQuestion={activeQuestion}
         setActiveQuestion={setActiveQuestion}
-        gradingHistory={gradingHistory}
+        gradingHistory={reviewHistory}
         reflectedHistoryId={reflectedHistoryId}
+        onRegrade={isUnified ? handleUnifiedRegrade : undefined}
         setReflectedHistoryId={setReflectedHistoryId}
         teacherFinalFeedback={teacherFinalFeedback}
         setTeacherFinalFeedback={setTeacherFinalFeedback}
@@ -1619,6 +1644,156 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
 
         return (
           <div className="modal-overlay" onClick={closeModal}>
+            {/* [일괄 채점 통합] 채점 결과 내보내기 디자인 v2 (2026-10-28) — 채점 관리(이전 버전)는 아래 舊 화면 그대로
+                · 긴 설명문 대신 과제 · 대상 한 줄, 출력 형식은 고르는 카드 2개, 포함 항목은 한 줄 체크
+                · 목록은 이름(학년반번호) · 결과(발송 방식) · 과정 분석 · 미리보기 — 상태는 모두 「결과 발송 완료」라 열에서 뺐다
+                · 실행 버튼은 형식 이름으로 (PDF 내보내기 / 엑셀 내보내기) */}
+            {isUnified && (
+            <div className="modal-container exp24" style={{ width: '760px', height: 'auto', maxHeight: '88vh', padding: '28px 32px', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+              <style>{`
+                .exp24 .exp24-opt:focus-within, .exp24 button:focus-visible { outline: 2px solid #2A75F3; outline-offset: 2px; }
+                .exp24 .exp24-row:hover { background: #F8FAFC; }
+                .exp24 .exp24-view:hover:not(:disabled) { background: #EFF6FF; color: #1D4ED8; }
+              `}</style>
+              {exportStatus !== 'processing' && <button className="btn-modal-close" onClick={closeModal} aria-label="닫기">×</button>}
+              <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', margin: 0 }}>채점 결과 내보내기</h2>
+              <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: 4, marginBottom: 20 }}>
+                <span style={{ color: '#2A75F3', fontWeight: 700 }}>[{currentTask.type}]</span> {currentTask.title} · 결과 발송 완료 {eligibleList.length}명
+              </div>
+
+              {exportStatus === 'ready' && (<>
+                {/* 출력 형식 */}
+                <div role="radiogroup" aria-label="출력 형식" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                  {[
+                    { id: 'pdf', label: 'PDF', desc: '학생마다 리포트 1개 · ZIP으로 묶음' },
+                    { id: 'excel', label: '엑셀', desc: '전체 명단 1파일 · 결과와 피드백만' },
+                  ].map((f) => {
+                    const on = exportFormat === f.id;
+                    return (
+                      <label key={f.id} className="exp24-opt" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+                        border: `1px solid ${on ? '#2A75F3' : '#E2E8F0'}`, background: on ? '#F5F9FF' : 'white' }}>
+                        <input type="radio" name="exportFormat" checked={on} onChange={() => setExportFormat(f.id)} style={{ marginTop: 3, accentColor: '#2A75F3' }} />
+                        <span>
+                          <span style={{ display: 'block', fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E2225' }}>{f.label}</span>
+                          <span style={{ display: 'block', fontSize: 'var(--neo-font-size-xs)', color: '#64748B', marginTop: 2 }}>{f.desc}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* 포함 항목 (PDF) — 순서: 지문+문항 → 학생 답안(→ 교사 첨삭) → 과정 분석 → 교사 피드백(항상) [POP-19 v2.9] */}
+                {exportFormat === 'pdf' ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', padding: '12px 0 14px', borderTop: '1px solid #EEF2F6', borderBottom: '1px solid #EEF2F6', marginBottom: 16, fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
+                    <span style={{ fontWeight: 700, color: '#64748B', marginRight: 2 }}>포함 항목</span>
+                    {[
+                      { key: 'question', label: '지문+문항', title: '문항의 지문과 문항 내용을 싣습니다.' },
+                      { key: 'answer', label: '학생 답안', title: '학생 답안을 답안마다 한 페이지로 싣습니다.' },
+                      { key: 'teacherInk', label: '교사 첨삭', dep: 'answer', title: exportContentOptions.answer ? '학생 답안 페이지에 교사 첨삭을 겹쳐 싣습니다. 「첨삭 숨김」으로 둔 첨삭은 싣지 않습니다.' : '학생 답안을 실을 때 고를 수 있습니다.' },
+                      { key: 'process', label: '과정 분석', title: 'AI 필기 분석을 싣습니다 — 결과가 있으면 캐릭터 · 총평, 없으면 안내 문구.' },
+                    ].map((o) => {
+                      const off = o.dep && !exportContentOptions[o.dep];
+                      return (
+                        <label key={o.key} title={o.title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: off ? 'not-allowed' : 'pointer', color: off ? '#94A3B8' : '#334155' }}>
+                          <input type="checkbox" checked={o.dep ? (exportContentOptions[o.dep] && exportContentOptions[o.key]) : exportContentOptions[o.key]} disabled={off}
+                            onChange={() => toggleContentOption(o.key)} style={{ accentColor: '#2A75F3' }} />
+                          {o.label}
+                        </label>
+                      );
+                    })}
+                    <label title="교사 피드백(학습 안내 포함)은 항상 실립니다." style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748B', cursor: 'not-allowed' }}>
+                      <input type="checkbox" checked disabled /> 교사 피드백 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>항상 포함</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div style={{ padding: '12px 0 14px', borderTop: '1px solid #EEF2F6', borderBottom: '1px solid #EEF2F6', marginBottom: 16, fontSize: 'var(--neo-font-size-sm)', color: '#334155', lineHeight: 1.6 }}>
+                    <div><span style={{ fontWeight: 700, color: '#64748B' }}>열</span>&nbsp; 이름 · 학년반번호 · 결과 · 피드백 <span style={{ color: '#64748B' }}>(결과는 학생마다 결과 발송 때 고른 방식)</span></div>
+                    <div><span style={{ fontWeight: 700, color: '#64748B' }}>파일</span>&nbsp; {`${currentTask?.title || '과제명'}.xlsx`} <span style={{ color: '#64748B' }}>· 문항 · 답안은 들어가지 않습니다</span></div>
+                  </div>
+                )}
+
+                {/* 학생 목록 */}
+                {/* 학생 수만큼만 높아지고, 많으면 이 안에서 스크롤 */}
+                <div style={{ flex: '0 1 auto', minHeight: 0, overflow: 'auto' }}>
+                  {eligibleList.length === 0 ? (
+                    <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>결과 발송이 끝난 학생이 없습니다.</div>
+                  ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
+                      <tr style={{ borderBottom: '1px solid #CBD5E1' }}>
+                        <th style={{ padding: '8px 6px', width: 32, textAlign: 'left' }}>
+                          <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="전체 선택" style={{ accentColor: '#2A75F3' }} />
+                        </th>
+                        <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 700, color: '#64748B' }}>학생</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 700, color: '#64748B' }} title="결과 발송 때 고른 표시 방식으로 내보냅니다">결과</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 700, color: '#64748B', width: 90 }}>과정 분석</th>
+                        <th style={{ padding: '8px 6px', width: 64 }} aria-label="미리보기" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {eligibleList.map((s) => {
+                        const checked = exportSelectedIds.includes(s.id);
+                        return (
+                          <tr key={s.id} className="exp24-row" style={{ borderBottom: '1px solid #EEF2F6' }}>
+                            <td style={{ padding: '10px 6px' }}>
+                              <input type="checkbox" checked={checked} onChange={() => toggleOne(s.id)} aria-label={`${s.name} 선택`} style={{ accentColor: '#2A75F3' }} />
+                            </td>
+                            <td style={{ padding: '10px 6px' }}>
+                              <div style={{ fontWeight: 700, color: '#1E293B' }}>{s.name}</div>
+                              <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{s.grade}</div>
+                            </td>
+                            <td style={{ padding: '10px 6px' }}>
+                              <div style={{ fontWeight: 700, color: '#1E293B', fontVariantNumeric: 'tabular-nums' }}>{s.sentMode ? fmtFor(s, s.teacherGrade || '우수', s.teacherScore) : '—'}</div>
+                              <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B' }}>{sentModeLabel(s)}</div>
+                            </td>
+                            <td style={{ padding: '10px 6px', color: s.handwritingEvaluation ? '#334155' : '#94A3B8' }}>{s.handwritingEvaluation ? '완료' : '—'}</td>
+                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                              <button type="button" className="exp24-view" onClick={() => exportFormat === 'pdf' && setPreviewStudent(s)} disabled={exportFormat === 'excel'}
+                                title={exportFormat === 'excel' ? '엑셀은 미리보기를 지원하지 않습니다.' : 'PDF 미리보기를 엽니다.'}
+                                style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 700, padding: '4px 10px', border: 'none', borderRadius: 6, background: 'transparent', fontFamily: 'inherit',
+                                  color: exportFormat === 'excel' ? '#CBD5E1' : '#2A75F3', cursor: exportFormat === 'excel' ? 'not-allowed' : 'pointer' }}>
+                                보기
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEF2F6' }}>
+                  <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>
+                    <strong style={{ color: '#1E293B' }}>{exportSelectedIds.length}명</strong> 선택 · 전체 {eligibleList.length}명
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" onClick={closeModal} style={{ padding: '10px 18px', border: '1px solid #E2E8F0', borderRadius: 8, background: 'white', cursor: 'pointer', fontWeight: 700, color: '#475569', fontFamily: 'inherit' }}>닫기</button>
+                    <button type="button" disabled={exportSelectedIds.length === 0} onClick={startExport}
+                      style={{ padding: '10px 20px', border: 'none', borderRadius: 8, background: exportSelectedIds.length > 0 ? '#2A75F3' : '#CBD5E1', color: 'white', cursor: exportSelectedIds.length > 0 ? 'pointer' : 'not-allowed', fontWeight: 800, fontFamily: 'inherit' }}>
+                      {exportFormat === 'excel' ? '엑셀' : 'PDF'} 내보내기 ({exportSelectedIds.length}명)
+                    </button>
+                  </div>
+                </div>
+              </>)}
+
+              {exportStatus === 'processing' && (
+                <div style={{ padding: '28px 0 12px' }} role="status" aria-live="polite">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <span style={{ fontWeight: 800, color: '#1E293B' }}>{exportFormat === 'excel' ? '엑셀 만드는 중' : '리포트 만드는 중'}</span>
+                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', fontVariantNumeric: 'tabular-nums' }}>
+                      {exportFormat === 'excel' ? `${exportProgress}%` : `${Math.round((exportProgress / 100) * exportSelectedIds.length)} / ${exportSelectedIds.length}명`}
+                    </span>
+                  </div>
+                  <div style={{ background: '#EEF2F6', borderRadius: 999, height: 8, overflow: 'hidden' }}>
+                    <div style={{ width: `${exportProgress}%`, height: '100%', background: '#2A75F3', transition: 'width 0.3s ease-out' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+            )}
+
+            {!isUnified && (
             <div className="modal-container" style={{ width: '720px', maxHeight: '85vh', padding: '2rem', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
               {exportStatus !== 'processing' && <button className="btn-modal-close" onClick={closeModal}>×</button>}
               <h2 style={{ fontSize: 'var(--neo-font-size-xl)', fontWeight: 800, color: '#1E2225', marginBottom: '0.5rem' }}>📤 채점 결과 내보내기</h2>
@@ -1783,6 +1958,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                 </div>
               )}
             </div>
+            )}
 
             {/* [v2.4] 리포트 미리보기 팝업 — 페이지 구조 분리
                  페이지 1: 타이틀 + 문항별 성취도 + 문항 내용[조건부] + 등급평가 + 과정 분석[조건부]
@@ -1791,6 +1967,50 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                  출력: @media print로 A4 강제 분할 */}
             {previewStudent && (() => {
               const rm = modeOf(previewStudent); // [일괄 채점 통합] 결과 발송 때 고른 표시 방식
+              /* [일괄 채점 통합] 리포트 디자인 v2 (2026-10-28) — 학생·학부모가 읽는 문서
+                 · 첫 페이지 머리에 「누구의 · 어떤 과제 · 결과」를 크게 — 리포트가 가장 먼저 답할 질문은 「내 결과는?」
+                 · 과제명 · 교과 · 출제일은 현재 과제 값 (舊: 「도형과 측정 · 수학」 고정 목 값이라 다른 과제에서 어긋났다)
+                 · 학생에게 보이면 안 되는 내부 표기 삭제 — 「— Page 1 — 본문」, 「(항상 노출, 문항별)」, 「표시 방식 ○○」
+                 · 섹션 제목은 ◆ 대신 제목 + 아래 선, 피드백은 회색 상자 대신 색 점 + 제목
+                 채점 관리(이전 버전)는 舊 디자인 그대로 */
+              const U = isUnified;
+              const resultText = fmtFor(previewStudent, previewStudent.teacherGrade || '우수', previewStudent.teacherScore);
+              const resultBase = rm === 'grade' ? `${(U && previewStudent.sentScale) || 4}단계 척도` : `${totalPoints}점 만점`;
+              const secTitle = (label, color = '#2A75F3') => U
+                ? <h3 style={{ fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B', margin: '2rem 0 0.9rem', paddingBottom: '0.5rem', borderBottom: '1px solid #E2E8F0' }}>{label}</h3>
+                : <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color, marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ {label}</h3>;
+              // [일괄 채점 통합] 첫 페이지 머리 — 학생 · 과제 · 결과
+              const ReportHead = () => (
+                <header style={{ marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, paddingBottom: 12, borderBottom: '2px solid #1E293B' }}>
+                    <h2 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B', margin: 0 }}>채점 결과 리포트</h2>
+                    <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>네오중학교 · 출제 {currentTask.date}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 24, alignItems: 'end', padding: '20px 0 18px', borderBottom: '1px solid #E2E8F0' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, color: '#1E293B', lineHeight: 1.2 }}>{previewStudent.name}</div>
+                      <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: 4 }}>{previewStudent.grade}</div>
+                      <div style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 700, color: '#334155', marginTop: 12 }}>
+                        <span style={{ color: '#2A75F3' }}>[{currentTask.type}]</span> {currentTask.title}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#64748B', fontWeight: 600 }}>결과</div>
+                      <div style={{ fontSize: 'var(--neo-font-size-xxl)', fontWeight: 800, color: previewStudent.invalid ? '#B91C1C' : '#1D4ED8', lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+                        {previewStudent.invalid ? '무효' : resultText}
+                      </div>
+                      {!previewStudent.invalid && <div style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B', marginTop: 2 }}>{resultBase}</div>}
+                    </div>
+                  </div>
+                </header>
+              );
+              // [일괄 채점 통합] 답안 페이지 머리 — 한 줄 (첫 페이지 머리를 매 장 되풀이하지 않는다)
+              const ReportHeadSmall = ({ no }) => (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, paddingBottom: 10, borderBottom: '2px solid #1E293B', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#1E293B' }}>{previewStudent.name} <span style={{ fontSize: 'var(--neo-font-size-sm)', fontWeight: 500, color: '#64748B' }}>{previewStudent.grade}</span></span>
+                  <span style={{ fontSize: 'var(--neo-font-size-sm)', color: '#64748B' }}>[{currentTask.type}] {currentTask.title} · 학생 답안 {no}번 문항</span>
+                </div>
+              );
               // 타이틀 영역 (모든 페이지 상단 반복) — 컴포넌트화
               const TitleArea = () => (
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '14px 18px', marginBottom: '20px' }}>
@@ -1843,12 +2063,39 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     <button className="btn-modal-close" onClick={() => setPreviewStudent(null)} style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 1 }}>×</button>
 
                     {/* ============ Page 1 — 본문 ============ */}
-                    <section className="preview-page" style={{ padding: '24px 32px 28px', background: 'white' }}>
+                    <section className="preview-page" style={{ padding: U ? '36px 44px 40px' : '24px 32px 28px', background: 'white' }}>
+                      {U ? <ReportHead /> : (<>
                       <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>— Page 1 — 본문</div>
                       <TitleArea />
+                      </>)}
 
                       {/* 1. 문항별 성취도 */}
-                      <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 문항별 성취도</h3>
+                      {secTitle('문항별 성취도')}
+                      {U ? (
+                        /* [일괄 채점 통합] 문항별 배점 + 합계 줄에 결과 — 문항별 점수는 프로토 데이터에 없어 합계에만 싣는다 (舊: 배점 3 · 결과 44/80 처럼 한 줄이 서로 어긋났다) */
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)', color: '#334155' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #CBD5E1' }}>
+                              <th style={{ padding: '8px 4px', textAlign: 'left', fontWeight: 700, color: '#64748B', width: 72 }}>문항</th>
+                              <th style={{ padding: '8px 4px', textAlign: 'left', fontWeight: 700, color: '#64748B' }}>내용</th>
+                              <th style={{ padding: '8px 4px', textAlign: 'right', fontWeight: 700, color: '#64748B', width: 80 }}>배점</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {questions.map((q, i) => (
+                              <tr key={q.id} style={{ borderBottom: '1px solid #EEF2F6' }}>
+                                <td style={{ padding: '10px 4px', fontWeight: 700 }}>{i + 1}번</td>
+                                <td style={{ padding: '10px 4px' }}>{q.description || q.title}</td>
+                                <td style={{ padding: '10px 4px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{q.score}점</td>
+                              </tr>
+                            ))}
+                            <tr>
+                              <td colSpan={2} style={{ padding: '12px 4px', fontWeight: 800, color: '#1E293B' }}>결과 <span style={{ fontWeight: 500, color: '#64748B' }}>({resultBase})</span></td>
+                              <td style={{ padding: '12px 4px', textAlign: 'right', fontWeight: 800, color: '#1D4ED8', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{previewStudent.invalid ? '무효' : resultText}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      ) : (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--neo-font-size-sm)', border: '1px solid #E5E7EB' }}>
                         <thead style={{ background: '#F9FAFB' }}>
                           <tr>
@@ -1865,9 +2112,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           </tr>
                         </tbody>
                       </table>
+                      )}
 
                       {/* 2. 등급평가 — 항상 노출 (舊 교사 피드백) · 순서: 좋아요 → 노력 → 성장 → 학습 안내 */}
-                      <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 등급평가 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>(항상 노출, 문항별)</span></h3>
+                      {U ? secTitle('등급평가') : <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 등급평가 <span style={{ fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8', fontWeight: 600 }}>(항상 노출, 문항별)</span></h3>}
                       {/* [POP-19 v2.12] 상세 「피드백 보기」의 학습 피드백을 그대로 싣는다 (舊 고정 예시 문장 폐기) */}
                       {(() => {
                         const fb = learningFeedbackOf(previewStudent, processResultFor(previewStudent, currentTask.type));
@@ -1883,19 +2131,58 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                             </div>
                           );
                         }
+                        // [일괄 채점 통합] 피드백 세 갈래 — 회색 상자 대신 색 점 + 제목, 본문은 읽기 좋은 폭 · 줄 간격
+                        const fbBlock = (label, color, text) => U ? (
+                          <div style={{ marginBottom: '1.1rem', breakInside: 'avoid' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: '#1E293B', fontSize: 'var(--neo-font-size-base)', marginBottom: '0.35rem' }}>
+                              <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: color, flex: 'none' }} />{label}
+                            </div>
+                            <div style={{ paddingLeft: 16, maxWidth: '68ch' }}>{para(text)}</div>
+                          </div>
+                        ) : (<>
+                          <div style={{ fontWeight: 700, color, marginBottom: '0.25rem' }}>{label}</div>
+                          <div style={{ marginBottom: '0.75rem' }}>{para(text)}</div>
+                        </>);
                         return (
-                          <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155' }}>
-                            <div style={{ fontWeight: 700, color: '#65A30D', marginBottom: '0.25rem' }}>이런 점이 좋아요</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{para(fb.good)}</div>
-                            <div style={{ fontWeight: 700, color: '#F97316', marginBottom: '0.25rem' }}>조금만 더 노력해볼까요</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{para(fb.effort)}</div>
-                            <div style={{ fontWeight: 700, color: '#2563EB', marginBottom: '0.25rem' }}>함께 성장해요</div>
-                            <div style={{ marginBottom: '0.75rem' }}>{para(fb.grow)}</div>
-                            {isUnified && !fb.guide?.items?.length && (<>
-                              <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
-                              <div style={{ marginBottom: '0.75rem' }}>{GUIDE_EMPTY_MESSAGE}</div>
-                            </>)}
-                            {fb.guide?.items?.length > 0 && (<>
+                          <div style={U
+                            ? { fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.8, color: '#334155' }
+                            : { background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155' }}>
+                            {fbBlock('이런 점이 좋아요', '#65A30D', fb.good)}
+                            {fbBlock('조금만 더 노력해볼까요', '#F97316', fb.effort)}
+                            {fbBlock('함께 성장해요', '#2563EB', fb.grow)}
+                            {/* [일괄 채점 통합] 학습 안내 — 요약만 파란 칸으로 강조, 단계는 번호 + 학생 내용 · 이렇게 해봐요 · 확인 */}
+                            {U && (
+                              <div style={{ marginTop: '0.4rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: '#1E293B', fontSize: 'var(--neo-font-size-base)', marginBottom: '0.5rem' }}>
+                                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: '#1D4ED8', flex: 'none' }} />학습 안내
+                                </div>
+                                {!fb.guide?.items?.length ? <div style={{ paddingLeft: 16 }}>{GUIDE_EMPTY_MESSAGE}</div> : (
+                                  <div style={{ paddingLeft: 16 }}>
+                                    <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '12px 16px', marginBottom: '1rem', breakInside: 'avoid' }}>
+                                      <div style={{ fontWeight: 800, color: '#1D4ED8', marginBottom: '4px' }}>{fb.guide.title}</div>
+                                      <ul style={{ margin: 0, paddingLeft: '18px' }}>{fb.guide.points.map((pt, k) => <li key={k}>{pt}</li>)}</ul>
+                                    </div>
+                                    {fb.guide.items.map((it, k) => (
+                                      <div key={k} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr)', gap: '0 8px', marginBottom: '1rem', breakInside: 'avoid' }}>
+                                        <span style={{ width: 22, height: 22, borderRadius: 999, background: '#1E293B', color: 'white', fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>{k + 1}</span>
+                                        <div style={{ maxWidth: '68ch' }}>
+                                          <div style={{ fontWeight: 800, color: '#1E293B', marginBottom: '0.3rem' }}>{it.ask}</div>
+                                          <div style={{ color: '#64748B', marginBottom: '0.4rem' }}>학생이 작성한 내용 · {it.written}</div>
+                                          <div style={{ background: '#F8FAFC', borderRadius: '8px', padding: '8px 12px', marginBottom: '0.4rem' }}>
+                                            <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', fontWeight: 800, marginBottom: 2 }}>이렇게 해봐요</div>
+                                            <div>{it.whenTo}</div>
+                                            <div>{it.example}</div>
+                                            {it.tip && <div style={{ fontSize: 'var(--neo-font-size-xs)', color: '#1D4ED8', marginTop: 2 }}>{it.tip}</div>}
+                                          </div>
+                                          <div><span style={{ fontWeight: 800, color: '#334155' }}>확인 </span>{it.check}</div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {!U && fb.guide?.items?.length > 0 && (<>
                               <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '0.35rem' }}>학습 안내</div>
                               <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '10px 14px', marginBottom: '0.75rem' }}>
                                 <div style={{ fontWeight: 700, color: '#1D4ED8', marginBottom: '4px' }}>{fb.guide.title}</div>
@@ -1925,8 +2212,10 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                           [POP-19 v2.10] 결과가 있으면 캐릭터 + 총평, 없으면(미분석 · 필기 부족) 안내 문구 — 상세 피드백 보기와 같다 */}
                       {exportContentOptions.process && (
                         <>
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#8B5CF6', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ AI 필기 분석</h3>
-                          <div style={{ background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
+                          {secTitle('AI 필기 분석', '#8B5CF6')}
+                          <div style={U
+                            ? { fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.8, color: '#334155' }
+                            : { background: '#F5F3FF', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E9D5FF' }}>
                             {/* 유형 캐릭터 — 학생에게 가는 리포트에 상세 화면과 같은 캐릭터를 싣는다 */}
                             {(() => {
                               // [POP-19 v2.12] 상세 화면과 같은 결과 — 상세를 열어 보지 않은 학생도 AI 채점에 딸려 온 분석이 있으면 캐릭터가 실린다
@@ -1969,7 +2258,7 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                       {/* 5. 지문 + 문항 [조건부 — 「지문+문항」 체크 시] — [POP-19 v2.11] 리포트 맨 끝(AI 필기 분석 다음) */}
                       {exportContentOptions.question && (
                         <>
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '1.5rem', marginBottom: '0.75rem' }}>◆ 지문 + 문항</h3>
+                          {secTitle('지문 + 문항')}
                           <div style={{ fontWeight: 700, fontSize: 'var(--neo-font-size-sm)', marginBottom: '0.5rem' }}>지문</div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px dashed #CBD5E1', marginBottom: '0.75rem' }}>
                             테셀레이션은 같은 모양의 도형을 겹치거나 빈틈없이 이어 붙여 평면을 덮는 것이다. 정다각형으로 평면을 채우려면 한 꼭짓점에 모이는 각의 합이 360°가 되어야 한다.
@@ -1987,11 +2276,13 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     {exportContentOptions.answer && previewStudent.replayQ && Object.entries(previewStudent.replayQ).map(([no, rq], idx) => (
                       <React.Fragment key={`rq-${no}`}>
                         <PageDivider label={`— Page ${idx + 2} —`} />
-                        <section className="preview-page preview-page-answer" style={{ padding: '24px 32px 28px', background: 'white' }}>
+                        <section className="preview-page preview-page-answer" style={{ padding: U ? '36px 44px 40px' : '24px 32px 28px', background: 'white' }}>
+                          {U ? <ReportHeadSmall no={no} /> : (<>
                           <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>— Page {idx + 2} — 학생 답안 ({no}번 문항)</div>
                           <TitleArea />
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: '0.5rem', marginBottom: '0.75rem' }}>
-                            <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', margin: 0 }}>◆ 학생 답안 — {no}번 문항</h3>
+                          </>)}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: U ? '1.5rem' : '0.5rem', marginBottom: '0.75rem' }}>
+                            <h3 style={U ? { fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B', margin: 0 } : { fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', margin: 0 }}>{U ? `${no}번 문항 학생 답안` : `◆ 학생 답안 — ${no}번 문항`}</h3>
                             {rq.pen && exportContentOptions.teacherInk && <InkNote inkKey={inkKey(previewStudent.name, rq.text)} text="✎ 교사 첨삭 포함" />}
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
@@ -2005,10 +2296,12 @@ const GradingManagement = ({ activeSubMenu, variant = 'v1' }) => {
                     {exportContentOptions.answer && !previewStudent.replayQ && mockAnswers.map((a, idx) => (
                       <React.Fragment key={a.no}>
                         <PageDivider label={`— Page ${idx + 2} —`} />
-                        <section className="preview-page preview-page-answer" style={{ padding: '24px 32px 28px', background: 'white' }}>
+                        <section className="preview-page preview-page-answer" style={{ padding: U ? '36px 44px 40px' : '24px 32px 28px', background: 'white' }}>
+                          {U ? <ReportHeadSmall no={a.no} /> : (<>
                           <div style={{ fontSize: 'var(--neo-font-size-xs)', fontWeight: 800, color: '#94A3B8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>— Page {idx + 2} — 학생 답안 ({a.no}번 문항)</div>
                           <TitleArea />
-                          <h3 style={{ fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '0.5rem', marginBottom: '0.75rem' }}>◆ 학생 답안 — {a.no}번 문항</h3>
+                          </>)}
+                          <h3 style={U ? { fontSize: 'var(--neo-font-size-lg)', fontWeight: 800, color: '#1E293B', marginTop: '1.5rem', marginBottom: '0.75rem' } : { fontSize: 'var(--neo-font-size-base)', fontWeight: 800, color: '#2A75F3', marginTop: '0.5rem', marginBottom: '0.75rem' }}>{U ? `${a.no}번 문항 학생 답안` : `◆ 학생 답안 — ${a.no}번 문항`}</h3>
                           <div style={{ background: '#F9FAFB', padding: '1rem', borderRadius: '8px', fontSize: 'var(--neo-font-size-sm)', lineHeight: 1.7, color: '#334155', border: '1px solid #E5E7EB', whiteSpace: 'pre-line' }}>
                             {a.text}
                             <div style={{ marginTop: '0.75rem', fontSize: 'var(--neo-font-size-xs)', color: '#94A3B8' }}>※ 실제 PDF에는 펜 캡처 원본 이미지 또는 OCR 텍스트가 함께 첨부됩니다.</div>
